@@ -1,0 +1,48 @@
+{
+  "name": "clothing-commerce-admin-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "packageManager": "pnpm@10.33.1",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "expo export --platform web --output-dir dist-expo",
+    "dev": "expo start",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "integration:check": "node scripts/integration-check.mjs",
+    "lint": "eslint .",
+    "start": "expo start",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~57.0.9",
+    "@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.1.0.tgz",
+    "expo": "~57.0.12",
+    "expo-constants": "~57.0.10",
+    "expo-linking": "~57.0.5",
+    "expo-router": "~57.0.12",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-web": "~0.21.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "@types/react": "~19.2.2",
+    "eslint": "9.39.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.9.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Commerce Admin",
+    "slug": "commerce-admin",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "commerce-admin",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    }
+  }
+}
