@@ -19,6 +19,12 @@ describe("classifyCommerceError", () => {
     expect(result.kind).toBe("forbidden");
   });
 
+  it("maps HTTP 404 to a not-found error (distinct from server errors)", () => {
+    const result = classifyCommerceError(new ApiHttpError("gone", 404, "NOT_FOUND", REQUEST_ID));
+    expect(result.kind).toBe("not-found");
+    expect(result.status).toBe(404);
+  });
+
   it("maps 5xx to an unexpected server error", () => {
     const result = classifyCommerceError(new ApiHttpError("boom", 500, "INTERNAL", REQUEST_ID));
     expect(result.kind).toBe("server");

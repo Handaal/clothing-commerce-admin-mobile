@@ -5,6 +5,7 @@ import { ApiContractError, ApiHttpError, ApiNetworkError } from "@shifted/clothi
 export type CommerceErrorKind =
   | "auth" // 401 — authentication/session problem
   | "forbidden" // 403 — authenticated but server-side authorization denied
+  | "not-found" // 404 — the requested resource does not exist (or is not visible)
   | "network" // transport failure — Commerce API unreachable
   | "contract" // response violated the API contract
   | "server" // unexpected server-side failure (5xx / other HTTP error)
@@ -36,6 +37,13 @@ export function classifyCommerceError(error: unknown): ClassifiedCommerceError {
       return {
         kind: "forbidden",
         message: "You are signed in, but the server denied access to this resource.",
+        ...base,
+      };
+    }
+    if (error.status === 404) {
+      return {
+        kind: "not-found",
+        message: "The requested item could not be found.",
         ...base,
       };
     }

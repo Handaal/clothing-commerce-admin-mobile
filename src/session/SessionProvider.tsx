@@ -1,5 +1,9 @@
 import { useAuth } from "@clerk/expo";
-import type { CommerceClient, TokenProvider } from "@shifted/clothing-commerce-sdk";
+import type {
+  CommerceClient,
+  TenantCommerceClient,
+  TokenProvider,
+} from "@shifted/clothing-commerce-sdk";
 import {
   createContext,
   useCallback,
@@ -27,6 +31,13 @@ export interface SessionContextValue {
   reload: () => void;
   /** Sign out of Clerk and clear all local tenant/session state. */
   signOut: () => Promise<void>;
+  /**
+   * The single Commerce client, scoped to a resolved tenant. Screens pass the `tenantId` from the
+   * resolved session state; the SDK owns the `X-Tenant-Id` header and the server remains the sole
+   * authority on what that tenant may read. The returned client is stable per tenant so it is safe
+   * to use directly in effect/callback dependencies.
+   */
+  getTenantClient: (tenantId: string) => TenantCommerceClient;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -69,6 +80,22 @@ export function SessionProvider({ children, storage: injectedStorage }: SessionP
     }
     return clientRef.current;
   }, [tokenProvider]);
+
+  // `withTenant` returns a fresh immutable client on every call, so we memoise one tenant-scoped
+  // client per tenantId. This gives screens a referentially stable client they can pass straight
+  // into hook dependencies without retriggering fetches on every render.
+  const tenantClientsRef = useRef(new Map<string, TenantCommerceClient>());
+  const getTenantClient = useCallback(
+    (tenantId: string): TenantCommerceClient => {
+      const cache = tenantClientsRef.current;
+      const existing = cache.get(tenantId);
+      if (existing) return existing;
+      const scoped = ensureClient().withTenant(tenantId);
+      cache.set(tenantId, scoped);
+      return scoped;
+    },
+    [ensureClient],
+  );
 
   // Bootstrap: react to Clerk auth state.
   useEffect(() => {
@@ -145,8 +172,8 @@ export function SessionProvider({ children, storage: injectedStorage }: SessionP
   }, [storage, clerkSignOut]);
 
   const value = useMemo<SessionContextValue>(
-    () => ({ state, selectTenant, reload, signOut }),
-    [state, selectTenant, reload, signOut],
+    () => ({ state, selectTenant, reload, signOut, getTenantClient }),
+    [state, selectTenant, reload, signOut, getTenantClient],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

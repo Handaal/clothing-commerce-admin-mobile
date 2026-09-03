@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
 import { classifyCommerceError } from "../src/commerce/errors";
@@ -109,6 +110,7 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
   // succeeded. Access flags below are shown exactly as the server returned them — the client never
   // infers permissions or grants "owner/manager = everything".
   const { access } = context;
+  const router = useRouter();
   return (
     <Frame>
       <Title>{context.tenant.name}</Title>
@@ -147,6 +149,13 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
         )}
       />
       <Divider />
+      {access.catalog.canRead ? (
+        <PrimaryButton
+          testID="open-products"
+          label="View products"
+          onPress={() => router.push("/products")}
+        />
+      ) : null}
       <SignOutButton />
     </Frame>
   );
