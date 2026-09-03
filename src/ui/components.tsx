@@ -82,6 +82,15 @@ export function PressableRow({
   );
 }
 
+/** A non-interactive list row (the visual sibling of {@link PressableRow}) for read-only surfaces. */
+export function SurfaceRow({ testID, children }: { testID?: string; children: ReactNode }) {
+  return (
+    <View testID={testID} style={styles.row}>
+      {children}
+    </View>
+  );
+}
+
 export function Eyebrow({ children }: { children: ReactNode }) {
   return <Text style={styles.eyebrow}>{children}</Text>;
 }
