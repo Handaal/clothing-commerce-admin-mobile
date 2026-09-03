@@ -1,4 +1,5 @@
 import type {
+  InventoryListResponse,
   MeContextResponse,
   MeTenantsResponse,
   ProductDetailResponse,
@@ -17,6 +18,7 @@ export function tenant(id: string, name: string, membershipId: string): MeTenant
 
 export interface MeContextOverrides {
   catalog?: Partial<MeContextResponse["access"]["catalog"]>;
+  inventory?: Partial<MeContextResponse["access"]["inventory"]>;
 }
 
 export function meContext(tenantId: string, overrides: MeContextOverrides = {}): MeContextResponse {
@@ -25,7 +27,7 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
     membership: { id: MEMBERSHIP_A },
     access: {
       catalog: { canRead: true, tenantWide: true, brands: [], ...overrides.catalog },
-      inventory: { canRead: false, tenantWide: false, locations: [] },
+      inventory: { canRead: false, tenantWide: false, locations: [], ...overrides.inventory },
       orders: { canRead: true, tenantWide: false, brands: [], branches: [] },
     },
   };
@@ -72,6 +74,29 @@ export function productDetail(
     prices: [{ variantId: VARIANT_A, currency: "USD", amountMinor: 2599 }],
     ...overrides,
   };
+}
+
+export const INVENTORY_LOCATION_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+export const VARIANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+export function inventoryItem(
+  overrides: Partial<InventoryListResponse["items"][number]> = {},
+): InventoryListResponse["items"][number] {
+  return {
+    inventoryLocationId: INVENTORY_LOCATION_A,
+    variantId: VARIANT_A,
+    productName: "Linen Shirt",
+    sku: "LS-001-M",
+    onHand: 22,
+    ...overrides,
+  };
+}
+
+export function inventoryList(
+  items: InventoryListResponse["items"],
+  pageInfo: Partial<InventoryListResponse["pageInfo"]> = {},
+): InventoryListResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
 }
 
 export interface RecordedRequest {
