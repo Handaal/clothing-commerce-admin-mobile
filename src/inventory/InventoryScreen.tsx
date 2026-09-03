@@ -1,5 +1,5 @@
 import type { MeContextResponse } from "@shifted/clothing-commerce-sdk";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 
 // Feature-agnostic Commerce-error display helpers, shared with the Products read surface.
@@ -18,6 +18,7 @@ import {
   Title,
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
+import { InventoryOperations } from "./InventoryOperations";
 import { loadAllInventory, type InventoryItem } from "./load";
 
 export interface InventoryScreenProps {
@@ -29,8 +30,8 @@ export interface InventoryScreenProps {
 /**
  * Read-only Inventory list for the active tenant. It reads inventory access from `/me/context` only
  * for UX, but the server stays authoritative: a real `GET /inventory` that is denied surfaces as a
- * classified error (never a silent empty list). There is no detail route — SDK 0.2.0 exposes no
- * inventory detail endpoint — and no mutation of any kind.
+ * classified error (never a silent empty list). The write panel uses server-derived capability
+ * guidance for UX while the API remains authoritative for every mutation.
  */
 export function InventoryScreen({ tenantId, context, onBack }: InventoryScreenProps) {
   // Context-driven UX gate, checked before any fetch is issued. This is not authorization — the API
@@ -64,10 +65,40 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
     [context],
   );
 
+  const [concurrencyNotice, setConcurrencyNotice] = useState(false);
+  const refreshAfterConcurrency = useCallback(() => {
+    setConcurrencyNotice(true);
+    reload();
+  }, [reload]);
+
   return (
     <ScrollScreen>
       <PageHeader eyebrow="Inventory" title="Inventory" onBack={onBack} />
       <Divider />
+      {concurrencyNotice ? (
+        <View style={{ gap: 8 }} testID="inventory-concurrency-notice">
+          <Title>Inventory changed</Title>
+          <Body>
+            Inventory was refreshed from the server. Review the current on-hand quantity, then
+            select the row and enter the physical count again before submitting a new adjustment.
+          </Body>
+          <PrimaryButton
+            label="Review refreshed inventory"
+            onPress={() => setConcurrencyNotice(false)}
+          />
+        </View>
+      ) : null}
+      {state.status === "success" ? (
+        <InventoryOperations
+          client={client}
+          locations={context.access.inventory.locations}
+          write={context.access.inventory.write}
+          items={state.data}
+          onRefresh={reload}
+          onConcurrencyConflict={refreshAfterConcurrency}
+        />
+      ) : null}
+      {state.status === "success" ? <Divider /> : null}
       {state.status === "loading" ? <LoadingBlock label="Loading inventory…" /> : null}
       {state.status === "error" ? (
         <>

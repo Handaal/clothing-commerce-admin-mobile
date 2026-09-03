@@ -22,9 +22,10 @@
   "dependencies": {
     "@clerk/expo": "^4.6.1",
     "@expo/metro-runtime": "~57.0.15",
-    "@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.2.0.tgz",
+    "@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.3.1.tgz",
     "expo": "~57.0.19",
     "expo-constants": "~57.0.17",
+    "expo-crypto": "~57.0.2",
     "expo-linking": "~57.0.9",
     "expo-router": "~57.0.18",
     "expo-secure-store": "~57.0.3",

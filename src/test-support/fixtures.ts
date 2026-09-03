@@ -1,4 +1,5 @@
 import type {
+  AdjustInventoryResponse,
   InventoryListResponse,
   MeContextResponse,
   MeTenantsResponse,
@@ -6,6 +7,8 @@ import type {
   OrderListResponse,
   ProductDetailResponse,
   ProductListResponse,
+  ReceiveInventoryResponse,
+  TransferInventoryResponse,
 } from "@shifted/clothing-commerce-sdk";
 
 // Deterministic, schema-valid fixtures for the SDK contracts (UUIDs must be valid v4-shaped strings).
@@ -30,7 +33,13 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
     membership: { id: MEMBERSHIP_A },
     access: {
       catalog: { canRead: true, tenantWide: true, brands: [], ...overrides.catalog },
-      inventory: { canRead: false, tenantWide: false, locations: [], ...overrides.inventory },
+      inventory: {
+        canRead: false,
+        tenantWide: false,
+        locations: [],
+        write: { canReceive: false, canAdjust: false, canTransfer: false, locations: [] },
+        ...overrides.inventory,
+      },
       orders: { canRead: true, tenantWide: false, brands: [], branches: [], ...overrides.orders },
     },
   };
@@ -80,7 +89,55 @@ export function productDetail(
 }
 
 export const INVENTORY_LOCATION_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+export const INVENTORY_LOCATION_B = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 export const VARIANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+export const OPERATION_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+// Inventory WRITE responses (SDK 0.3.1). observed* / version are authoritative post-commit values
+// displayed in success states; future adjustments use the next inventory list row's version.
+export function receiveResponse(
+  overrides: Partial<ReceiveInventoryResponse> = {},
+): ReceiveInventoryResponse {
+  return {
+    operationId: OPERATION_ID,
+    variantId: VARIANT_A,
+    inventoryLocationId: INVENTORY_LOCATION_A,
+    observedOnHand: 27,
+    observedVersion: 2,
+    ...overrides,
+  };
+}
+
+export function adjustResponse(
+  overrides: Partial<AdjustInventoryResponse> = {},
+): AdjustInventoryResponse {
+  return {
+    operationId: OPERATION_ID,
+    changed: true,
+    variantId: VARIANT_A,
+    inventoryLocationId: INVENTORY_LOCATION_A,
+    previousOnHand: 27,
+    newOnHand: 25,
+    version: 3,
+    ...overrides,
+  };
+}
+
+export function transferResponse(
+  overrides: Partial<TransferInventoryResponse> = {},
+): TransferInventoryResponse {
+  return {
+    operationId: OPERATION_ID,
+    variantId: VARIANT_A,
+    source: { inventoryLocationId: INVENTORY_LOCATION_A, observedOnHand: 20, observedVersion: 3 },
+    destination: {
+      inventoryLocationId: INVENTORY_LOCATION_B,
+      observedOnHand: 5,
+      observedVersion: 1,
+    },
+    ...overrides,
+  };
+}
 
 export function inventoryItem(
   overrides: Partial<InventoryListResponse["items"][number]> = {},
@@ -91,6 +148,7 @@ export function inventoryItem(
     productName: "Linen Shirt",
     sku: "LS-001-M",
     onHand: 22,
+    version: 1,
     ...overrides,
   };
 }
