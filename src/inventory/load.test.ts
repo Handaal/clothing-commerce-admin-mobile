@@ -1,6 +1,7 @@
 import type { InventoryListQuery, InventoryListResponse } from "@shifted/clothing-commerce-sdk";
 import { describe, expect, it, vi } from "vitest";
 
+import { PaginationCapExceededError } from "../commerce/pagination";
 import {
   INVENTORY_LOCATION_A,
   VARIANT_A,
@@ -73,7 +74,7 @@ describe("loadAllInventory", () => {
     expect(listInventory).toHaveBeenCalledTimes(2);
   });
 
-  it("is bounded: a server that never stops advancing cannot cause an infinite loop", async () => {
+  it("is bounded AND fails closed when a server never stops advancing (no truncated success)", async () => {
     // Always reports another page — a pathological/misbehaving server.
     const listInventory = vi.fn(async () =>
       inventoryList([inventoryItem({ inventoryLocationId: INVENTORY_LOCATION_A })], {
@@ -82,9 +83,11 @@ describe("loadAllInventory", () => {
       }),
     );
 
-    const items = await loadAllInventory({ listInventory });
-
+    // Inherits the shared fail-closed behavior: rejects rather than returning a truncated list...
+    await expect(loadAllInventory({ listInventory })).rejects.toBeInstanceOf(
+      PaginationCapExceededError,
+    );
+    // ...and is still bounded — it stopped at exactly the cap.
     expect(listInventory).toHaveBeenCalledTimes(MAX_INVENTORY_PAGES);
-    expect(items).toHaveLength(MAX_INVENTORY_PAGES);
   });
 });

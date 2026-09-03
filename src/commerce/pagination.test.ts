@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { collectAllPages, DEFAULT_MAX_PAGES, type CursorPage } from "./pagination";
+import {
+  collectAllPages,
+  DEFAULT_MAX_PAGES,
+  PaginationCapExceededError,
+  type CursorPage,
+} from "./pagination";
 
 function page<T>(items: T[], over: Partial<CursorPage<T>["pageInfo"]> = {}): CursorPage<T> {
   return { items, pageInfo: { nextCursor: null, hasMore: false, ...over } };
@@ -49,20 +54,32 @@ describe("collectAllPages", () => {
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
-  it("is bounded: a server that never stops cannot loop forever", async () => {
-    const fetchPage = vi.fn(async () => page([1], { hasMore: true, nextCursor: "always" }));
+  it("completes normally when the last permitted page reports hasMore=false", async () => {
+    // Exactly `maxPages` pages are needed and the final one terminates: this is a complete result.
+    const fetchPage = vi
+      .fn<(cursor: string | undefined) => Promise<CursorPage<number>>>()
+      .mockImplementation(async (cursor) =>
+        cursor === "last" ? page([2]) : page([1], { hasMore: true, nextCursor: "last" }),
+      );
 
-    const items = await collectAllPages(fetchPage);
+    const items = await collectAllPages(fetchPage, 2);
 
-    expect(fetchPage).toHaveBeenCalledTimes(DEFAULT_MAX_PAGES);
-    expect(items).toHaveLength(DEFAULT_MAX_PAGES);
+    expect(items).toEqual([1, 2]);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
-  it("honours a custom, smaller page bound", async () => {
+  it("is bounded AND fails closed: cap reached while hasMore=true rejects (never truncated success)", async () => {
     const fetchPage = vi.fn(async () => page([1], { hasMore: true, nextCursor: "always" }));
 
-    await collectAllPages(fetchPage, 3);
+    await expect(collectAllPages(fetchPage)).rejects.toBeInstanceOf(PaginationCapExceededError);
+    // Still bounded: it stopped at exactly the cap rather than looping forever.
+    expect(fetchPage).toHaveBeenCalledTimes(DEFAULT_MAX_PAGES);
+  });
 
+  it("fails closed on a custom, smaller page bound too", async () => {
+    const fetchPage = vi.fn(async () => page([1], { hasMore: true, nextCursor: "always" }));
+
+    await expect(collectAllPages(fetchPage, 3)).rejects.toBeInstanceOf(PaginationCapExceededError);
     expect(fetchPage).toHaveBeenCalledTimes(3);
   });
 });
