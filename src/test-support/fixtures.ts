@@ -2,6 +2,8 @@ import type {
   InventoryListResponse,
   MeContextResponse,
   MeTenantsResponse,
+  OrderDetailResponse,
+  OrderListResponse,
   ProductDetailResponse,
   ProductListResponse,
 } from "@shifted/clothing-commerce-sdk";
@@ -19,6 +21,7 @@ export function tenant(id: string, name: string, membershipId: string): MeTenant
 export interface MeContextOverrides {
   catalog?: Partial<MeContextResponse["access"]["catalog"]>;
   inventory?: Partial<MeContextResponse["access"]["inventory"]>;
+  orders?: Partial<MeContextResponse["access"]["orders"]>;
 }
 
 export function meContext(tenantId: string, overrides: MeContextOverrides = {}): MeContextResponse {
@@ -28,7 +31,7 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
     access: {
       catalog: { canRead: true, tenantWide: true, brands: [], ...overrides.catalog },
       inventory: { canRead: false, tenantWide: false, locations: [], ...overrides.inventory },
-      orders: { canRead: true, tenantWide: false, brands: [], branches: [] },
+      orders: { canRead: true, tenantWide: false, brands: [], branches: [], ...overrides.orders },
     },
   };
 }
@@ -97,6 +100,94 @@ export function inventoryList(
   pageInfo: Partial<InventoryListResponse["pageInfo"]> = {},
 ): InventoryListResponse {
   return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
+}
+
+export const ORDER_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+export const ORDER_B = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+export function orderListItem(
+  overrides: Partial<OrderListResponse["items"][number]> = {},
+): OrderListResponse["items"][number] {
+  return {
+    id: ORDER_A,
+    orderNumber: "ORD-1001",
+    channel: "online",
+    status: "placed",
+    brandId: BRAND_A,
+    branchId: null,
+    currency: "USD",
+    totalMinor: 12995,
+    placedAt: "2026-09-03T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function orderList(
+  items: OrderListResponse["items"],
+  pageInfo: Partial<OrderListResponse["pageInfo"]> = {},
+): OrderListResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
+}
+
+/**
+ * Order Detail shaped like `GET /orders/{id}`. Defaults mirror the domain of the dev fixture (2
+ * lines, 5 ordered units, M fully fulfilled, L partially) WITHOUT reusing any real fixture ids.
+ */
+export function orderDetail(overrides: Partial<OrderDetailResponse> = {}): OrderDetailResponse {
+  return {
+    header: {
+      id: ORDER_A,
+      orderNumber: "ORD-1001",
+      channel: "online",
+      status: "placed",
+      brandId: BRAND_A,
+      branchId: null,
+      currency: "USD",
+      totalMinor: 12995,
+      placedAt: "2026-09-03T12:00:00.000Z",
+    },
+    lines: [
+      {
+        lineNumber: 1,
+        variantId: VARIANT_A,
+        productName: "Linen Shirt",
+        sku: "LS-001-M",
+        quantity: 3,
+        unitPriceMinor: 2599,
+        lineTotalMinor: 7797,
+      },
+      {
+        lineNumber: 2,
+        variantId: VARIANT_B,
+        productName: "Linen Shirt",
+        sku: "LS-001-L",
+        quantity: 2,
+        unitPriceMinor: 2599,
+        lineTotalMinor: 5198,
+      },
+    ],
+    cancellation: null,
+    fulfillmentProgress: {
+      status: "partially_fulfilled",
+      lines: [
+        {
+          lineNumber: 1,
+          variantId: VARIANT_A,
+          orderedQuantity: 3,
+          fulfilledQuantity: 3,
+          status: "fulfilled",
+        },
+        {
+          lineNumber: 2,
+          variantId: VARIANT_B,
+          orderedQuantity: 2,
+          fulfilledQuantity: 1,
+          status: "partially_fulfilled",
+        },
+      ],
+    },
+    ...overrides,
+  };
 }
 
 export interface RecordedRequest {
