@@ -163,6 +163,13 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           onPress={() => router.push("/inventory")}
         />
       ) : null}
+      {access.orders.canRead ? (
+        <PrimaryButton
+          testID="open-orders"
+          label="View orders"
+          onPress={() => router.push("/orders")}
+        />
+      ) : null}
       <SignOutButton />
     </Frame>
   );
