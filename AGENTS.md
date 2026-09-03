@@ -10,5 +10,5 @@
 8. Use the explicitly versioned Commerce SDK and preserve supported API compatibility.
 9. Do not create database schema, migrations, independent inventory, or duplicated server rules here.
 10. Website catalog content may eventually be managed here, but never build a visual page-layout editor.
-11. Do not add authentication or management/business screens in Phase 1A-R.
+11. Historical (Phase 1A-R only, now satisfied): that early phase forbade adding authentication or management/business screens. Authentication and the read-only management read slice (Products, Inventory, Orders) were subsequently delivered in Phase 2F-B; this rule does not prohibit that merged work. It remains a reminder to keep new screens within the approved, in-scope phase.
 12. Run Expo dependency checks, format, lint, typecheck, tests, and build for completed work.

@@ -17,9 +17,31 @@ export interface CursorPage<TItem> {
 export const DEFAULT_MAX_PAGES = 50;
 
 /**
+ * Thrown when the page bound is exhausted while the server still advertises more results. The load
+ * FAILS CLOSED rather than returning the accumulated pages: a safety cap must never silently turn an
+ * incomplete server result into a successful, complete-looking list. Callers surface this like any
+ * other read failure (classified error + explicit retry) — never as partial success.
+ */
+export class PaginationCapExceededError extends Error {
+  readonly maxPages: number;
+  constructor(maxPages: number) {
+    super(
+      `Pagination exceeded the ${maxPages}-page safety cap while the server still reported more ` +
+        `results; refusing to present a truncated list as complete.`,
+    );
+    this.name = "PaginationCapExceededError";
+    this.maxPages = maxPages;
+  }
+}
+
+/**
  * Loads the FULL result set by following the server's cursor until it reports no more pages, in
  * server order. Page one is never silently presented as the whole list. `fetchPage` receives the
- * cursor for the page to fetch (`undefined` for the first page). Bounded by `maxPages`.
+ * cursor for the page to fetch (`undefined` for the first page).
+ *
+ * Bounded by `maxPages`. If that bound is reached while the server still reports another page, this
+ * throws {@link PaginationCapExceededError} — it does NOT return the accumulated partial data, so a
+ * truncated result can never masquerade as a complete one.
  */
 export async function collectAllPages<TItem>(
   fetchPage: (cursor: string | undefined) => Promise<CursorPage<TItem>>,
@@ -39,5 +61,7 @@ export async function collectAllPages<TItem>(
     cursor = response.pageInfo.nextCursor;
   }
 
-  return items;
+  // The loop only falls through here after fetching `maxPages` pages whose last one still reported
+  // `hasMore` with a non-null cursor — i.e. the result is provably truncated. Fail closed.
+  throw new PaginationCapExceededError(maxPages);
 }

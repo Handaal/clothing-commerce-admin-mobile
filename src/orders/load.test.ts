@@ -1,6 +1,7 @@
 import type { OrderListQuery, OrderListResponse } from "@shifted/clothing-commerce-sdk";
 import { describe, expect, it, vi } from "vitest";
 
+import { PaginationCapExceededError } from "../commerce/pagination";
 import { ORDER_A, ORDER_B, orderList, orderListItem } from "../test-support/fixtures";
 import { MAX_ORDERS_PAGES, loadAllOrders } from "./load";
 
@@ -53,14 +54,14 @@ describe("loadAllOrders", () => {
     expect(listOrders).toHaveBeenCalledTimes(2);
   });
 
-  it("is bounded by MAX_ORDERS_PAGES", async () => {
+  it("is bounded by MAX_ORDERS_PAGES AND fails closed (no truncated success)", async () => {
     const listOrders = vi.fn(async () =>
       orderList([orderListItem()], { hasMore: true, nextCursor: "always" }),
     );
 
-    const items = await loadAllOrders({ listOrders });
-
+    // Inherits the shared fail-closed behavior rather than returning a truncated list...
+    await expect(loadAllOrders({ listOrders })).rejects.toBeInstanceOf(PaginationCapExceededError);
+    // ...and is still bounded — it stopped at exactly the cap.
     expect(listOrders).toHaveBeenCalledTimes(MAX_ORDERS_PAGES);
-    expect(items).toHaveLength(MAX_ORDERS_PAGES);
   });
 });
