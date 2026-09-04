@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -21,6 +21,10 @@ const mocks = vi.hoisted(() => ({
   getMyTenants: vi.fn(),
   getContext: vi.fn(),
   listInventory: vi.fn(),
+  receiveInventory: vi.fn(),
+  adjustInventory: vi.fn(),
+  transferInventory: vi.fn(),
+  randomUUID: vi.fn(),
   withTenant: vi.fn(),
   signOut: vi.fn(async () => {}),
 }));
@@ -48,6 +52,9 @@ vi.mock("../commerce/client", () => ({
         tenantId,
         getContext: mocks.getContext,
         listInventory: mocks.listInventory,
+        receiveInventory: mocks.receiveInventory,
+        adjustInventory: mocks.adjustInventory,
+        transferInventory: mocks.transferInventory,
       };
     },
   }),
@@ -58,6 +65,9 @@ vi.mock("../tenant/secure-storage", () => ({
   createSecureTenantStorage: () => createMemoryTenantStorage(),
 }));
 
+// The operations panel pulls in idempotency.ts → native expo-crypto; stub it for the module graph.
+vi.mock("expo-crypto", () => ({ randomUUID: mocks.randomUUID }));
+
 import { SessionProvider, useSession } from "../session/SessionProvider";
 
 // Inventory access granted by default; individual tests override as needed.
@@ -66,6 +76,21 @@ const READABLE_INVENTORY = {
     canRead: true,
     tenantWide: true,
     locations: [{ id: INVENTORY_LOCATION_A, name: "Flagship Stockroom", branchId: null }],
+    write: {
+      canReceive: true,
+      canAdjust: true,
+      canTransfer: true,
+      locations: [
+        {
+          id: INVENTORY_LOCATION_A,
+          name: "Flagship Stockroom",
+          canReceive: true,
+          canAdjust: true,
+          canTransferOrigin: true,
+          canTransferDestination: true,
+        },
+      ],
+    },
   },
 };
 
@@ -89,6 +114,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getMyTenants.mockResolvedValue([tenant(TENANT_A, "Acme", MEMBERSHIP_A)]);
   mocks.getContext.mockResolvedValue(meContext(TENANT_A, READABLE_INVENTORY));
+  mocks.randomUUID.mockReset().mockReturnValueOnce("K1").mockReturnValueOnce("K2");
 });
 
 afterEach(() => cleanup());
@@ -240,14 +266,93 @@ describe("InventoryScreen", () => {
     expect(mocks.listInventory).toHaveBeenCalledTimes(1);
   });
 
-  it("exposes no inventory-mutation actions on the read surface", async () => {
+  it("offers the three inventory write actions once the surface has loaded", async () => {
     mocks.listInventory.mockResolvedValue(
       inventoryList([inventoryItem({ productName: "Linen Shirt" })]),
     );
     renderInventory();
     await screen.findByText("Linen Shirt");
-    expect(
-      screen.queryByText(/adjust|transfer|receive|reserve|allocate|edit|delete|save|count|issue/i),
-    ).toBeNull();
+    expect(screen.getByTestId("open-receive")).toBeTruthy();
+    expect(screen.getByTestId("open-adjust")).toBeTruthy();
+    expect(screen.getByTestId("open-transfer")).toBeTruthy();
+  });
+
+  it("on adjustment concurrency refreshes, shows a persistent notice, and requires fresh input", async () => {
+    let resolveRefresh!: (value: ReturnType<typeof inventoryList>) => void;
+    const refreshedInventory = new Promise<ReturnType<typeof inventoryList>>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    mocks.listInventory
+      .mockResolvedValueOnce(inventoryList([inventoryItem({ onHand: 22, version: 2 })]))
+      .mockReturnValueOnce(refreshedInventory)
+      .mockResolvedValue(inventoryList([inventoryItem({ onHand: 23, version: 6 })]));
+    mocks.adjustInventory
+      .mockRejectedValueOnce(new ApiHttpError("stale", 409, "CONCURRENT_MODIFICATION", null))
+      .mockResolvedValueOnce({
+        operationId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        changed: true,
+        variantId: VARIANT_A,
+        inventoryLocationId: INVENTORY_LOCATION_A,
+        previousOnHand: 24,
+        newOnHand: 23,
+        version: 6,
+      });
+    renderInventory();
+
+    await screen.findByText("Linen Shirt");
+    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(screen.getByTestId(`adjust-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`));
+    fireEvent.change(screen.getByTestId("adjust-counted"), { target: { value: "23" } });
+    fireEvent.click(screen.getByTestId("adjust-submit"));
+
+    expect(await screen.findByTestId("inventory-concurrency-notice")).toBeTruthy();
+    expect(screen.queryByTestId("write-retry")).toBeNull();
+    await waitFor(() => expect(mocks.listInventory).toHaveBeenCalledTimes(2));
+    expect(mocks.adjustInventory).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("open-adjust")).toBeNull();
+    await act(async () => {
+      resolveRefresh(inventoryList([inventoryItem({ onHand: 24, version: 5 })]));
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`inventory-onhand-${INVENTORY_LOCATION_A}:${VARIANT_A}`).textContent,
+      ).toBe("24"),
+    );
+
+    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(await screen.findByTestId(`adjust-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`));
+    fireEvent.change(screen.getByTestId("adjust-counted"), { target: { value: "23" } });
+    fireEvent.click(screen.getByTestId("adjust-submit"));
+
+    await waitFor(() => expect(mocks.adjustInventory).toHaveBeenCalledTimes(2));
+    expect(mocks.adjustInventory.mock.calls[0][0]).toMatchObject({
+      expectedVersion: 2,
+      idempotencyKey: "K1",
+    });
+    expect(mocks.adjustInventory.mock.calls[1][0]).toMatchObject({
+      expectedVersion: 5,
+      idempotencyKey: "K2",
+    });
+  });
+
+  it("never exposes opening-stock or generic-issue actions (out of scope for this app)", async () => {
+    mocks.listInventory.mockResolvedValue(
+      inventoryList([inventoryItem({ productName: "Linen Shirt" })]),
+    );
+    renderInventory();
+    await screen.findByText("Linen Shirt");
+    expect(screen.queryByText(/opening stock|reserve|allocate/i)).toBeNull();
+    expect(screen.queryByText(/\bissue\b/i)).toBeNull();
+  });
+
+  it("keeps write actions off the surface entirely when inventory cannot be read", async () => {
+    mocks.getContext.mockResolvedValue(
+      meContext(TENANT_A, { inventory: { canRead: false, tenantWide: false, locations: [] } }),
+    );
+    renderInventory();
+    await screen.findByText(/do not have read access to inventory/);
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(screen.queryByTestId("open-adjust")).toBeNull();
+    expect(screen.queryByTestId("open-transfer")).toBeNull();
   });
 });

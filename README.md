@@ -4,15 +4,17 @@ Expo / React Native management-channel app for a clothing business's **authorize
 managers**. It is not a Shifted/platform super-admin app, not a POS/cashier app, not a
 customer-shopping app, and not a website layout builder.
 
-## Current scope — Phase 2F-B (management read slice)
+## Current scope — Phase 2G (inventory management)
 
-This phase establishes the real authentication + data boundary and a **read-only** management read
-slice on top of it:
+Phase 2F-B established the real authentication + data boundary and a **read-only** management slice
+(Products · Inventory · Orders). Phase 2G adds the **first write surface**: three authorized inventory
+operations on top of the same boundary.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.2.0)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.3.1)
   → GET /me/tenants → tenant selection → GET /me/context
-  → Products · Inventory · Orders  (read-only)
+  → Products · Orders                         (read-only)
+  → Inventory  read  +  Receive · Adjust · Transfer   (authorized writes)
 ```
 
 **Auth / session**
@@ -21,18 +23,20 @@ Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.2.0)
 - `GET /me/tenants` bootstrap, selected-tenant revalidation, `GET /me/context`
 - stable `SessionProvider` bootstrap and a tenant-scoped Commerce client
 
-**Management read surfaces**
+**Management surfaces**
 
-- Products list and Product Detail
-- Inventory (complete, bounded cursor pagination; location names resolved from context)
+- Products list and Product Detail (read-only)
+- Inventory (complete, bounded cursor pagination; location names resolved from context) **plus the
+  Receive / Adjust / Transfer write operations** (see [Inventory operations](#inventory-operations-phase-2g))
 - Orders list, Order Detail, and read-only fulfillment progress
 
-### Read-only guarantee
+### Scope guarantee
 
-Phase 2F-B is strictly read-only. It **does not** implement product mutations, inventory mutations,
-order mutations, fulfillment mutations (pick/pack/ship/fulfil), payments, refunds/returns, or
-customer management. Every screen's controls are navigation, back, or retry only. Failures surface
-as typed error states — never as fake-empty or mock data.
+The only mutations in this app are the three inventory operations below. It **does not** implement
+product/catalog mutations, order or fulfillment mutations (pick/pack/ship/fulfil), payments,
+refunds/returns, customer management, POS, or storefront. Notably, **Opening Stock and Generic Issue
+are intentionally absent** — this identity holds neither permission and neither action is exposed.
+Failures surface as typed error states — never as fake-empty or mock data.
 
 ## Separate-repo architecture
 
@@ -53,26 +57,26 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.2.0**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.2.0.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.2.0.tgz`
-- SHA-256: `764a5b756ff549e3dc01faf1d82f8bc6cb654cfd0889b2c7d7728afca59f6e3b`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.3.1**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.3.1.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.3.1.tgz`
+- SHA-256: `b6adf3d4ab0220b72f73c5e2d1ebba68f106faf55f4d48e1b598e6052b832b30`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.2.0.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.3.1.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.2.0.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.3.1.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above.
 
 ### Update the SDK artifact
 
-1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.3.0.tgz`).
-2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.3.0.tgz"`.
+1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.3.1.tgz`).
+2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.3.1.tgz"`.
 3. `pnpm install` to update `pnpm-lock.yaml`.
 4. Update the SHA-256 above and in `src/sdk-artifact.test.ts` expectations, then remove the old
    tarball once nothing references it.
@@ -112,14 +116,20 @@ Boundary facts a maintainer can rely on:
 
 Tenant methods actually used by this phase (all via the tenant-scoped client):
 
-| Method                  | Endpoint             | Used by                          |
-| ----------------------- | -------------------- | -------------------------------- |
-| `getContext()`          | `GET /me/context`    | session bootstrap / access flags |
-| `listProducts()`        | `GET /products`      | Products list                    |
-| `getProduct(productId)` | `GET /products/{id}` | Product Detail                   |
-| `listInventory()`       | `GET /inventory`     | Inventory                        |
-| `listOrders()`          | `GET /orders`        | Orders list                      |
-| `getOrder(orderId)`     | `GET /orders/{id}`   | Order Detail                     |
+| Method                  | Endpoint                      | Used by                          |
+| ----------------------- | ----------------------------- | -------------------------------- |
+| `getContext()`          | `GET /me/context`             | session bootstrap / access flags |
+| `listProducts()`        | `GET /products`               | Products list                    |
+| `getProduct(productId)` | `GET /products/{id}`          | Product Detail                   |
+| `listInventory()`       | `GET /inventory`              | Inventory                        |
+| `receiveInventory()`    | `POST /inventory/receipts`    | Receive stock                    |
+| `adjustInventory()`     | `POST /inventory/adjustments` | Adjust / reconcile               |
+| `transferInventory()`   | `POST /inventory/transfers`   | Transfer stock                   |
+| `listOrders()`          | `GET /orders`                 | Orders list                      |
+| `getOrder(orderId)`     | `GET /orders/{id}`            | Order Detail                     |
+
+Each write additionally sends an `Idempotency-Key` header (owned by the SDK); the app supplies the
+key value.
 
 ## Configuration
 
@@ -163,8 +173,10 @@ remains authoritative for authorization; client visibility is UX only.**
 
 ## Management read surfaces
 
-All read surfaces reuse one tenant-scoped client and one request lifecycle (`useAsync`, below). None
-of them expose any mutation control.
+All read surfaces reuse one tenant-scoped client and one **read** request lifecycle (`useAsync`,
+below). Products and Orders expose no mutation control; Inventory adds the three write operations
+documented under [Inventory operations](#inventory-operations-phase-2g), which use a separate, explicit
+**write** lifecycle (`useMutation`) — reads are never forced through the write hook or vice versa.
 
 ### Products
 
@@ -186,10 +198,12 @@ real product id       → getProduct(productId)    → variants / options / pric
 authenticated session → tenant → listInventory() → complete authorized inventory read
 ```
 
-- Fields used from the read contract: `productName`, `sku`, `onHand`, and `inventoryLocationId`.
+- Fields used from the read contract: `productName`, `sku`, `onHand`, `version`, and
+  `inventoryLocationId`.
   Location **names** are resolved from `/me/context → access.inventory.locations` (the inventory
-  item itself carries only the location id). SDK 0.2.0 does **not** expose available / reserved /
-  allocated quantities on this read contract, so they are not displayed.
+  item itself carries only the location id). Available / reserved / allocated quantities are not in
+  the current read contract and are not displayed. SDK 0.3.1 does expose the authoritative optimistic-
+  concurrency `version`, which is used by Adjust (see below).
 - **Cursor pagination:** the screen loads the **complete** authorized inventory via the shared
   `collectAllPages` helper (`src/commerce/pagination.ts`) — it follows the server's `nextCursor` in
   server order, page one is never presented as the whole list, and there is a finite maximum-page
@@ -197,8 +211,65 @@ authenticated session → tenant → listInventory() → complete authorized inv
 - **Fail-closed cap:** if the client reaches its maximum permitted page count while the server still
   reports additional pages, it throws `PaginationCapExceededError` and the screen shows an error
   state (with retry) rather than presenting partial inventory as complete.
-- Read-only: no adjustment, transfer, receiving, reservation/allocation, or quantity edit. Zero
-  balances render honestly as `0`.
+- Zero balances render honestly as `0`. The read itself performs no mutation; the write operations
+  below are separate, explicitly authorized actions.
+
+## Inventory operations (Phase 2G)
+
+Three authorized write operations extend the Inventory surface
+(`src/inventory/InventoryOperations.tsx`). They are pure SDK 0.3.1 calls — no direct `fetch`, no local
+balance math, and no mock fallback. Variant choices come from the **real loaded inventory** and
+locations come from `/me/context` (no hardcoded location ids anywhere in production logic).
+
+| Operation    | Meaning                                           | SDK call                                                                                                       |
+| ------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Receive**  | Physical stock arrived into a location            | `receiveInventory({ variantId, inventoryLocationId, quantity, note? })`                                        |
+| **Adjust**   | Reconcile system on-hand to a physical **count**  | `adjustInventory({ variantId, inventoryLocationId, countedQuantity, expectedVersion, note? })`                 |
+| **Transfer** | Move stock between two locations in one atomic op | `transferInventory({ variantId, sourceInventoryLocationId, destinationInventoryLocationId, quantity, note? })` |
+
+- **Receive** takes a positive quantity. Its response returns `observedOnHand` / `observedVersion`
+  (post-commit observed state), which may be displayed in the success result; the refreshed list is
+  the source for subsequent operations.
+- **Adjust is a reconciliation, not a `+/-` delta.** The operator states the actual physical count and
+  the API derives the delta under a row lock. It is guarded by `expectedVersion` (optimistic
+  concurrency). SDK 0.3.1 supplies `InventoryListItem.version`, so Adjust is available immediately
+  after a normal fresh Inventory load and sends that row version as `expectedVersion`; no prior write
+  is required. A `0` count is valid (reconcile to empty).
+- **Transfer** blocks an obviously invalid source == destination locally (the chosen source is disabled
+  in the destination list) and the API also rejects it (`SAME_TRANSFER_LOCATION`). Its response
+  reports both sides' observed on-hand/version.
+- After every successful write the screen **refreshes Inventory from the server** — the on-screen
+  balances are the authoritative re-read, never a locally computed final number. For a Transfer, the
+  refresh shows both the source decrease and the destination increase.
+
+### Idempotency and retry semantics
+
+Every write carries an `Idempotency-Key`. The lifecycle lives in `src/ui/useMutation.ts` and
+`src/inventory/idempotency.ts`:
+
+- A **new operation** mints one fresh key (a secure v4 UUID from `expo-crypto`), then submits it.
+- An **ambiguous network failure** offers **Retry**, which reuses the **same** key — so a request that
+  may already have been applied is never applied twice (at-most-once at the API).
+- **Success**, **reset**, or starting the **next** operation mints a **new** key.
+- Keys are never regenerated on render or on retry, never hardcoded, and never derived from weak
+  randomness. Duplicate taps are ignored while a request is in flight, and a stale response from an
+  abandoned/reset operation can never overwrite a newer one.
+
+### Concurrent-adjustment behavior
+
+If a reconciliation's `expectedVersion` is stale, the API returns `409 CONCURRENT_MODIFICATION`. The
+app does **not** blindly retry (that would resubmit the same stale version). It immediately abandons
+the stale operation/key and entered count, refreshes Inventory, and tells the operator to review the
+new authoritative on-hand/version and enter the physical count again. Reconfirmation starts a new
+operation with a new idempotency key and the refreshed row version.
+
+### Authorization: UX visibility vs API authority
+
+`/me/context → access.inventory.write` supplies top-level `canReceive`, `canAdjust`, and `canTransfer`
+guidance plus per-location receive, adjust, transfer-origin, and transfer-destination flags. The app
+uses those exact values for action visibility and option filtering; it never infers permission from a
+role name or from read access. This context is UX guidance only: **the API is the sole authority**, and
+a real `403` still surfaces as access denied. Opening Stock and Generic Issue are never rendered.
 
 ### Orders and fulfillment
 
@@ -332,8 +403,36 @@ Verify:
 - **Order Detail:** two lines; fulfillment `3 / 3` and `1 / 2`; overall **partial** (never shown as
   fully fulfilled).
 - **Stability:** no repeated request loop; no "Maximum update depth" error; no console/runtime
-  errors; no mutation controls anywhere; sign-out removes authenticated management surfaces; signing
-  in again re-bootstraps successfully.
+  errors; sign-out removes authenticated management surfaces; signing in again re-bootstraps.
+
+### Phase 2G inventory-write acceptance
+
+With the Phase 2G identity (holds `inventory.receive` / `adjust` / `transfer`; **no** opening/issue)
+and the two dev stockrooms, from Inventory:
+
+1. **Read the authoritative starting on-hand first** (do not assume `22 / 39 / 12` if prior manual
+   activity occurred).
+2. **Receive** a small quantity into `Dev Flagship Stockroom`; after the auto-refresh, confirm the row
+   increased by exactly that amount.
+3. **Adjust** a normal freshly loaded row (without first writing it to discover a version) to a
+   specific physical count; confirm the refreshed on-hand equals the submitted count.
+4. **Transfer** a small quantity Flagship → Overflow; confirm the refreshed source decreased and
+   destination increased by exactly that amount.
+5. **Idempotency:** replaying the same operation with the same key does not apply twice (Retry after an
+   ambiguous failure reuses the key).
+6. Confirm no Opening Stock / Issue actions, no request loop, no "Maximum update depth", and that a
+   denied write would show an explicit access-denied state.
+
+Authenticated runtime acceptance completed on **2026-09-04** against the local API and the real Clerk
+development user:
+
+- Receive at Dev Overflow Stockroom: `5 + 2 = 7`; exact same-key replay remained `7`.
+- Fresh-load Adjust at Dev Flagship Stockroom, `DEV-LS-001-L`: row version `3`, on-hand `38`, counted
+  `37`, authoritative result `37`.
+- Transfer `DEV-LS-001-M`, Flagship → Overflow: `21 / 7`, moved `1`, authoritative result `20 / 8`.
+- Both locations were receive/adjust/transfer-origin/transfer-destination capable in context; all
+  three actions and filtered choices matched it. Products, Product Detail, Inventory, Orders, Order
+  Detail, and partial fulfillment progress passed with no unexpected console or HTTP errors.
 
 ## Troubleshooting
 
@@ -359,6 +458,7 @@ Verify:
 
 ## Not in this phase
 
-Product/inventory/order/fulfillment mutations, payments, refunds/returns, customer management,
-dashboards, reporting/analytics, purchasing, reservation/allocation, POS, storefront, cart, and
-checkout are **out of scope** and not implemented here.
+The only writes are Inventory **Receive / Adjust / Transfer**. Product/catalog mutations, order and
+fulfillment mutations, payments, refunds/returns, customer management, dashboards,
+reporting/analytics, purchasing, reservation/allocation, inventory **Opening Stock** and generic
+**Issue**, POS, storefront, cart, and checkout are **out of scope** and not implemented here.

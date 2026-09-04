@@ -4,7 +4,7 @@
 Clerk (auth, owned by Mobile)
   │  getToken callback (token only — never a Clerk object)
   ▼
-@shifted/clothing-commerce-sdk 0.2.0  (packed tarball under vendor/, relative file: path)
+@shifted/clothing-commerce-sdk 0.3.1  (packed tarball under vendor/, relative file: path)
   │  owns Authorization, X-Client-Type/Version, X-Tenant-Id
   ▼
 Commerce API  →  authoritative commerce core
@@ -19,11 +19,16 @@ database migration ownership, or privileged database credential. It never import
 source, schemas, or contracts, and never links to a sibling API checkout — it consumes the API only
 through the vendored, versioned SDK.
 
-## Scope: Phase 2F-B management read slice
+## Scope: Phase 2G inventory management
 
-The implemented surface is authentication + session bootstrap plus a **read-only** management read
-slice: Products (list + detail), Inventory, and Orders (list + detail with fulfillment progress).
-There are no mutation paths of any kind in this phase.
+Phase 2F-B delivered authentication + session bootstrap plus a read-only management slice: Products
+(list + detail), Inventory, and Orders (list + detail with fulfillment progress). **Phase 2G adds the
+first write surface**: three authorized inventory operations — Receive, Adjust (reconcile), and
+Transfer — via SDK 0.3.1. Products and Orders remain read-only; Opening Stock and generic Issue are
+out of scope and never exposed. Writes go through an explicit `useMutation` lifecycle (idle ·
+submitting · success · error) with per-operation idempotency keys, kept distinct from the read
+lifecycle (`useAsync`). After any successful write the authoritative Inventory read is refreshed;
+final balances are never computed locally.
 
 ## Dependency direction
 
@@ -56,6 +61,8 @@ no tokens, build no headers, and issue no direct `fetch`.
 | Request lifecycle                     | `src/ui/useAsync.ts`                                                                                     |
 | Products screens                      | `src/products/{ProductsListScreen,ProductDetailScreen}.tsx`, `src/products/display.ts`                   |
 | Inventory screen + loader             | `src/inventory/InventoryScreen.tsx`, `src/inventory/load.ts`                                             |
+| Inventory write operations (2G)       | `src/inventory/InventoryOperations.tsx`, `src/inventory/operations.ts`, `src/inventory/write-errors.ts`  |
+| Write lifecycle + idempotency (2G)    | `src/ui/useMutation.ts`, `src/inventory/idempotency.ts`                                                  |
 | Orders screens + loader + fulfillment | `src/orders/{OrdersListScreen,OrderDetailScreen}.tsx`, `src/orders/load.ts`, `src/orders/fulfillment.ts` |
 | Shared UI primitives                  | `src/ui/components.tsx`, `src/ui/SignInScreen.tsx`                                                       |
 
@@ -99,5 +106,17 @@ and any path param.
    authoritative.
 5. Failures surface as typed errors — never mock data or fake-empty states.
 6. No `EXPO_PUBLIC_` value is a secret; a missing API URL fails loudly.
-7. The read slice performs no mutations; a client pagination cap fails closed rather than presenting
-   truncated data as complete.
+7. Reads perform no mutations; a client pagination cap fails closed rather than presenting truncated
+   data as complete.
+8. The only writes are inventory Receive/Adjust/Transfer, each via the SDK with an app-supplied
+   `Idempotency-Key` (secure v4 UUID). Retry of an ambiguous failure reuses the same key; a new
+   operation mints a new one. The SDK owns the header.
+9. Write authorization is the API's alone. `/me/context → access.inventory.write` is server-derived UX
+   guidance for action visibility and per-location choices; a real `403` still renders as access denied.
+   There is no owner/admin/role-name bypass, and Opening Stock / Issue are never exposed.
+10. Adjust reconciles to an absolute count under `expectedVersion`, taken only from the current SDK
+    0.3.1 `InventoryListItem.version`. A stale version yields `409 CONCURRENT_MODIFICATION`: the stale
+    attempt and key are invalidated, Inventory refreshes, and the operator must review/re-enter the
+    count before a new-key submission against the refreshed row version. There is never a blind retry.
+11. After a successful write the authoritative Inventory read is refreshed; on-screen balances are the
+    server re-read, never a locally computed final number.

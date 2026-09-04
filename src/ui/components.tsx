@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type ViewStyle,
 } from "react-native";
@@ -161,6 +162,128 @@ export function Divider(props: { style?: ViewStyle }) {
   return <View style={[styles.divider, props.style]} />;
 }
 
+/** A labelled whole-number input. The raw string is owned by the caller so it can validate before use. */
+export function NumberField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  testID,
+  editable = true,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  testID?: string;
+  editable?: boolean;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        testID={testID}
+        style={[styles.input, !editable && styles.inputDisabled]}
+        value={value}
+        onChangeText={onChangeText}
+        editable={editable}
+        keyboardType="number-pad"
+        inputMode="numeric"
+        placeholder={placeholder}
+        placeholderTextColor="#a1a1aa"
+      />
+    </View>
+  );
+}
+
+/** A labelled single-line free-text input (used for the optional operator note). */
+export function TextField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  testID,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  testID?: string;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        testID={testID}
+        style={styles.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#a1a1aa"
+      />
+    </View>
+  );
+}
+
+export interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+/** A labelled list-of-options selector (no native picker dependency). Selecting an option is not a
+ * mutation — it only updates local form state. */
+export function SelectField({
+  label,
+  options,
+  selected,
+  onSelect,
+  testIDPrefix,
+  emptyLabel,
+}: {
+  label: string;
+  options: SelectOption[];
+  selected: string | null;
+  onSelect: (value: string) => void;
+  testIDPrefix?: string;
+  emptyLabel?: string;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      {options.length === 0 ? (
+        <Text style={styles.body}>{emptyLabel ?? "No options available."}</Text>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {options.map((option) => {
+            const isSelected = option.value === selected;
+            return (
+              <Pressable
+                key={option.value}
+                testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected, disabled: option.disabled }}
+                disabled={option.disabled}
+                onPress={() => onSelect(option.value)}
+                style={({ pressed }) => [
+                  styles.option,
+                  isSelected && styles.optionSelected,
+                  option.disabled && styles.optionDisabled,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#f5f3ff" },
   container: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
@@ -239,4 +362,29 @@ export const styles = StyleSheet.create({
     textAlign: "right",
   },
   divider: { height: 1, backgroundColor: "#ede9fe", marginVertical: 4 },
+  field: { gap: 6 },
+  fieldLabel: { color: "#6b7280", fontSize: 14, fontWeight: "600" },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd6fe",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: "#111827",
+    backgroundColor: "#ffffff",
+  },
+  inputDisabled: { backgroundColor: "#f4f4f5", color: "#a1a1aa" },
+  option: {
+    borderWidth: 1,
+    borderColor: "#ede9fe",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#ffffff",
+  },
+  optionSelected: { borderColor: "#6d28d9", backgroundColor: "#ede9fe" },
+  optionDisabled: { opacity: 0.5 },
+  optionText: { color: "#3f3f46", fontSize: 15, fontWeight: "600" },
+  optionTextSelected: { color: "#5b21b6", fontWeight: "700" },
 });
