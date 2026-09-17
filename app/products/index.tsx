@@ -18,6 +18,7 @@ export default function ProductsRoute() {
       tenantId={state.tenantId}
       context={state.context}
       onOpenProduct={(productId) => router.push(`/products/${productId}`)}
+      onCreateProduct={() => router.push("/products/new")}
       onBack={() => router.back()}
     />
   );

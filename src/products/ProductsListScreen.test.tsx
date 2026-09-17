@@ -62,6 +62,7 @@ vi.mock("../tenant/secure-storage", () => ({
 import { SessionProvider, useSession } from "../session/SessionProvider";
 
 const onOpenProduct = vi.fn();
+const onCreateProduct = vi.fn();
 
 // Renders the real SessionProvider and mounts the screen with the resolved tenant/context once
 // bootstrap completes — the same data path the route wrapper uses in production.
@@ -73,6 +74,7 @@ function Harness() {
       tenantId={state.tenantId}
       context={state.context}
       onOpenProduct={onOpenProduct}
+      onCreateProduct={onCreateProduct}
       onBack={() => {}}
     />
   );
@@ -170,10 +172,35 @@ describe("ProductsListScreen", () => {
     expect(mocks.listProducts).not.toHaveBeenCalled();
   });
 
-  it("exposes no product-mutation actions on the read surface", async () => {
+  it("offers a Create product affordance when a brand is accessible", async () => {
+    mocks.listProducts.mockResolvedValue(productList([productListItem(PRODUCT_A, "Linen Shirt")]));
+    renderProducts();
+    fireEvent.click(await screen.findByTestId("create-product"));
+    expect(onCreateProduct).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides Create product when no brand is accessible (never guesses a brand id)", async () => {
+    mocks.getContext.mockResolvedValue(
+      meContext(TENANT_A, { catalog: { canRead: true, tenantWide: true, brands: [] } }),
+    );
     mocks.listProducts.mockResolvedValue(productList([productListItem(PRODUCT_A, "Linen Shirt")]));
     renderProducts();
     await screen.findByText("Linen Shirt");
-    expect(screen.queryByText(/edit|delete|archive|create|save|adjust/i)).toBeNull();
+    expect(screen.queryByTestId("create-product")).toBeNull();
+  });
+
+  it("shows an at-a-glance Storefront publication state per row", async () => {
+    mocks.listProducts.mockResolvedValue(productList([productListItem(PRODUCT_A, "Linen Shirt")]));
+    renderProducts();
+    await screen.findByText("Linen Shirt");
+    // Nothing observed this session yet → an honest "not observed" note, never a guessed status.
+    expect(screen.getByText(/not observed this session/i)).toBeTruthy();
+  });
+
+  it("keeps management on the detail screen — rows carry no inline edit/delete controls", async () => {
+    mocks.listProducts.mockResolvedValue(productList([productListItem(PRODUCT_A, "Linen Shirt")]));
+    renderProducts();
+    await screen.findByText("Linen Shirt");
+    expect(screen.queryByText(/^(edit|delete|archive|save)$/i)).toBeNull();
   });
 });

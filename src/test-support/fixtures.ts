@@ -1,14 +1,22 @@
 import type {
   AdjustInventoryResponse,
+  CreateVariantResponse,
   InventoryListResponse,
+  MediaUploadIntentResponse,
   MeContextResponse,
   MeTenantsResponse,
   OrderDetailResponse,
   OrderListResponse,
   ProductDetailResponse,
   ProductListResponse,
+  ProductWriteResponse,
+  PublicProductDetailResponse,
+  PublishProductResponse,
   ReceiveInventoryResponse,
+  RegisterProductMediaResponse,
+  SetVariantPriceResponse,
   TransferInventoryResponse,
+  UnpublishProductResponse,
 } from "@shifted/clothing-commerce-sdk";
 
 // Deterministic, schema-valid fixtures for the SDK contracts (UUIDs must be valid v4-shaped strings).
@@ -84,6 +92,99 @@ export function productDetail(
       },
     ],
     prices: [{ variantId: VARIANT_A, currency: "USD", amountMinor: 2599 }],
+    ...overrides,
+  };
+}
+
+export const MEDIA_A = "12121212-1212-4121-8121-121212121212";
+
+// Catalog WRITE responses (SDK 0.6.0). `getProduct` returns no storefrontStatus/slug/description, so
+// these write responses are the in-session source of publication state (see catalog/observations).
+export function productWriteResponse(
+  overrides: Partial<ProductWriteResponse> = {},
+): ProductWriteResponse {
+  return {
+    productId: PRODUCT_A,
+    status: "draft",
+    storefrontStatus: "unpublished",
+    ...overrides,
+  };
+}
+
+export function publishResponse(
+  overrides: Partial<PublishProductResponse> = {},
+): PublishProductResponse {
+  return {
+    productId: PRODUCT_A,
+    storefrontStatus: "published",
+    publishedAt: "2026-09-17T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function unpublishResponse(
+  overrides: Partial<UnpublishProductResponse> = {},
+): UnpublishProductResponse {
+  return { productId: PRODUCT_A, storefrontStatus: "unpublished", ...overrides };
+}
+
+export function createVariantResponse(
+  overrides: Partial<CreateVariantResponse> = {},
+): CreateVariantResponse {
+  return { variantId: VARIANT_A, status: "draft", ...overrides };
+}
+
+export function setVariantPriceResponse(
+  overrides: Partial<SetVariantPriceResponse> = {},
+): SetVariantPriceResponse {
+  return {
+    priceId: "13131313-1313-4131-8131-131313131313",
+    currency: "USD",
+    amountMinor: 2599,
+    ...overrides,
+  };
+}
+
+export function mediaUploadIntent(
+  overrides: Partial<MediaUploadIntentResponse> = {},
+): MediaUploadIntentResponse {
+  return {
+    bucket: "product-media",
+    path: `${TENANT_A}/${PRODUCT_A}/photo.jpg`,
+    contentType: "image/jpeg",
+    uploadUrl: "https://storage.example/signed-put",
+    expiresAt: "2026-09-17T12:05:00.000Z",
+    ...overrides,
+  };
+}
+
+export function registerMediaResponse(
+  overrides: Partial<RegisterProductMediaResponse> = {},
+): RegisterProductMediaResponse {
+  return { mediaId: MEDIA_A, isPrimary: true, ...overrides };
+}
+
+export function publicProductDetail(
+  overrides: Partial<PublicProductDetailResponse> = {},
+): PublicProductDetailResponse {
+  return {
+    id: PRODUCT_A,
+    brandId: BRAND_A,
+    slug: "linen-shirt",
+    name: "Linen Shirt",
+    description: "A soft linen shirt.",
+    publishedAt: "2026-09-17T12:00:00.000Z",
+    media: [],
+    variants: [
+      {
+        id: VARIANT_A,
+        sku: "LS-001-M",
+        displayName: "Medium",
+        optionSignature: "size:m",
+        prices: [{ currency: "USD", amountMinor: 2599 }],
+        inStock: true,
+      },
+    ],
     ...overrides,
   };
 }

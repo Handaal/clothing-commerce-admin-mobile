@@ -4,17 +4,20 @@ Expo / React Native management-channel app for a clothing business's **authorize
 managers**. It is not a Shifted/platform super-admin app, not a POS/cashier app, not a
 customer-shopping app, and not a website layout builder.
 
-## Current scope — Phase 2G (inventory management)
+## Current scope — Phase 2K (catalog management)
 
 Phase 2F-B established the real authentication + data boundary and a **read-only** management slice
-(Products · Inventory · Orders). Phase 2G adds the **first write surface**: three authorized inventory
-operations on top of the same boundary.
+(Products · Inventory · Orders). Phase 2G added the first write surface (inventory Receive · Adjust ·
+Transfer). **Phase 2K turns the read-only Products area into a full catalog management workflow** on the
+same boundary: create/edit products, lifecycle, variants, selling prices, media upload, and Storefront
+publication.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.3.1)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.6.0)
   → GET /me/tenants → tenant selection → GET /me/context
-  → Products · Orders                         (read-only)
-  → Inventory  read  +  Receive · Adjust · Transfer   (authorized writes)
+  → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
+  → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
+  → Orders    (read-only)
 ```
 
 **Auth / session**
@@ -25,18 +28,19 @@ Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.3.1)
 
 **Management surfaces**
 
-- Products list and Product Detail (read-only)
+- Products list, **Create product**, and full **Product management** (edit · lifecycle · variants ·
+  prices · media · publish) — see [Catalog management](#catalog-management-phase-2k)
 - Inventory (complete, bounded cursor pagination; location names resolved from context) **plus the
   Receive / Adjust / Transfer write operations** (see [Inventory operations](#inventory-operations-phase-2g))
 - Orders list, Order Detail, and read-only fulfillment progress
 
 ### Scope guarantee
 
-The only mutations in this app are the three inventory operations below. It **does not** implement
-product/catalog mutations, order or fulfillment mutations (pick/pack/ship/fulfil), payments,
-refunds/returns, customer management, POS, or storefront. Notably, **Opening Stock and Generic Issue
-are intentionally absent** — this identity holds neither permission and neither action is exposed.
-Failures surface as typed error states — never as fake-empty or mock data.
+The mutations in this app are the catalog operations (below) and the three inventory operations. It
+**does not** implement order or fulfillment mutations (pick/pack/ship/fulfil), payments,
+refunds/returns, customer management, POS, taxonomy (category/collection) writes, website layout
+editing, or storefront checkout. Taxonomy is deliberately deferred (Phase 2J deferred it API-side) and
+is **not** invented here. Failures surface as typed error states — never as fake-empty or mock data.
 
 ## Separate-repo architecture
 
@@ -57,26 +61,27 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.3.1**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.3.1.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.3.1.tgz`
-- SHA-256: `b6adf3d4ab0220b72f73c5e2d1ebba68f106faf55f4d48e1b598e6052b832b30`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.6.0**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.6.0.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.6.0.tgz`
+- SHA-256: `622a93f6fa5561373973fd2a4676d1789847f5515baca17181bbef40d1eed5e1`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.3.1.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.6.0.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.3.1.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.6.0.tgz -Algorithm SHA256
 ```
 
-The output must equal the SHA-256 above.
+The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
+relative `file:` spec, and byte-for-byte SHA-256).
 
 ### Update the SDK artifact
 
-1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.3.1.tgz`).
-2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.3.1.tgz"`.
+1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.6.0.tgz`).
+2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.6.0.tgz"`.
 3. `pnpm install` to update `pnpm-lock.yaml`.
 4. Update the SHA-256 above and in `src/sdk-artifact.test.ts` expectations, then remove the old
    tarball once nothing references it.
@@ -116,20 +121,35 @@ Boundary facts a maintainer can rely on:
 
 Tenant methods actually used by this phase (all via the tenant-scoped client):
 
-| Method                  | Endpoint                      | Used by                          |
-| ----------------------- | ----------------------------- | -------------------------------- |
-| `getContext()`          | `GET /me/context`             | session bootstrap / access flags |
-| `listProducts()`        | `GET /products`               | Products list                    |
-| `getProduct(productId)` | `GET /products/{id}`          | Product Detail                   |
-| `listInventory()`       | `GET /inventory`              | Inventory                        |
-| `receiveInventory()`    | `POST /inventory/receipts`    | Receive stock                    |
-| `adjustInventory()`     | `POST /inventory/adjustments` | Adjust / reconcile               |
-| `transferInventory()`   | `POST /inventory/transfers`   | Transfer stock                   |
-| `listOrders()`          | `GET /orders`                 | Orders list                      |
-| `getOrder(orderId)`     | `GET /orders/{id}`            | Order Detail                     |
+| Method                             | Endpoint                                 | Used by                          |
+| ---------------------------------- | ---------------------------------------- | -------------------------------- |
+| `getContext()`                     | `GET /me/context`                        | session bootstrap / access flags |
+| `listProducts()`                   | `GET /products`                          | Products list                    |
+| `getProduct(productId)`            | `GET /products/{id}`                     | Product management (read)        |
+| `createProduct()`                  | `POST /products`                         | Create product                   |
+| `updateProduct()`                  | `PATCH /products/{id}`                   | Edit details                     |
+| `setProductStatus()`               | `POST /products/{id}/status`             | Lifecycle (draft/active/archive) |
+| `publishProduct()`                 | `POST /products/{id}/publish`            | Publish to Storefront            |
+| `unpublishProduct()`               | `POST /products/{id}/unpublish`          | Unpublish from Storefront        |
+| `createVariant()`                  | `POST /products/{id}/variants`           | Add variant                      |
+| `setVariantPrice()`                | `POST /variants/{id}/price`              | Set selling price                |
+| `createProductMediaUploadIntent()` | `POST /products/{id}/media/intent`       | Media: authorize upload          |
+| `registerProductMedia()`           | `POST /products/{id}/media`              | Media: register uploaded image   |
+| `archiveProductMedia()`            | `POST /products/{id}/media/{id}/archive` | Media: soft-archive              |
+| `listInventory()`                  | `GET /inventory`                         | Inventory                        |
+| `receiveInventory()`               | `POST /inventory/receipts`               | Receive stock                    |
+| `adjustInventory()`                | `POST /inventory/adjustments`            | Adjust / reconcile               |
+| `transferInventory()`              | `POST /inventory/transfers`              | Transfer stock                   |
+| `listOrders()`                     | `GET /orders`                            | Orders list                      |
+| `getOrder(orderId)`                | `GET /orders/{id}`                       | Order Detail                     |
 
-Each write additionally sends an `Idempotency-Key` header (owned by the SDK); the app supplies the
-key value.
+The public Storefront reads (`listPublishedProducts` / `getPublishedProduct`) are on the **root**
+client (unauthenticated, tenant supplied as a query parameter), not the tenant-scoped client.
+
+Each write additionally sends an `Idempotency-Key` header (owned by the SDK); the app supplies the key
+value. The one exception is `createProductMediaUploadIntent`, which by contract carries **no**
+idempotency key (it mints a fresh server-controlled destination and is safe to repeat). Endpoint paths
+above are illustrative of the method→operation mapping; the SDK owns the exact routing.
 
 ## Configuration
 
@@ -182,15 +202,17 @@ documented under [Inventory operations](#inventory-operations-phase-2g), which u
 
 ```
 authenticated session → tenant → listProducts() → Products list
-real product id       → getProduct(productId)    → variants / options / prices
+real product id       → getProduct(productId)    → Product management (read + writes)
 ```
 
 - **Products list** (`src/products/ProductsListScreen.tsx`): states — loading, populated, legitimate
   empty, no-access (no `catalog.read`), API 403, network/API error, explicit retry. Rows navigate by
-  the real product id. Brand names are resolved from `/me/context`.
-- **Product Detail** (`src/products/ProductDetailScreen.tsx`): states — loading, success, 404, 403,
-  network/API error, explicit retry, back. Renders variants, options, and prices.
-- No mock fallback; no product mutations.
+  the real product id. Brand names are resolved from `/me/context`. Adds a **Create product**
+  affordance (hidden when no brand is accessible) and an at-a-glance session-observed Storefront state
+  per row.
+- **Product management** (`src/products/ProductManageScreen.tsx`): the read baseline (variants,
+  options, prices) plus the catalog write workflow — see [Catalog management](#catalog-management-phase-2k).
+- No mock fallback.
 
 ### Inventory
 
@@ -213,6 +235,95 @@ authenticated session → tenant → listInventory() → complete authorized inv
   state (with retry) rather than presenting partial inventory as complete.
 - Zero balances render honestly as `0`. The read itself performs no mutation; the write operations
   below are separate, explicitly authorized actions.
+
+## Catalog management (Phase 2K)
+
+The Products area is a full management workflow (`src/products/CreateProductScreen.tsx`,
+`src/products/ProductManageScreen.tsx`, and the pure `src/catalog/*` modules). Every action is a pure
+SDK 0.6.0 call through the tenant-scoped client — no direct `fetch` (except the signed storage PUT), no
+local business math, no mock fallback — and each write re-reads the authoritative product on success.
+
+### Create and edit
+
+- **Create** captures only the canonical contract fields: `brandId`, `name`, `slug` (required),
+  `styleCode?`, `description?`. The slug auto-derives from the name (`slugify`) until edited. Products
+  are created as **draft**.
+- **Edit** (`updateProduct`) changes name/slug/style code/description.
+- Typed conflicts are mapped, not collapsed: `SLUG_CONFLICT`, `STYLE_CODE_CONFLICT` (editable),
+  validation, authorization, and ambiguous-network (retryable with the same key).
+
+### Lifecycle vs Storefront publication (two distinct states)
+
+Internal lifecycle (**draft / active / archived**, via `setProductStatus`) is **separate** from
+Storefront publication (**unpublished / published**, via `publishProduct` / `unpublishProduct`). The UI
+shows both as distinct badges and states this explicitly — a product can be active but not published.
+Only valid transitions are offered (the server still authoritatively rejects the rest with
+`INVALID_LIFECYCLE_TRANSITION`, mapped to a refresh recovery). **Archiving is not a delete** — it is a
+two-step confirm and the product is retained and restorable to draft.
+
+### Variants and prices
+
+- `createVariant({ productId, sku, displayName? })`; `SKU_CONFLICT` is mapped to an editable message.
+- Selling prices use **integer-minor-unit safe conversion** (`src/catalog/money.ts`): a decimal input
+  like `25.99` is converted to `2599` minor units with pure integer/string math — **never** floating
+  point. Currency is shown explicitly (defaulted from the product's existing price currency, never a
+  hidden hardcode). `setVariantPrice` records canonical price history server-side; the client never
+  edits rows directly.
+
+### Media upload (real Phase 2J flow)
+
+`src/catalog/media.ts` implements the contract flow: **(1)** request an authorized upload intent
+(`createProductMediaUploadIntent`) → **(2)** PUT the selected image bytes to the server-issued signed
+URL → **(3)** register the metadata (`registerProductMedia`) against the same server-controlled
+bucket/path → **(4)** refresh. Steps 1–2 are not idempotency-keyed (the intent mints a fresh
+destination); step 3 is the keyed, retryable step (an ambiguous retry re-sends the identical
+bucket/path). Raw images never touch the API database, and the app never uploads to a client-chosen
+path. Media can be soft-archived (`archiveProductMedia`), with a confirm.
+
+If the API authorizes an intent but storage returns **no signed URL** (local dev without Supabase
+Storage credentials), that single step is isolated as a clear "storage-configuration gap" — everything
+before and after (authorization, register) is still proven. This is the only environmentally-gated part
+of the workflow.
+
+### Session-observed publication state and slug (contract note)
+
+`GET /products/{id}` returns id/name/styleCode/status, variants, options and prices — but **not** the
+Storefront publication state, slug, or description. Those are surfaced from **this session's
+observations** (`src/catalog/observations.ts`), fed by write responses (create/status return
+`storefrontStatus`; publish/unpublish return it and `publishedAt`; the slug is the one we sent). Where
+nothing has been observed, the UI honestly says "Storefront state not observed this session" rather
+than guessing. This mirrors the deliberate inventory `version` pattern and keeps the server
+authoritative. The full published projection is verifiable via the public Storefront API
+(`listPublishedProducts` / `getPublishedProduct`).
+
+### Permission-aware UX (catalog)
+
+Unlike inventory (`access.inventory.write.*`), the catalog access context exposes **only** `canRead`
+(plus `tenantWide` and `brands[]`) — there is **no** author/publish capability flag. So author-vs-
+publish cannot be pre-distinguished from capability data; the app relies on the server as the sole
+authority and maps a real `403` to an explicit **"Not authorized — nothing was applied"** state. Role
+names grant nothing here. The Create affordance is hidden only when no brand is accessible (never
+guessing a brand id).
+
+### Single/multi-brand (frozen invariant)
+
+`src/catalog/brands.ts` honours the invariant: a **single-brand** tenant is used directly (never forced
+through a switcher); a genuinely **multi-brand** tenant must pick an explicit brand for a new product;
+with **no** accessible brand, authoring is disabled (no guessed brand id).
+
+### Catalog error model
+
+`src/catalog/write-errors.ts` maps stable API codes to distinct, useful recoveries — never a generic
+"something went wrong":
+
+| Code / condition                                                                                                 | Recovery         |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `SLUG_CONFLICT`, `STYLE_CODE_CONFLICT`, `SKU_CONFLICT`                                                           | edit             |
+| `PRODUCT_NOT_PUBLISHABLE` (with prerequisite explanation)                                                        | edit             |
+| `INVALID_LIFECYCLE_TRANSITION`, `PRODUCT_PUBLISHED`, `PRODUCT_NOT_FOUND`, `VARIANT_NOT_FOUND`, `MEDIA_NOT_FOUND` | refresh          |
+| validation / bare 400                                                                                            | edit             |
+| `IDEMPOTENCY_CONFLICT`, auth (401), forbidden (403)                                                              | none             |
+| network / 5xx (ambiguous)                                                                                        | retry (same key) |
 
 ## Inventory operations (Phase 2G)
 
@@ -434,6 +545,35 @@ development user:
   three actions and filtered choices matched it. Products, Product Detail, Inventory, Orders, Order
   Detail, and partial fulfillment progress passed with no unexpected console or HTTP errors.
 
+### Phase 2K catalog-management acceptance
+
+With the local API + a Clerk dev login (a manager membership holding catalog author/publish), from
+Products:
+
+1. **Create** a product (brand auto-used if single; chosen if multi); confirm it lands as **draft**.
+2. **Add a variant** (SKU) and **set a selling price** (decimal input → exact minor units, explicit
+   currency).
+3. **Activate** the product (internal status), noting this is distinct from publication.
+4. Exercise the **media** flow as far as storage config allows: choose → upload (signed URL) → register
+   → the image appears; a missing signed URL is isolated as a storage gap.
+5. **Publish**; confirm the Storefront badge/summary reflects `published`. If not publishable, confirm
+   the `PRODUCT_NOT_PUBLISHABLE` explanation (needs active product + active variant + valid price).
+6. Verify the product appears through the **public Storefront API** (`listPublishedProducts` /
+   `getPublishedProduct`).
+7. **Update** the product/price; confirm the public projection updates.
+8. **Unpublish**; confirm it disappears publicly while the canonical product remains manageable.
+9. Confirm at least one **authorization-denied** write surfaces "Not authorized — nothing was applied".
+
+**Runtime state proven from this environment (2026-09-17):** the local Phase 2J API (`/health` ok,
+version `0.1.0`) has all seven authenticated catalog endpoints wired and enforcing auth — via the SDK
+0.6.0 boundary, unauthenticated `createProduct` / `updateProduct` / `setProductStatus` /
+`publishProduct` / `createVariant` / `setVariantPrice` / `createProductMediaUploadIntent` all return
+`401 UNAUTHENTICATED`, and the public `listPublishedProducts` returns a schema-valid `{ products: [] }`.
+The **interactive Clerk-authenticated** create→publish→storefront walkthrough (steps 1–9) is a manual
+step: this environment cannot mint a live Clerk session JWT or drive interactive mobile login (same
+constraint documented for Phase 2G). All catalog behaviors are otherwise proven by the test suite
+against the real SDK 0.6.0 types.
+
 ## Troubleshooting
 
 - **"EXPO_PUBLIC_COMMERCE_API_URL is not configured"** — set it in `.env`. There is no fallback by
@@ -458,7 +598,9 @@ development user:
 
 ## Not in this phase
 
-The only writes are Inventory **Receive / Adjust / Transfer**. Product/catalog mutations, order and
-fulfillment mutations, payments, refunds/returns, customer management, dashboards,
-reporting/analytics, purchasing, reservation/allocation, inventory **Opening Stock** and generic
-**Issue**, POS, storefront, cart, and checkout are **out of scope** and not implemented here.
+The writes are the catalog operations (Create / Edit / Lifecycle / Variants / Prices / Media /
+Publish) and Inventory **Receive / Adjust / Transfer**. Order and fulfillment mutations, payments,
+refunds/returns, customer management, suppliers, staff, vouchers, returns, dashboards,
+reporting/analytics, taxonomy (category/collection) writes, website layout editing, POS, storefront
+checkout, and cart are **out of scope** and not implemented here. The catalog UX is left extensible for
+a future additive taxonomy slice.
