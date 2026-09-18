@@ -4,7 +4,7 @@
 Clerk (auth, owned by Mobile)
   │  getToken callback (token only — never a Clerk object)
   ▼
-@shifted/clothing-commerce-sdk 0.6.0  (packed tarball under vendor/, relative file: path)
+@shifted/clothing-commerce-sdk 0.7.0  (packed tarball under vendor/, relative file: path)
   │  owns Authorization, X-Client-Type/Version, X-Tenant-Id
   ▼
 Commerce API  →  authoritative commerce core
@@ -19,11 +19,20 @@ database migration ownership, or privileged database credential. It never import
 source, schemas, or contracts, and never links to a sibling API checkout — it consumes the API only
 through the vendored, versioned SDK.
 
-## Scope: Phase 2K catalog management
+## Phase 2L Orders extension
+
+`OrderCommerce` renders SDK `commerce` snapshots, payment and reservations without deriving business
+state. Orders channel filtering stays in the shared bounded loader via `OrderListQuery.channel`.
+Both screens offer explicit refresh through `useAsync`; no new mutation lifecycle is introduced.
+SDK 0.7.0 has no management fulfillment command: canonical overall/per-line progress is preserved.
+Missing optional commerce data is labelled unavailable. No customer, payment or reservation edits
+are exposed. See [validation](phase-2l-validation.md) for real HTTP/component acceptance.
+
+## Scope: Phase 2L online order visibility
 
 Phase 2F-B delivered authentication + session bootstrap plus a read-only management slice; Phase 2G
 added the first write surface (inventory Receive/Adjust/Transfer). **Phase 2K turns Products into a
-full catalog management workflow** via SDK 0.6.0: create/edit products, lifecycle (draft/active/
+full catalog management workflow** via SDK 0.7.0: create/edit products, lifecycle (draft/active/
 archived), variants, selling prices (integer-minor-unit safe), media upload (signed-URL intent →
 register), and Storefront publication (publish/unpublish). Orders remain read-only. Taxonomy
 (category/collection) writes are deliberately deferred and never invented. All catalog writes reuse the

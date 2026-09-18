@@ -91,6 +91,46 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("OrdersListScreen", () => {
+  it("filters through the API, preserves channel across pages, and can return to All", async () => {
+    mocks.listOrders
+      .mockResolvedValueOnce(orderList([orderListItem()]))
+      .mockResolvedValueOnce(
+        orderList([orderListItem({ channel: "pos", orderNumber: "POS-1" })], {
+          hasMore: true,
+          nextCursor: "pos-next",
+        }),
+      )
+      .mockResolvedValueOnce(
+        orderList([orderListItem({ id: ORDER_B, channel: "pos", orderNumber: "POS-2" })]),
+      )
+      .mockResolvedValueOnce(orderList([]))
+      .mockResolvedValueOnce(orderList([orderListItem()]));
+    renderOrders();
+    await screen.findByText("ORD-1001");
+    fireEvent.click(screen.getByTestId("order-channel-filter-pos"));
+    await screen.findByText("POS-2");
+    expect(screen.queryByText("ORD-1001")).toBeNull();
+    expect(screen.getByTestId(`order-channel-${ORDER_A}`).textContent).toBe("POS");
+    expect(mocks.listOrders.mock.calls[2][0]).toEqual({ channel: "pos", cursor: "pos-next" });
+    fireEvent.click(screen.getByTestId("order-channel-filter-online"));
+    await screen.findByText("No online orders found.");
+    expect(mocks.listOrders.mock.calls[3][0]).toEqual({ channel: "online", cursor: undefined });
+    fireEvent.click(screen.getByTestId("order-channel-filter-all"));
+    await screen.findByText("ORD-1001");
+    expect(mocks.listOrders.mock.calls[4][0]).toEqual({ cursor: undefined });
+  });
+
+  it("refreshes the active channel from the first page", async () => {
+    mocks.listOrders.mockResolvedValue(orderList([orderListItem()]));
+    renderOrders();
+    await screen.findByText("ORD-1001");
+    fireEvent.click(screen.getByTestId("order-channel-filter-online"));
+    await screen.findByText("ORD-1001");
+    fireEvent.click(screen.getByText("Refresh orders"));
+    await screen.findByText("ORD-1001");
+    expect(mocks.listOrders).toHaveBeenLastCalledWith({ channel: "online", cursor: undefined });
+    expect(mocks.listOrders).toHaveBeenCalledTimes(3);
+  });
   it("shows a loading state while orders are being fetched", async () => {
     mocks.listOrders.mockReturnValue(new Promise(() => {}));
     renderOrders();
@@ -112,7 +152,7 @@ describe("OrdersListScreen", () => {
 
     expect(await screen.findByText("ORD-1001")).toBeTruthy();
     expect(screen.getByTestId(`order-status-${ORDER_A}`).textContent).toBe("placed");
-    expect(screen.getByText("online")).toBeTruthy();
+    expect(screen.getByText("ONLINE")).toBeTruthy();
     expect(screen.getByText("USD 129.95")).toBeTruthy();
     expect(mocks.withTenant).toHaveBeenCalledWith(TENANT_A);
     expect(mocks.listOrders).toHaveBeenCalledTimes(1);

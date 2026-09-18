@@ -14,9 +14,11 @@ import {
   PageHeader,
   PrimaryButton,
   ScrollScreen,
+  TextButton,
   Title,
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
+import { OrderCommerce } from "./OrderCommerce";
 import {
   fulfillmentByLineNumber,
   fulfillmentQuantityLabel,
@@ -63,10 +65,18 @@ export function OrderDetailScreen({ tenantId, orderId, onBack }: OrderDetailScre
     );
   }
 
-  return <OrderDetail data={state.data} onBack={onBack} />;
+  return <OrderDetail data={state.data} onBack={onBack} onRefresh={reload} />;
 }
 
-function OrderDetail({ data, onBack }: { data: OrderDetailResponse; onBack: () => void }) {
+function OrderDetail({
+  data,
+  onBack,
+  onRefresh,
+}: {
+  data: OrderDetailResponse;
+  onBack: () => void;
+  onRefresh: () => void;
+}) {
   const { header, lines, cancellation, fulfillmentProgress } = data;
 
   const fulfillmentByLine = useMemo(
@@ -81,10 +91,14 @@ function OrderDetail({ data, onBack }: { data: OrderDetailResponse; onBack: () =
         <Badge label={header.status} testID="order-detail-status" />
       </View>
       <Divider />
-      <InfoRow label="Channel" value={header.channel} />
+      <InfoRow label="Channel" value={header.channel.toUpperCase()} />
       <InfoRow label="Total" value={formatMoneyMinor(header.totalMinor, header.currency)} />
       <InfoRow label="Placed" value={header.placedAt} />
       <InfoRow label="Order id" value={header.id} />
+      <TextButton label="Refresh order" onPress={onRefresh} />
+      <Body>Last loaded order state. Refresh to check for updates.</Body>
+
+      {header.channel === "online" || data.commerce ? <OrderCommerce data={data} /> : null}
 
       {cancellation ? (
         <>

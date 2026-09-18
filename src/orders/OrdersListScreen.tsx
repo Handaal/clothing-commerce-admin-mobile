@@ -1,5 +1,5 @@
 import type { MeContextResponse } from "@shifted/clothing-commerce-sdk";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { View } from "react-native";
 
 // Feature-agnostic Commerce display helpers, shared with the Products/Inventory read surfaces.
@@ -15,6 +15,8 @@ import {
   PressableRow,
   PrimaryButton,
   ScrollScreen,
+  SelectField,
+  TextButton,
   Title,
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
@@ -64,14 +66,30 @@ export function OrdersListScreen({
 function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
+  const [channel, setChannel] = useState("all");
   // One bounded producer that follows the server cursor across all pages (see loadAllOrders).
-  const load = useCallback(() => loadAllOrders(client), [client]);
+  const load = useCallback(
+    () => loadAllOrders(client, channel === "pos" || channel === "online" ? { channel } : {}),
+    [client, channel],
+  );
   const { state, reload } = useAsync<OrderListItem[]>(load);
 
   return (
     <ScrollScreen>
       <PageHeader eyebrow="Orders" title="Orders" onBack={onBack} />
+      <SelectField
+        label="Channel"
+        options={[
+          { value: "all", label: "All" },
+          { value: "pos", label: "POS" },
+          { value: "online", label: "Online" },
+        ]}
+        selected={channel}
+        onSelect={setChannel}
+        testIDPrefix="order-channel-filter"
+      />
       <Divider />
+      {state.status === "success" ? <TextButton label="Refresh orders" onPress={reload} /> : null}
       {state.status === "loading" ? <LoadingBlock label="Loading orders…" /> : null}
       {state.status === "error" ? (
         <>
@@ -83,7 +101,11 @@ function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenPr
         </>
       ) : null}
       {state.status === "success" && state.data.length === 0 ? (
-        <Body>No orders yet. Orders placed in this business will appear here.</Body>
+        <Body>
+          {channel === "all"
+            ? "No orders yet. Orders placed in this business will appear here."
+            : `No ${channel === "pos" ? "POS" : "online"} orders found.`}
+        </Body>
       ) : null}
       {state.status === "success" && state.data.length > 0 ? (
         <View style={{ gap: 12 }}>
@@ -104,7 +126,7 @@ function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenPr
                 <Title>{order.orderNumber}</Title>
                 <Badge label={order.status} testID={`order-status-${order.id}`} />
               </View>
-              <InfoRow label="Channel" value={order.channel} />
+              <Badge label={order.channel.toUpperCase()} testID={`order-channel-${order.id}`} />
               <InfoRow label="Total" value={formatMoneyMinor(order.totalMinor, order.currency)} />
               <InfoRow label="Placed" value={order.placedAt} />
             </PressableRow>
