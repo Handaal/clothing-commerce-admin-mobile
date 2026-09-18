@@ -6,6 +6,7 @@ import type {
   MeContextResponse,
   MeTenantsResponse,
   OrderDetailResponse,
+  OrderCommerceDetails,
   OrderListResponse,
   ProductDetailResponse,
   ProductListResponse,
@@ -263,6 +264,42 @@ export function inventoryList(
 
 export const ORDER_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 export const ORDER_B = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+export function orderCommerce(overrides: Partial<OrderCommerceDetails> = {}): OrderCommerceDetails {
+  return {
+    customerId: null,
+    customer: { name: "Checkout Guest", phone: "+201001234567", email: "guest@example.com" },
+    delivery: {
+      recipientName: "Checkout Recipient",
+      phone: "+201009876543",
+      line1: "10 Example Street",
+      line2: "Apartment 2",
+      city: "Cairo",
+      region: "Cairo Governorate",
+      postalCode: "11511",
+      countryCode: "EG",
+      notes: "Call on arrival",
+    },
+    payment: {
+      method: "cash_on_delivery",
+      provider: null,
+      status: "pending",
+      amountMinor: 12995,
+      currency: "USD",
+    },
+    reservations: [
+      {
+        variantId: VARIANT_B,
+        inventoryLocationId: INVENTORY_LOCATION_A,
+        quantity: 2,
+        consumedQuantity: 1,
+        status: "active",
+        expiresAt: null,
+      },
+    ],
+    ...overrides,
+  };
+}
 
 export function orderListItem(
   overrides: Partial<OrderListResponse["items"][number]> = {},

@@ -13,7 +13,7 @@ same boundary: create/edit products, lifecycle, variants, selling prices, media 
 publication.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.6.0)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.7.0)
   → GET /me/tenants → tenant selection → GET /me/context
   → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
   → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
@@ -42,6 +42,34 @@ refunds/returns, customer management, POS, taxonomy (category/collection) writes
 editing, or storefront checkout. Taxonomy is deliberately deferred (Phase 2J deferred it API-side) and
 is **not** invented here. Failures surface as typed error states — never as fake-empty or mock data.
 
+## Online order visibility (Phase 2L)
+
+SDK **0.7.0** extends the existing management Order projection with optional `commerce`.
+Orders show explicit **ONLINE / POS** channel badges. The **All / POS / Online** filter uses the
+SDK's server-side channel query across every cursor page, preserving authorization and bounded
+pagination. Refresh orders restarts the active filter from page one.
+
+Order Detail retains order number, channel, status, placement time, lines, quantities, prices,
+currency/total, cancellation and canonical fulfillment progress. The contract exposes `placedAt`,
+not a separate creation timestamp, so the screen labels it **Placed**. It adds:
+
+- **Order snapshot:** checkout contact and delivery, explicitly separate from a mutable customer
+  profile. Recipient, phone, full supplied address and delivery notes are read-only.
+- **Payment:** the API's exact pending/authorized/captured/failed/cancelled/refunded state, method,
+  amount/currency and provider when supplied. Pending COD is never treated as captured, even after
+  fulfillment. There are no payment actions.
+- **Stock commitment:** each supplied reservation's reserved, consumed/fulfilled, released or
+  expired state, committed/consumed quantities and expiry when supplied. No client ATS calculation,
+  local-clock expiry decision or aggregate fulfillment inference.
+- **Refresh order:** re-reads authoritative facts; loading/error replaces the old detail. Missing
+  commerce/snapshots/payment or empty reservations are explicitly unavailable, never fabricated.
+  Existing not-found, denied, session, network and contract-error states remain distinct.
+
+Fulfillment remains the existing read-only overall and per-line progress. SDK 0.7.0 exposes no
+management fulfillment operation; no new action or duplicate fulfillment logic is introduced.
+
+See [Phase 2L validation](docs/phase-2l-validation.md) for acceptance evidence and limits.
+
 ## Separate-repo architecture
 
 This repository is fully standalone. It talks to the Commerce API **only** through a versioned,
@@ -61,18 +89,18 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.6.0**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.6.0.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.6.0.tgz`
-- SHA-256: `622a93f6fa5561373973fd2a4676d1789847f5515baca17181bbef40d1eed5e1`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.7.0**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.7.0.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.7.0.tgz`
+- SHA-256: `ff94c5d34e23775afbd1ebc9180c40030d1161ca9f2c3efbf72fac5bed70c70a`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.6.0.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.7.0.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.6.0.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.7.0.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
@@ -80,8 +108,8 @@ relative `file:` spec, and byte-for-byte SHA-256).
 
 ### Update the SDK artifact
 
-1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.6.0.tgz`).
-2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.6.0.tgz"`.
+1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.7.0.tgz`).
+2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.7.0.tgz"`.
 3. `pnpm install` to update `pnpm-lock.yaml`.
 4. Update the SHA-256 above and in `src/sdk-artifact.test.ts` expectations, then remove the old
    tarball once nothing references it.
@@ -240,7 +268,7 @@ authenticated session → tenant → listInventory() → complete authorized inv
 
 The Products area is a full management workflow (`src/products/CreateProductScreen.tsx`,
 `src/products/ProductManageScreen.tsx`, and the pure `src/catalog/*` modules). Every action is a pure
-SDK 0.6.0 call through the tenant-scoped client — no direct `fetch` (except the signed storage PUT), no
+SDK 0.7.0 call through the tenant-scoped client — no direct `fetch` (except the signed storage PUT), no
 local business math, no mock fallback — and each write re-reads the authoritative product on success.
 
 ### Create and edit
@@ -571,7 +599,7 @@ version `0.1.0`) has all seven authenticated catalog endpoints wired and enforci
 `401 UNAUTHENTICATED`, and the public `listPublishedProducts` returns a schema-valid `{ products: [] }`.
 The **interactive Clerk-authenticated** create→publish→storefront walkthrough (steps 1–9) is a manual
 step: this environment cannot mint a live Clerk session JWT or drive interactive mobile login (same
-constraint documented for Phase 2G). All catalog behaviors are otherwise proven by the test suite
+constraint documented for Phase 2G). All catalog behaviors were otherwise proven by the test suite
 against the real SDK 0.6.0 types.
 
 ## Troubleshooting
