@@ -1,9 +1,9 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 
-import { ProductDetailScreen } from "../../src/products/ProductDetailScreen";
+import { ProductManageScreen } from "../../src/products/ProductManageScreen";
 import { useSession } from "../../src/session/SessionProvider";
 
-export default function ProductDetailRoute() {
+export default function ProductManageRoute() {
   const router = useRouter();
   const { productId } = useLocalSearchParams<{ productId: string }>();
   const { state } = useSession();
@@ -16,7 +16,7 @@ export default function ProductDetailRoute() {
   }
 
   return (
-    <ProductDetailScreen
+    <ProductManageScreen
       tenantId={state.tenantId}
       productId={productId}
       onBack={() => router.back()}

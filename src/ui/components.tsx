@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -92,16 +92,28 @@ export function SurfaceRow({ testID, children }: { testID?: string; children: Re
   );
 }
 
-export function Eyebrow({ children }: { children: ReactNode }) {
-  return <Text style={styles.eyebrow}>{children}</Text>;
+export function Eyebrow({ children, testID }: { children: ReactNode; testID?: string }) {
+  return (
+    <Text testID={testID} style={styles.eyebrow}>
+      {children}
+    </Text>
+  );
 }
 
-export function Title({ children }: { children: ReactNode }) {
-  return <Text style={styles.title}>{children}</Text>;
+export function Title({ children, testID }: { children: ReactNode; testID?: string }) {
+  return (
+    <Text testID={testID} style={styles.title}>
+      {children}
+    </Text>
+  );
 }
 
-export function Body({ children }: { children: ReactNode }) {
-  return <Text style={styles.body}>{children}</Text>;
+export function Body({ children, testID }: { children: ReactNode; testID?: string }) {
+  return (
+    <Text testID={testID} style={styles.body}>
+      {children}
+    </Text>
+  );
 }
 
 export function LoadingBlock({ label }: { label: string }) {
@@ -196,31 +208,84 @@ export function NumberField({
   );
 }
 
-/** A labelled single-line free-text input (used for the optional operator note). */
+/** A labelled free-text input. `multiline` turns it into a short text area (e.g. a description). */
 export function TextField({
   label,
   value,
   onChangeText,
   placeholder,
   testID,
+  multiline = false,
+  autoCapitalize,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   placeholder?: string;
   testID?: string;
+  multiline?: boolean;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         testID={testID}
-        style={styles.input}
+        style={[styles.input, multiline && styles.inputMultiline]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor="#a1a1aa"
+        multiline={multiline}
+        autoCapitalize={autoCapitalize}
       />
+    </View>
+  );
+}
+
+/**
+ * A two-step confirmation button for destructive/irreversible-feeling actions (e.g. archiving a
+ * product). The first press arms it and shows a confirm label; the second press within the same mount
+ * invokes the action. Works uniformly on web and native (no reliance on a native Alert).
+ */
+export function ConfirmButton({
+  label,
+  confirmLabel,
+  onConfirm,
+  disabled,
+  testID,
+}: {
+  label: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  disabled?: boolean;
+  testID?: string;
+}) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <View style={{ gap: 6 }}>
+      <Pressable
+        testID={testID}
+        accessibilityRole="button"
+        disabled={disabled}
+        onPress={() => {
+          if (armed) {
+            setArmed(false);
+            onConfirm();
+          } else {
+            setArmed(true);
+          }
+        }}
+        style={({ pressed }) => [
+          styles.button,
+          styles.buttonDanger,
+          disabled && styles.buttonDisabled,
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        <Text style={styles.buttonText}>{armed ? confirmLabel : label}</Text>
+      </Pressable>
+      {armed ? <TextButton label="Cancel" onPress={() => setArmed(false)} /> : null}
     </View>
   );
 }
@@ -344,6 +409,7 @@ export const styles = StyleSheet.create({
   },
   buttonPressed: { opacity: 0.85 },
   buttonDisabled: { backgroundColor: "#c4b5fd" },
+  buttonDanger: { backgroundColor: "#b91c1c" },
   buttonText: { color: "#ffffff", fontSize: 16, fontWeight: "700" },
   textButton: { paddingVertical: 8 },
   textButtonLabel: { color: "#6d28d9", fontSize: 15, fontWeight: "700" },
@@ -375,6 +441,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   inputDisabled: { backgroundColor: "#f4f4f5", color: "#a1a1aa" },
+  inputMultiline: { minHeight: 88, textAlignVertical: "top" },
   option: {
     borderWidth: 1,
     borderColor: "#ede9fe",

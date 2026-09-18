@@ -6,15 +6,15 @@ import packageJson from "../package.json";
 const spec = packageJson.dependencies["@shifted/clothing-commerce-sdk"];
 
 describe("Commerce SDK artifact", () => {
-  it("reports version 0.3.1 at runtime", () => {
-    expect(SDK_VERSION).toBe("0.3.1");
+  it("reports version 0.6.0 at runtime", () => {
+    expect(SDK_VERSION).toBe("0.6.0");
   });
 
   it("is consumed from the repository's own relative vendored tarball", () => {
-    expect(spec).toBe("file:vendor/shifted-clothing-commerce-sdk-0.3.1.tgz");
+    expect(spec).toBe("file:vendor/shifted-clothing-commerce-sdk-0.6.0.tgz");
   });
 
-  it("matches the frozen SDK 0.3.1 artifact SHA256", () => {
+  it("matches the frozen SDK 0.6.0 artifact SHA256", () => {
     // Tests run on the repository's required Node 24. Resolve built-ins without adding Node ambient
     // types to the Expo application tsconfig.
     const { getBuiltinModule } = (
@@ -31,10 +31,10 @@ describe("Commerce SDK artifact", () => {
       };
     };
     const bytes = readFileSync(
-      new URL("../vendor/shifted-clothing-commerce-sdk-0.3.1.tgz", import.meta.url),
+      new URL("../vendor/shifted-clothing-commerce-sdk-0.6.0.tgz", import.meta.url),
     );
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(
-      "b6adf3d4ab0220b72f73c5e2d1ebba68f106faf55f4d48e1b598e6052b832b30",
+      "622a93f6fa5561373973fd2a4676d1789847f5515baca17181bbef40d1eed5e1",
     );
   });
 
