@@ -472,3 +472,58 @@ describe("Transfer stock", () => {
     expect(transferInventory).toHaveBeenCalledTimes(1);
   });
 });
+
+// Phase 2N prepares Receive for an OPTIONAL Supplier selection. The seam is structural only: without a
+// slot the flow is byte-for-byte unchanged, and even with a slot no supplier value is added to the
+// receive request (inventing a supplierId field before the API contract exists is deliberately avoided).
+describe("Phase 2N supplier receive seam", () => {
+  const baseProps = {
+    locations: LOCATIONS,
+    write: WRITE_ACCESS,
+    items: ITEMS,
+    onConcurrencyConflict: vi.fn(),
+  };
+
+  it("renders no supplier field when no slot is provided (Receive is unchanged)", () => {
+    render(
+      <InventoryOperations
+        {...baseProps}
+        client={{ receiveInventory: vi.fn(), adjustInventory: vi.fn(), transferInventory: vi.fn() }}
+        onRefresh={vi.fn()}
+        generateIdempotencyKey={keyFactory("K1")}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("open-receive"));
+    expect(screen.queryByTestId("supplier-receive-slot")).toBeNull();
+    expect(screen.getByTestId("receive-submit")).toBeTruthy();
+  });
+
+  it("renders a provided supplier slot and still receives with unchanged args (no supplier data sent)", async () => {
+    const receiveInventory = vi.fn().mockResolvedValue(receiveResponse());
+    render(
+      <InventoryOperations
+        {...baseProps}
+        client={{ receiveInventory, adjustInventory: vi.fn(), transferInventory: vi.fn() }}
+        onRefresh={vi.fn()}
+        generateIdempotencyKey={keyFactory("K1")}
+        receiveSupplierSlot={<span data-testid="supplier-receive-slot">supplier picker</span>}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("open-receive"));
+    expect(screen.getByTestId("supplier-receive-slot")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
+    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
+    typeInto("receive-quantity", "5");
+    fireEvent.click(screen.getByTestId("receive-submit"));
+
+    expect(await screen.findByTestId("receive-success")).toBeTruthy();
+    // The request carries no supplier field — exactly the current contract.
+    expect(receiveInventory).toHaveBeenCalledWith({
+      variantId: VARIANT_A,
+      inventoryLocationId: INVENTORY_LOCATION_A,
+      quantity: 5,
+      idempotencyKey: "K1",
+    });
+  });
+});

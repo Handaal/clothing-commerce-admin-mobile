@@ -49,6 +49,20 @@ writes). Two contract facts shape the design:
   `access.inventory.write.*`), so write controls cannot be pre-gated per capability; the server is the
   sole authority and a real `403` renders as "Not authorized — nothing was applied".
 
+## Phase 2N Supplier foundation (no API yet)
+
+The Supplier API/SDK does not exist yet, so Phase 2N ships only the Admin-Mobile UX/domain foundation
+behind a single seam: `resolveSupplierAdapter(client)` (`src/suppliers/adapter.ts`), which returns
+`null` today. Every supplier screen depends on the `SupplierAdapter` interface, never a concrete
+client; with no adapter they render an explicit "not available yet" state and never fabricate
+suppliers, mutations or receiving history. The domain model (`src/suppliers/model.ts`) is Admin-owned
+and independent of any future SDK DTO, so final integration is a narrow DTO→model mapping inside
+`resolveSupplierAdapter`. Reads reuse `useAsync` + the shared bounded paginator; the create/edit form
+and status toggle reuse the `useMutation` + idempotency-key discipline. Search is a typed
+`SupplierListQuery` mapped to a future server query — never a client-side filter. The Inventory Receive
+form exposes an optional, structural-only `receiveSupplierSlot`: it adds no `supplierId` to the receive
+request (the field is not invented before the contract exists), and Receive is unchanged without it.
+
 ## Dependency direction
 
 ```text
@@ -85,6 +99,8 @@ no tokens, build no headers, and issue no direct `fetch`.
 | Write lifecycle + idempotency         | `src/ui/useMutation.ts`, `src/inventory/idempotency.ts`                                                    |
 | Orders screens + loader + fulfillment | `src/orders/{OrdersListScreen,OrderDetailScreen}.tsx`, `src/orders/load.ts`, `src/orders/fulfillment.ts`   |
 | Shared UI primitives                  | `src/ui/components.tsx`, `src/ui/SignInScreen.tsx`                                                         |
+| Routes: suppliers (2N)                | `app/suppliers/{index,new,[supplierId]}.tsx`, `app/suppliers/edit/[supplierId].tsx`                        |
+| Supplier foundation (2N)              | `src/suppliers/{model,search,status,adapter,load}.ts`, `src/suppliers/Supplier*.tsx`                       |
 
 ## Server-authoritative authorization
 

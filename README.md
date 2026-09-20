@@ -99,6 +99,57 @@ here, even though the SDK exposes `createReturn` / `settleRefund`).
 
 See [Phase 2M validation](docs/phase-2m-validation.md) for acceptance evidence and limits.
 
+## Supplier management foundation (Phase 2N)
+
+**Foundation only — there is no Supplier API yet.** The Commerce API's Supplier Core is implemented
+later; this phase ships the Admin Mobile UX/domain foundation so that final SDK integration is a
+narrow change once the contract exists. Nothing here fabricates supplier data: production has no
+supplier adapter, so every supplier screen renders an explicit **"not available yet"** state rather
+than fake rows, mutations, or history.
+
+- **Navigation:** a **Manage suppliers** entry is added to the ready screen. It is shown
+  unconditionally — `/me/context` has no supplier access flag yet and the app must not invent one; the
+  future API is the sole authority (Catalog · Inventory · Orders · Returns are untouched).
+- **Local domain model** (`src/suppliers/model.ts`): an Admin-owned `SupplierDraft` / `Supplier` /
+  `SupplierSummary` / `SupplierReceipt`, deliberately independent of any future SDK DTO. Includes
+  UX-focused validation (name required, email/phone format when supplied, field-length caps) and a
+  `normalizeSupplierDraft` that trims and drops empty optionals so the submit seam never sends blanks.
+- **List + search** (`src/suppliers/SuppliersListScreen.tsx`, `search.ts`): loading / empty /
+  classified-error / populated states, active-inactive presentation, a create affordance, and a typed
+  search state (`term` + status filter) that maps to a **server-side** `SupplierListQuery` — there is
+  no client-side filtering of a fabricated dataset.
+- **Detail** (`SupplierDetailScreen.tsx`): the editable supplier record and its **receiving-history**
+  section are clearly separated. Includes an active/inactive toggle (confirmed, reversible — never a
+  delete; an inactive supplier is retained history, and receipt-eligibility is server-decided).
+- **Create/edit** (`SupplierForm.tsx`): one reusable form for both modes, validating locally and
+  submitting through the adapter seam with an idempotency key via `useMutation` (retry reuses the same
+  key). `onSaved` fires only with the adapter's real response — there is no fake success path.
+- **Receiving-history shell** (`SupplierReceivingHistory.tsx`): reads the canonical supplier receipt
+  history through the adapter (date · destination · reference · lines · quantities · actor). It is not
+  a second inventory ledger and never reconstructs receipts client-side; it loads independently so a
+  scope denial doesn't break the detail body.
+- **Inventory Receive seam:** the Receive form gains an **optional** `receiveSupplierSlot`
+  (`src/inventory/InventoryOperations.tsx`). Without it the Receive flow is byte-for-byte unchanged;
+  even with a slot **no supplier value is added to the receive request** — inventing a `supplierId`
+  field before the API defines one is deliberately avoided. Production passes nothing today.
+
+### Unresolved SDK/API seams (what must happen when the Supplier API arrives)
+
+The single integration point is `resolveSupplierAdapter(client)` in `src/suppliers/adapter.ts`, which
+returns `null` today. When the Supplier SDK surface ships:
+
+1. Implement `resolveSupplierAdapter` to return a `SupplierAdapter` that calls the SDK and **maps its
+   DTOs onto the local model** — this alone lights up list, search, detail, create/edit, status and
+   receiving history.
+2. Confirm the real query params for `SupplierListQuery` (search fields, status) and the receipt-page
+   shape for `listSupplierReceipts`.
+3. If `/me/context` gains a supplier access flag, gate the nav entry and create affordance on it
+   (instead of showing unconditionally).
+4. If the receipt contract defines a supplier field, wire the `receiveSupplierSlot` to a real selector
+   and attach the chosen `supplierId` to the receive request.
+5. Do **not** add Purchase Orders, RFQs, supplier invoices, Accounts Payable, procurement approvals,
+   a supplier portal, supplier payments, or permanent supplier deletion — all explicit non-goals.
+
 ## Separate-repo architecture
 
 This repository is fully standalone. It talks to the Commerce API **only** through a versioned,
@@ -656,8 +707,11 @@ against the real SDK 0.6.0 types.
 ## Not in this phase
 
 The writes are the catalog operations (Create / Edit / Lifecycle / Variants / Prices / Media /
-Publish) and Inventory **Receive / Adjust / Transfer**. Order and fulfillment mutations, payments,
-refunds/returns, customer management, suppliers, staff, vouchers, returns, dashboards,
-reporting/analytics, taxonomy (category/collection) writes, website layout editing, POS, storefront
-checkout, and cart are **out of scope** and not implemented here. The catalog UX is left extensible for
-a future additive taxonomy slice.
+Publish) and Inventory **Receive / Adjust / Transfer**. Supplier management is present only as a
+**UX/domain foundation** (Phase 2N) — no supplier reads or writes execute until the Supplier API
+exists and `resolveSupplierAdapter` is implemented. Order and fulfillment mutations, payments,
+refunds/returns, customer management, staff, vouchers, dashboards, reporting/analytics, taxonomy
+(category/collection) writes, website layout editing, POS, storefront checkout, and cart are **out of
+scope** and not implemented here. Supplier procurement (Purchase Orders, RFQs, invoices, Accounts
+Payable, approvals, portal, payments) and permanent supplier deletion are explicit **non-goals** even
+for the foundation. The catalog UX is left extensible for a future additive taxonomy slice.

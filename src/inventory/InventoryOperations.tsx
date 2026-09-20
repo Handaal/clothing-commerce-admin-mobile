@@ -1,5 +1,5 @@
 import type { MeContextResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { View } from "react-native";
 
 import {
@@ -50,6 +50,15 @@ export interface InventoryOperationsProps {
   onConcurrencyConflict: () => void;
   /** Test seam: deterministic idempotency keys. Production uses the secure default. */
   generateIdempotencyKey?: IdempotencyKeyFactory;
+  /**
+   * Optional Phase 2N seam: a Supplier selector rendered inside the Receive form. Until the Supplier
+   * API defines a receipt supplier field, choosing a supplier has NO effect on the receive request —
+   * this slot is structural only, so the eventual wiring (attach the chosen supplierId to the receipt)
+   * is a narrow change. Production passes nothing today, and the Receive flow works exactly as before
+   * without it. No supplier value is ever added to `receiveStock`/`receiveInventory` here — inventing a
+   * `supplierId` request field before the API contract exists is deliberately avoided.
+   */
+  receiveSupplierSlot?: ReactNode;
 }
 
 type OpKind = "receive" | "adjust" | "transfer";
@@ -133,6 +142,7 @@ export function InventoryOperations(props: InventoryOperationsProps) {
           generateKey={generateKey}
           variantOptions={variantOptions}
           locationOptions={receiveLocationOptions}
+          supplierSlot={props.receiveSupplierSlot}
         />
       ) : null}
       {activeOp === "adjust" && props.write.canAdjust ? (
@@ -241,6 +251,7 @@ function ReceiveForm(
     generateKey: IdempotencyKeyFactory;
     variantOptions: SelectOption[];
     locationOptions: SelectOption[];
+    supplierSlot?: ReactNode;
   },
 ) {
   const [variantId, setVariantId] = useState<string | null>(null);
@@ -316,6 +327,9 @@ function ReceiveForm(
         onSelect={setLocationId}
         testIDPrefix="receive-location"
       />
+      {/* Phase 2N seam: an optional Supplier selector slots in here. It does not feed the request until
+          the Supplier API defines a receipt supplier field (see receiveSupplierSlot). */}
+      {props.supplierSlot ?? null}
       <NumberField
         label="Quantity received"
         value={quantity}

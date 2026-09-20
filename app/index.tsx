@@ -170,6 +170,14 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           onPress={() => router.push("/orders")}
         />
       ) : null}
+      {/* Suppliers has no `/me/context` access flag yet (the Supplier API is not built). We surface the
+          entry unconditionally rather than invent a client-side capability check; the future API is the
+          sole authority, and until it exists the Suppliers screen shows an explicit unavailable state. */}
+      <PrimaryButton
+        testID="open-suppliers"
+        label="Manage suppliers"
+        onPress={() => router.push("/suppliers")}
+      />
       <SignOutButton />
     </Frame>
   );
