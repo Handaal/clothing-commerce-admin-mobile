@@ -12,6 +12,9 @@ import {
   meContext,
   orderDetail,
   orderCommerce,
+  orderReturnSummary,
+  returnDetail,
+  returnHistory,
   tenant,
 } from "../test-support/fixtures";
 import { createMemoryTenantStorage } from "../tenant/storage";
@@ -22,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   getContext: vi.fn(),
   listOrders: vi.fn(),
   getOrder: vi.fn(),
+  listReturns: vi.fn(),
   withTenant: vi.fn(),
   signOut: vi.fn(async () => {}),
 }));
@@ -47,6 +51,7 @@ vi.mock("../commerce/client", () => ({
         getContext: mocks.getContext,
         listOrders: mocks.listOrders,
         getOrder: mocks.getOrder,
+        listReturns: mocks.listReturns,
       };
     },
   }),
@@ -78,6 +83,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getMyTenants.mockResolvedValue([tenant(TENANT_A, "Acme", MEMBERSHIP_A)]);
   mocks.getContext.mockResolvedValue(meContext(TENANT_A));
+  // Default: no returns recorded. Individual tests override to exercise history/summary.
+  mocks.listReturns.mockResolvedValue(returnHistory([]));
 });
 
 afterEach(() => cleanup());
@@ -306,6 +313,64 @@ describe("OrderDetailScreen", () => {
     expect(
       screen.queryByText(/^(cancel order|ship|pack|pick|refund|return|edit|save|create)$/i),
     ).toBeNull();
+  });
+
+  it("shows returned quantities, the refund summary and return history", async () => {
+    mocks.getOrder.mockResolvedValue(orderDetail({ returns: orderReturnSummary() }));
+    mocks.listReturns.mockResolvedValue(returnHistory([returnDetail()]));
+    renderDetail();
+
+    await screen.findByText("ORD-1001");
+    // Per-line returned quantity from the order projection.
+    expect(screen.getByText("Returned")).toBeTruthy();
+    // Refund summary: pending vs refunded split, never conflated.
+    expect(screen.getByText("Returns & refunds")).toBeTruthy();
+    expect(screen.getByText("USD 0.00")).toBeTruthy();
+    // Return history row (loaded asynchronously): channel, exact refund state and disposition.
+    await screen.findByTestId("return-row-0");
+    expect(screen.getByTestId("return-refund-status-0").textContent).toBe("Refund succeeded");
+    expect(screen.getByText("POS")).toBeTruthy();
+    expect(screen.getByText("Restocked")).toBeTruthy();
+    expect(mocks.listReturns).toHaveBeenCalledWith(ORDER_A, {});
+  });
+
+  it("keeps a pending refund from reading as settled", async () => {
+    mocks.getOrder.mockResolvedValue(
+      orderDetail({ returns: orderReturnSummary({ pendingRefundMinor: 2599, refundedMinor: 0 }) }),
+    );
+    mocks.listReturns.mockResolvedValue(
+      returnHistory([
+        returnDetail({
+          refund: { ...returnDetail().refund, status: "pending", settledAt: null },
+        }),
+      ]),
+    );
+    renderDetail();
+
+    await screen.findByText("ORD-1001");
+    await screen.findByTestId("return-refund-status-0");
+    expect(screen.getByTestId("return-refund-status-0").textContent).toBe("Refund pending");
+    expect(screen.queryByText("Refund succeeded")).toBeNull();
+  });
+
+  it("surfaces a return-scope denial distinctly without breaking the order body", async () => {
+    mocks.getOrder.mockResolvedValue(orderDetail());
+    mocks.listReturns.mockRejectedValue(new ApiHttpError("no", 403, "FORBIDDEN", null));
+    renderDetail();
+
+    // Order body still renders; only the returns section reports the denial.
+    expect(await screen.findByText("ORD-1001")).toBeTruthy();
+    expect(await screen.findByText("You do not have access to this order's returns.")).toBeTruthy();
+  });
+
+  it("shows an empty return history without fabricating returns", async () => {
+    mocks.getOrder.mockResolvedValue(orderDetail());
+    renderDetail();
+    await screen.findByText("ORD-1001");
+    expect(
+      await screen.findByText("No returns have been recorded against this order."),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("return-row-0")).toBeNull();
   });
 
   it("when orderId changes, a slow previous-order response cannot overwrite the new order", async () => {

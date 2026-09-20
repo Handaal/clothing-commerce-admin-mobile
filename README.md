@@ -13,11 +13,11 @@ same boundary: create/edit products, lifecycle, variants, selling prices, media 
 publication.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.7.0)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.8.0)
   → GET /me/tenants → tenant selection → GET /me/context
   → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
   → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
-  → Orders    (read-only)
+  → Orders    (read-only)  +  Returns / refunds visibility                                (read-only)
 ```
 
 **Auth / session**
@@ -37,10 +37,13 @@ Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.7.0)
 ### Scope guarantee
 
 The mutations in this app are the catalog operations (below) and the three inventory operations. It
-**does not** implement order or fulfillment mutations (pick/pack/ship/fulfil), payments,
-refunds/returns, customer management, POS, taxonomy (category/collection) writes, website layout
-editing, or storefront checkout. Taxonomy is deliberately deferred (Phase 2J deferred it API-side) and
-is **not** invented here. Failures surface as typed error states — never as fake-empty or mock data.
+**does not** implement order or fulfillment mutations (pick/pack/ship/fulfil), payments, POS,
+taxonomy (category/collection) writes, website layout editing, or storefront checkout. Returns and
+refunds are **read-only visibility** only (Phase 2M below): the app renders returns, refund state and
+disposition but never initiates a return, settles a refund, or issues any returns mutation, even
+though SDK 0.8.0 exposes those operations. Taxonomy is deliberately deferred (Phase 2J deferred it
+API-side) and is **not** invented here. Failures surface as typed error states — never as fake-empty
+or mock data.
 
 ## Online order visibility (Phase 2L)
 
@@ -65,10 +68,36 @@ not a separate creation timestamp, so the screen labels it **Placed**. It adds:
   commerce/snapshots/payment or empty reservations are explicitly unavailable, never fabricated.
   Existing not-found, denied, session, network and contract-error states remain distinct.
 
-Fulfillment remains the existing read-only overall and per-line progress. SDK 0.7.0 exposes no
+Fulfillment remains the existing read-only overall and per-line progress. SDK 0.8.0 exposes no
 management fulfillment operation; no new action or duplicate fulfillment logic is introduced.
 
 See [Phase 2L validation](docs/phase-2l-validation.md) for acceptance evidence and limits.
+
+## Returns & refunds visibility (Phase 2M)
+
+SDK **0.8.0** adds a canonical returns domain that serves both POS and ONLINE orders. This app makes
+it **visible** — it never initiates returns or settles refunds (there is no cashier/return terminal
+here, even though the SDK exposes `createReturn` / `settleRefund`).
+
+- **Order Detail** now shows per-line **returned** quantity and a **Returns & refunds** summary
+  (exact pending vs refunded split) from the order projection — present only when the caller also
+  holds return-read scope, and never shown as activity when nothing has been returned.
+- **Return history** is integrated into Order Detail. The SDK has no global returns list, so history
+  is always scoped to its original order (`listReturns`) — never a client-side database. Each entry
+  shows the return reference, source channel (**POS / ONLINE**), date/time, returned value, exact
+  refund state and a disposition summary, and opens the full return.
+- **Return Detail** (`getReturn`) renders the server's own fields: original order, lines, quantities,
+  reason, disposition, refund amount, refund state, actor/source and timestamps.
+- **Refund state** is rendered exactly as the server reports it — `pending`, `succeeded` or `failed`.
+  A pending obligation is never presented as settled; `failed` still notes the amount stays reserved.
+- **Inventory disposition** is shown as its operational effect: `restock` re-enters sellable
+  inventory (with the canonical receipt/operation id when present); non-restock is damaged /
+  write-off that does not re-enter stock. No warehouse subledger internals are exposed.
+- **Authorization** is server-authoritative. The return history section maps a return-scope denial
+  (403) distinctly from not-found and network/transient failures, and does so **without** breaking
+  the rest of the order body.
+
+See [Phase 2M validation](docs/phase-2m-validation.md) for acceptance evidence and limits.
 
 ## Separate-repo architecture
 
@@ -89,18 +118,18 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.7.0**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.7.0.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.7.0.tgz`
-- SHA-256: `ff94c5d34e23775afbd1ebc9180c40030d1161ca9f2c3efbf72fac5bed70c70a`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.8.0**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.8.0.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.8.0.tgz`
+- SHA-256: `3bc355f638426993a7d7bd69c818855b1776540630d9701f03c770aa3fae3056`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.7.0.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.8.0.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.7.0.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.8.0.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
@@ -108,8 +137,8 @@ relative `file:` spec, and byte-for-byte SHA-256).
 
 ### Update the SDK artifact
 
-1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.7.0.tgz`).
-2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.7.0.tgz"`.
+1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.8.0.tgz`).
+2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.8.0.tgz"`.
 3. `pnpm install` to update `pnpm-lock.yaml`.
 4. Update the SHA-256 above and in `src/sdk-artifact.test.ts` expectations, then remove the old
    tarball once nothing references it.
@@ -268,7 +297,7 @@ authenticated session → tenant → listInventory() → complete authorized inv
 
 The Products area is a full management workflow (`src/products/CreateProductScreen.tsx`,
 `src/products/ProductManageScreen.tsx`, and the pure `src/catalog/*` modules). Every action is a pure
-SDK 0.7.0 call through the tenant-scoped client — no direct `fetch` (except the signed storage PUT), no
+SDK 0.8.0 call through the tenant-scoped client — no direct `fetch` (except the signed storage PUT), no
 local business math, no mock fallback — and each write re-reads the authoritative product on success.
 
 ### Create and edit
