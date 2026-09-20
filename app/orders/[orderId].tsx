@@ -16,6 +16,11 @@ export default function OrderDetailRoute() {
   }
 
   return (
-    <OrderDetailScreen tenantId={state.tenantId} orderId={orderId} onBack={() => router.back()} />
+    <OrderDetailScreen
+      tenantId={state.tenantId}
+      orderId={orderId}
+      onBack={() => router.back()}
+      onOpenReturn={(returnId) => router.push(`/returns/${returnId}`)}
+    />
   );
 }

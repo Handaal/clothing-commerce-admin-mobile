@@ -8,6 +8,7 @@ import type {
   OrderDetailResponse,
   OrderCommerceDetails,
   OrderListResponse,
+  OrderReturnSummary,
   ProductDetailResponse,
   ProductListResponse,
   ProductWriteResponse,
@@ -15,6 +16,8 @@ import type {
   PublishProductResponse,
   ReceiveInventoryResponse,
   RegisterProductMediaResponse,
+  ReturnDetailResponse,
+  ReturnHistoryResponse,
   SetVariantPriceResponse,
   TransferInventoryResponse,
   UnpublishProductResponse,
@@ -384,6 +387,74 @@ export function orderDetail(overrides: Partial<OrderDetailResponse> = {}): Order
     },
     ...overrides,
   };
+}
+
+export const RETURN_A = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
+export const RETURN_B = "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2";
+export const REFUND_A = "c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3";
+export const PAYMENT_A = "d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4";
+export const ORDER_LINE_A = "e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e5";
+
+/**
+ * Order-embedded returns summary as `GET /orders/{id}` returns it (SDK 0.8.0). Present only when the
+ * caller also holds return-read scope; keyed by the order's own `lineNumber`.
+ */
+export function orderReturnSummary(
+  overrides: Partial<OrderReturnSummary> = {},
+): OrderReturnSummary {
+  return {
+    lines: [{ orderLineId: ORDER_LINE_A, lineNumber: 1, returnedQuantity: 1 }],
+    pendingRefundMinor: 0,
+    refundedMinor: 2599,
+    ...overrides,
+  };
+}
+
+/** A single accepted Return with its one Refund, shaped like `GET /returns/{id}`. */
+export function returnDetail(overrides: Partial<ReturnDetailResponse> = {}): ReturnDetailResponse {
+  return {
+    id: RETURN_A,
+    orderId: ORDER_A,
+    channel: "pos",
+    source: "pos",
+    actorMembershipId: MEMBERSHIP_A,
+    status: "accepted",
+    currency: "USD",
+    amountMinor: 2599,
+    inventoryLocationId: INVENTORY_LOCATION_A,
+    inventoryOperationId: OPERATION_ID,
+    createdAt: "2026-09-19T10:00:00.000Z",
+    lines: [
+      {
+        orderLineId: ORDER_LINE_A,
+        lineNumber: 1,
+        variantId: VARIANT_A,
+        quantity: 1,
+        reason: "Wrong size",
+        disposition: "restock",
+        amountMinor: 2599,
+      },
+    ],
+    refund: {
+      id: REFUND_A,
+      paymentId: PAYMENT_A,
+      returnId: RETURN_A,
+      method: "cash",
+      status: "succeeded",
+      amountMinor: 2599,
+      currency: "USD",
+      settlementReference: "till-2026-09-19",
+      settledAt: "2026-09-19T10:00:05.000Z",
+    },
+    ...overrides,
+  };
+}
+
+export function returnHistory(
+  items: ReturnDetailResponse[],
+  pageInfo: Partial<ReturnHistoryResponse["pageInfo"]> = {},
+): ReturnHistoryResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
 }
 
 export interface RecordedRequest {

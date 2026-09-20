@@ -1,8 +1,10 @@
-import type { OrderDetailResponse } from "@shifted/clothing-commerce-sdk";
+import type { OrderDetailResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useMemo } from "react";
 import { View } from "react-native";
 
 import { errorHeading, formatMoneyMinor, isRetryable } from "../products/display";
+import { ReturnHistory } from "../returns/ReturnHistory";
+import { hasReturnActivity, returnedQuantityByLine } from "../returns/summary";
 import { useSession } from "../session/SessionProvider";
 import {
   Badge,
@@ -29,6 +31,8 @@ export interface OrderDetailScreenProps {
   tenantId: string;
   orderId: string;
   onBack: () => void;
+  /** When provided, return-history rows navigate to the full return detail. */
+  onOpenReturn?: (returnId: string) => void;
 }
 
 /**
@@ -36,7 +40,12 @@ export interface OrderDetailScreenProps {
  * is keyed on `[client, orderId]`, so navigating from order A to order B re-runs the load and the
  * shared `useAsync` guards against a slow A-response settling over B's state.
  */
-export function OrderDetailScreen({ tenantId, orderId, onBack }: OrderDetailScreenProps) {
+export function OrderDetailScreen({
+  tenantId,
+  orderId,
+  onBack,
+  onOpenReturn,
+}: OrderDetailScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
   const load = useCallback(() => client.getOrder(orderId), [client, orderId]);
@@ -65,17 +74,29 @@ export function OrderDetailScreen({ tenantId, orderId, onBack }: OrderDetailScre
     );
   }
 
-  return <OrderDetail data={state.data} onBack={onBack} onRefresh={reload} />;
+  return (
+    <OrderDetail
+      data={state.data}
+      client={client}
+      onBack={onBack}
+      onRefresh={reload}
+      onOpenReturn={onOpenReturn}
+    />
+  );
 }
 
 function OrderDetail({
   data,
+  client,
   onBack,
   onRefresh,
+  onOpenReturn,
 }: {
   data: OrderDetailResponse;
+  client: Pick<TenantCommerceClient, "listReturns">;
   onBack: () => void;
   onRefresh: () => void;
+  onOpenReturn?: (returnId: string) => void;
 }) {
   const { header, lines, cancellation, fulfillmentProgress } = data;
 
@@ -83,6 +104,7 @@ function OrderDetail({
     () => fulfillmentByLineNumber(fulfillmentProgress),
     [fulfillmentProgress],
   );
+  const returnedByLine = useMemo(() => returnedQuantityByLine(data.returns), [data.returns]);
 
   return (
     <ScrollScreen>
@@ -143,6 +165,9 @@ function OrderDetail({
                     )}
                   />
                 ) : null}
+                {(returnedByLine.get(line.lineNumber) ?? 0) > 0 ? (
+                  <InfoRow label="Returned" value={String(returnedByLine.get(line.lineNumber))} />
+                ) : null}
               </View>
             );
           })}
@@ -158,6 +183,25 @@ function OrderDetail({
           testID="order-fulfillment-status"
         />
       </View>
+
+      {/* Returns summary from the order projection (present only with return scope). The exact
+          pending/refunded split is shown; a pending obligation is never rendered as refunded. */}
+      {hasReturnActivity(data.returns) && data.returns ? (
+        <>
+          <Divider />
+          <Eyebrow>Returns &amp; refunds</Eyebrow>
+          <InfoRow
+            label="Pending refunds"
+            value={formatMoneyMinor(data.returns.pendingRefundMinor, header.currency)}
+          />
+          <InfoRow
+            label="Refunded"
+            value={formatMoneyMinor(data.returns.refundedMinor, header.currency)}
+          />
+        </>
+      ) : null}
+
+      <ReturnHistory client={client} orderId={header.id} onOpenReturn={onOpenReturn} />
     </ScrollScreen>
   );
 }
