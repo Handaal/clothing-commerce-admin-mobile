@@ -140,6 +140,41 @@ margin/profit) — the API deliberately deferred cost accounting. Also **not** b
 RFQs, supplier invoices, Accounts Payable, procurement approvals, a supplier portal, supplier payments,
 and **permanent supplier deletion** (inactive is a retained state, not a delete).
 
+## Staff management foundation (Phase 2O)
+
+**UI/domain FOUNDATION only — not the API integration pass.** The Staff SDK contract was still being
+finalized (a parallel API workstream), so Admin Mobile ships an adapter-isolated foundation that the
+final Staff SDK will plug into through one narrow mapping. **The production Staff adapter is
+unavailable (`null`) and every Staff screen renders an explicit "unavailable" state until the SDK is
+integrated** — nothing fabricates staff data or a fake success. See
+[docs/phase-2o-foundation.md](docs/phase-2o-foundation.md) for the full write-up.
+
+- **Concept:** staff is operational access management, **not HR**. A Staff record is a projection over
+  an existing tenant **Membership** plus identity and authorization (`Role` + `AccessScope` **coupled
+  per assignment**). Local Admin-owned types (`src/staff/model.ts`) import no Staff SDK DTO.
+- **Adapter seam** (`resolveStaffAdapter`, `src/staff/adapter.ts`): one `StaffAdapter` interface
+  (list/get/search-identities/add/lifecycle/assign/unassign/list-roles/list-scopes). Production returns
+  `null`; test adapters are the only fakes. No hand-written HTTP, no invented endpoints/DTOs/codes.
+- **Capability seam** (`src/staff/capabilities.ts`): because the `/me/context` staff DTO is not frozen,
+  **all** guessing is isolated in `staffCapabilities`, which reads `access.staff` structurally into
+  `{ canRead, canManage }` (deny-by-default). `canRead` gates the **Manage staff** entry; `canManage`
+  gates Add-Staff and every mutation. The API stays authoritative; a 403 surfaces distinctly.
+- **List / detail / Add-Staff** (`StaffListScreen.tsx`, `StaffDetailScreen.tsx`, `AddStaffFlow.tsx`):
+  server-side search + status filter with bounded pagination; assignments shown as role+scope pairs;
+  confirmed lifecycle (active / suspended / **deactivated** = retained, no delete). Add-Staff **links an
+  existing provisioned identity** (search-and-select, **no raw-UUID entry**) — no Clerk invite, email or
+  password. Roles and scopes are existing, adapter-driven; the UI never authors roles/permissions/scopes.
+- **Read-only mode** (`staff.read` without `staff.manage`): list + detail remain; all mutation
+  affordances are withheld.
+- **Anti-escalation / last-admin surfaces** (`src/staff/write-errors.ts`): distinct local semantic
+  categories (cannot-delegate · last-admin · foreign-scope · protected-assignment · membership-exists · …)
+  prepared in advance; provisional codes live in one place to reconcile with the final SDK.
+
+**Waiting for the final API:** the real Staff SDK + concrete adapter, the exact context capability
+shape, the exact eligible-identity discovery DTO, the exact role/scope + assignment/lifecycle endpoints,
+and the exact typed error codes. **Non-goals:** HR/payroll, role/permission authoring, scope/branch/
+location creation, and any Clerk invitation flow.
+
 ## Separate-repo architecture
 
 This repository is fully standalone. It talks to the Commerce API **only** through a versioned,
@@ -698,10 +733,11 @@ against the real SDK 0.6.0 types.
 
 The writes are the catalog operations (Create / Edit / Lifecycle / Variants / Prices / Media /
 Publish), Inventory **Receive / Adjust / Transfer**, and Supplier **create / edit / activate–deactivate**
-plus optional supplier-linked receiving (Phase 2N, integrated on SDK 0.9.0). Order and fulfillment
-mutations, payments, refunds/returns, customer management, staff, vouchers, dashboards,
-reporting/analytics, taxonomy (category/collection) writes, website layout editing, POS, storefront
-checkout, and cart are **out of scope** and not implemented here. Supplier **unit cost / cost-basis**
+plus optional supplier-linked receiving (Phase 2N, integrated on SDK 0.9.0). **Staff management (Phase
+2O) is present as a UI/domain foundation only** — the production adapter is `null` (unavailable) and no
+staff write reaches an API yet. Order and fulfillment mutations, payments, refunds/returns, customer
+management, vouchers, dashboards, reporting/analytics, taxonomy (category/collection) writes, website
+layout editing, POS, storefront checkout, and cart are **out of scope** and not implemented here. Supplier **unit cost / cost-basis**
 accounting and procurement (Purchase Orders, RFQs, invoices, Accounts Payable, approvals, portal,
 payments) plus permanent supplier deletion are explicit **non-goals**. The catalog UX is left extensible
 for a future additive taxonomy slice.

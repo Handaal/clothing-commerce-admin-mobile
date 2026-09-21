@@ -1,0 +1,314 @@
+import { useCallback, useState } from "react";
+import { View } from "react-native";
+
+import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
+import { errorHeading, isRetryable } from "../products/display";
+import {
+  Body,
+  Divider,
+  Eyebrow,
+  InfoRow,
+  LoadingBlock,
+  PageHeader,
+  PrimaryButton,
+  ScrollScreen,
+  TextButton,
+  Title,
+} from "../ui/components";
+import { useAsync } from "../ui/useAsync";
+import { useMutation } from "../ui/useMutation";
+import { AccessScopeSelector } from "./AccessScopeSelector";
+import type { StaffAdapter } from "./adapter";
+import type {
+  AccessScopeOption,
+  AddStaffInput,
+  EligibleIdentity,
+  RoleOption,
+  StaffDetail,
+} from "./model";
+import { isAddStaffComplete } from "./model";
+import { EligibleIdentitySearch } from "./EligibleIdentitySearch";
+import { RoleSelector } from "./RoleSelector";
+import { accessScopeTargetLines } from "./scopes";
+import { StaffUnavailable } from "./StaffUnavailable";
+import { describeStaffWriteError } from "./write-errors";
+
+export interface AddStaffFlowProps {
+  adapter: StaffAdapter | null;
+  onCreated: (staff: StaffDetail) => void;
+  onBack: () => void;
+  generateIdempotencyKey?: IdempotencyKeyFactory;
+}
+
+type Step = "identity" | "role" | "scope" | "review";
+
+interface Selection {
+  identity: EligibleIdentity | null;
+  roleId: string | null;
+  scopeId: string | null;
+}
+
+interface Assignables {
+  roles: RoleOption[];
+  scopes: AccessScopeOption[];
+}
+
+/**
+ * The Add-Staff workflow: link an EXISTING identity to the tenant with an initial Role + AccessScope.
+ *
+ * Business decision (V1): Add-Staff = link an existing provisioned identity — no Clerk invitation, no
+ * email, no passwords. The four steps are (1) search/select an eligible identity, (2) choose an initial
+ * role, (3) choose an EXISTING access scope, (4) review and create the membership. Assignable roles and
+ * scopes are adapter-driven; there is NO fake success — `onCreated` fires only with the adapter's real
+ * response. With no adapter (Staff SDK not integrated) it shows the unavailable state.
+ */
+export function AddStaffFlow({
+  adapter,
+  onCreated,
+  onBack,
+  generateIdempotencyKey,
+}: AddStaffFlowProps) {
+  if (!adapter) {
+    return (
+      <ScrollScreen>
+        <StaffUnavailable title="Add staff" onBack={onBack} />
+      </ScrollScreen>
+    );
+  }
+  return (
+    <AddStaffContent
+      adapter={adapter}
+      onCreated={onCreated}
+      onBack={onBack}
+      generateIdempotencyKey={generateIdempotencyKey}
+    />
+  );
+}
+
+function AddStaffContent({
+  adapter,
+  onCreated,
+  onBack,
+  generateIdempotencyKey,
+}: AddStaffFlowProps & { adapter: StaffAdapter }) {
+  const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
+
+  const loadAssignables = useCallback(
+    async (): Promise<Assignables> => ({
+      roles: await adapter.listAssignableRoles(),
+      scopes: await adapter.listAssignableScopes(),
+    }),
+    [adapter],
+  );
+  const { state, reload } = useAsync<Assignables>(loadAssignables);
+
+  const [step, setStep] = useState<Step>("identity");
+  const [selection, setSelection] = useState<Selection>({
+    identity: null,
+    roleId: null,
+    scopeId: null,
+  });
+
+  const mutation = useMutation<AddStaffInput, StaffDetail>(
+    (input, key) => adapter.addStaff(input, key),
+    generateKey,
+  );
+
+  if (mutation.state.status === "success") {
+    const created = mutation.state.data;
+    return (
+      <ScrollScreen>
+        <PageHeader eyebrow="Staff" title="Staff added" onBack={onBack} />
+        <Divider />
+        <Body>
+          “{created.identity.displayName}” was added to this business. Their role and access can be
+          adjusted from their staff record.
+        </Body>
+        <PrimaryButton
+          testID="add-staff-view"
+          label="View staff member"
+          onPress={() => onCreated(created)}
+        />
+        <TextButton label="Back to staff" onPress={onBack} />
+      </ScrollScreen>
+    );
+  }
+
+  if (state.status === "loading") {
+    return (
+      <ScrollScreen>
+        <PageHeader eyebrow="Staff" title="Add staff" onBack={onBack} />
+        <Divider />
+        <LoadingBlock label="Loading assignable roles and scopes…" />
+      </ScrollScreen>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <ScrollScreen>
+        <PageHeader eyebrow="Staff" title={errorHeading(state.error.kind)} onBack={onBack} />
+        <Divider />
+        <Body>{state.error.message}</Body>
+        {isRetryable(state.error.kind) ? (
+          <PrimaryButton label="Try again" onPress={reload} />
+        ) : null}
+      </ScrollScreen>
+    );
+  }
+
+  const { roles, scopes } = state.data;
+  const selectedRole = roles.find((role) => role.id === selection.roleId) ?? null;
+  const selectedScope = scopes.find((scope) => scope.id === selection.scopeId) ?? null;
+  const draft: Partial<AddStaffInput> = {
+    ...(selection.identity ? { identityId: selection.identity.identityId } : {}),
+    ...(selection.roleId ? { roleId: selection.roleId } : {}),
+    ...(selection.scopeId ? { scopeId: selection.scopeId } : {}),
+  };
+  const submitError = mutation.state.status === "error" ? mutation.state.error : null;
+  const submitting = mutation.state.status === "submitting";
+
+  return (
+    <ScrollScreen>
+      <PageHeader eyebrow="Staff" title="Add staff" onBack={onBack} />
+      <StepIndicator step={step} />
+      <Divider />
+
+      {step === "identity" ? (
+        <View style={{ gap: 12 }} testID="add-staff-step-identity">
+          <Eyebrow>Step 1 — Choose a person</Eyebrow>
+          <EligibleIdentitySearch
+            adapter={adapter}
+            selectedIdentityId={selection.identity?.identityId ?? null}
+            onSelect={(identity) => setSelection((prev) => ({ ...prev, identity }))}
+          />
+          {selection.identity ? (
+            <PrimaryButton
+              label="Next — choose a role"
+              testID="add-staff-next-role"
+              onPress={() => setStep("role")}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
+      {step === "role" ? (
+        <View style={{ gap: 12 }} testID="add-staff-step-role">
+          <Eyebrow>Step 2 — Choose an initial role</Eyebrow>
+          <RoleSelector
+            roles={roles}
+            selectedRoleId={selection.roleId}
+            onSelect={(roleId) => setSelection((prev) => ({ ...prev, roleId }))}
+          />
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TextButton label="‹ Back" onPress={() => setStep("identity")} />
+            {selection.roleId ? (
+              <PrimaryButton
+                label="Next — choose a scope"
+                testID="add-staff-next-scope"
+                onPress={() => setStep("scope")}
+              />
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      {step === "scope" ? (
+        <View style={{ gap: 12 }} testID="add-staff-step-scope">
+          <Eyebrow>Step 3 — Choose an access scope</Eyebrow>
+          <AccessScopeSelector
+            scopes={scopes}
+            selectedScopeId={selection.scopeId}
+            onSelect={(scopeId) => setSelection((prev) => ({ ...prev, scopeId }))}
+          />
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TextButton label="‹ Back" onPress={() => setStep("role")} />
+            {selection.scopeId ? (
+              <PrimaryButton
+                label="Next — review"
+                testID="add-staff-next-review"
+                onPress={() => setStep("review")}
+              />
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      {step === "review" ? (
+        <View style={{ gap: 12 }} testID="add-staff-step-review">
+          <Eyebrow>Step 4 — Review and create</Eyebrow>
+          {selection.identity ? (
+            <>
+              <InfoRow label="Person" value={selection.identity.displayName} />
+              {selection.identity.email ? (
+                <InfoRow label="Email" value={selection.identity.email} />
+              ) : null}
+            </>
+          ) : null}
+          {selectedRole ? <InfoRow label="Role" value={selectedRole.label} /> : null}
+          {selectedScope ? (
+            <>
+              <InfoRow label="Scope" value={selectedScope.label} />
+              {accessScopeTargetLines(selectedScope).map((line, index) => (
+                <Body key={`review-scope-${index}`}>{line}</Body>
+              ))}
+            </>
+          ) : null}
+          <Body>
+            This links an existing person to the business with the role and scope above. The server
+            authorizes the change — a role or scope you cannot delegate will be refused.
+          </Body>
+
+          {submitError ? (
+            <SubmitError described={describeStaffWriteError(submitError)} mutation={mutation} />
+          ) : null}
+
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TextButton label="‹ Back" onPress={() => setStep("scope")} />
+            <PrimaryButton
+              label={submitting ? "Adding…" : "Add staff member"}
+              testID="add-staff-submit"
+              disabled={submitting || !isAddStaffComplete(draft)}
+              onPress={() => {
+                if (isAddStaffComplete(draft)) mutation.submit(draft);
+              }}
+            />
+          </View>
+        </View>
+      ) : null}
+    </ScrollScreen>
+  );
+}
+
+function StepIndicator({ step }: { step: Step }) {
+  const order: Step[] = ["identity", "role", "scope", "review"];
+  const current = order.indexOf(step) + 1;
+  return <Eyebrow testID="add-staff-step-indicator">Step {current} of 4</Eyebrow>;
+}
+
+function SubmitError({
+  described,
+  mutation,
+}: {
+  described: ReturnType<typeof describeStaffWriteError>;
+  mutation: ReturnType<typeof useMutation<AddStaffInput, StaffDetail>>;
+}) {
+  return (
+    <View style={{ gap: 8 }} testID="add-staff-error">
+      <Title>{described.heading}</Title>
+      <Body>{described.message}</Body>
+      {described.recovery === "retry" ? (
+        // Ambiguous failure: retry reuses the SAME idempotency key (at-most-once at the API).
+        <PrimaryButton label="Retry" testID="add-staff-retry" onPress={() => mutation.retry()} />
+      ) : described.recovery === "edit" ? (
+        <PrimaryButton
+          label="Edit and try again"
+          testID="add-staff-edit"
+          onPress={() => mutation.reset()}
+        />
+      ) : (
+        <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+      )}
+    </View>
+  );
+}

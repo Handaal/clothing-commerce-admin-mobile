@@ -31,6 +31,15 @@ import type {
 import type { CursorPage } from "../commerce/pagination";
 import type { SupplierAdapter } from "../suppliers/adapter";
 import type { Supplier, SupplierReceipt, SupplierSummary } from "../suppliers/model";
+import type { StaffAdapter } from "../staff/adapter";
+import type {
+  AccessScopeOption as StaffScopeOption,
+  EligibleIdentity,
+  RoleOption as StaffRoleOption,
+  StaffAssignment,
+  StaffDetail,
+  StaffSummary,
+} from "../staff/model";
 
 // Deterministic, schema-valid fixtures for the SDK contracts (UUIDs must be valid v4-shaped strings).
 export const TENANT_A = "11111111-1111-4111-8111-111111111111";
@@ -48,28 +57,40 @@ export interface MeContextOverrides {
   orders?: Partial<MeContextResponse["access"]["orders"]>;
   /** `null` omits the suppliers capability entirely (older server / no access at all). */
   suppliers?: NonNullable<MeContextResponse["access"]["suppliers"]> | null;
+  /**
+   * Staff capability. The final `/me/context` staff contract is NOT frozen and the vendored SDK does not
+   * yet type `access.staff`, so this is the app's own expected shape, injected structurally. `null` omits
+   * it entirely (older server / no access); default is read+manage so nav + affordances are exercised.
+   */
+  staff?: { canRead?: boolean; canManage?: boolean } | null;
 }
 
 export function meContext(tenantId: string, overrides: MeContextOverrides = {}): MeContextResponse {
+  const access = {
+    catalog: { canRead: true, tenantWide: true, brands: [], ...overrides.catalog },
+    inventory: {
+      canRead: false,
+      tenantWide: false,
+      locations: [],
+      write: { canReceive: false, canAdjust: false, canTransfer: false, locations: [] },
+      ...overrides.inventory,
+    },
+    orders: { canRead: true, tenantWide: false, brands: [], branches: [], ...overrides.orders },
+    // Suppliers capability is optional on the real context. Default to read+manage so navigation and
+    // management affordances are exercised; pass `suppliers: null` to omit it, or a partial to vary it.
+    ...(overrides.suppliers === null
+      ? {}
+      : { suppliers: overrides.suppliers ?? { canRead: true, canManage: true } }),
+    // Staff capability injected structurally (see MeContextOverrides.staff). Cast at the return boundary
+    // because the vendored SDK type does not yet include it — this mirrors the app's defensive read.
+    ...(overrides.staff === null
+      ? {}
+      : { staff: overrides.staff ?? { canRead: true, canManage: true } }),
+  };
   return {
     tenant: { id: tenantId, name: "Acme Apparel", status: "active" },
     membership: { id: MEMBERSHIP_A },
-    access: {
-      catalog: { canRead: true, tenantWide: true, brands: [], ...overrides.catalog },
-      inventory: {
-        canRead: false,
-        tenantWide: false,
-        locations: [],
-        write: { canReceive: false, canAdjust: false, canTransfer: false, locations: [] },
-        ...overrides.inventory,
-      },
-      orders: { canRead: true, tenantWide: false, brands: [], branches: [], ...overrides.orders },
-      // Suppliers capability is optional on the real context. Default to read+manage so navigation and
-      // management affordances are exercised; pass `suppliers: null` to omit it, or a partial to vary it.
-      ...(overrides.suppliers === null
-        ? {}
-        : { suppliers: overrides.suppliers ?? { canRead: true, canManage: true } }),
-    },
+    access: access as MeContextResponse["access"],
   };
 }
 
@@ -624,6 +645,141 @@ export function sdkSupplierReceiptsResponse(
   pageInfo: Partial<SupplierReceiptsResponse["pageInfo"]> = {},
 ): SupplierReceiptsResponse {
   return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Phase 2O Staff (foundation only — no Staff SDK is integrated yet). These fixtures build the local,
+// Admin-owned model and a fake adapter, used ONLY in tests. Production resolves NO adapter and shows the
+// unavailable state; nothing here fabricates production staff data.
+// ---------------------------------------------------------------------------------------------------
+
+export const MEMBERSHIP_STAFF_A = "a9a9a9a9-a9a9-4a9a-8a9a-a9a9a9a9a9a9";
+export const MEMBERSHIP_STAFF_B = "b8b8b8b8-b8b8-4b8b-8b8b-b8b8b8b8b8b8";
+export const IDENTITY_A = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
+export const IDENTITY_B = "d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2";
+export const ROLE_MANAGER = "e3e3e3e3-e3e3-4e3e-8e3e-e3e3e3e3e3e3";
+export const ROLE_STOCK = "f4f4f4f4-f4f4-4f4f-8f4f-f4f4f4f4f4f4";
+export const SCOPE_TENANT = "05050505-0505-4050-8050-050505050505";
+export const SCOPE_BRANCH = "16161616-1616-4161-8161-161616161616";
+export const ASSIGNMENT_A = "27272727-2727-4272-8272-272727272727";
+
+export function roleOption(overrides: Partial<StaffRoleOption> = {}): StaffRoleOption {
+  return {
+    id: ROLE_MANAGER,
+    label: "Branch Manager",
+    permissionSummary: "Manage catalog, inventory and orders",
+    ...overrides,
+  };
+}
+
+export function accessScopeOption(overrides: Partial<StaffScopeOption> = {}): StaffScopeOption {
+  return {
+    id: SCOPE_BRANCH,
+    label: "Downtown Branch",
+    kind: "branch",
+    targets: ["Branch: Downtown", "Location: Main Stockroom"],
+    ...overrides,
+  };
+}
+
+export function tenantScopeOption(overrides: Partial<StaffScopeOption> = {}): StaffScopeOption {
+  return { id: SCOPE_TENANT, label: "Whole business", kind: "tenant", targets: [], ...overrides };
+}
+
+export function staffAssignment(overrides: Partial<StaffAssignment> = {}): StaffAssignment {
+  return {
+    assignmentId: ASSIGNMENT_A,
+    role: { id: ROLE_MANAGER, label: "Branch Manager" },
+    scope: {
+      id: SCOPE_BRANCH,
+      label: "Downtown Branch",
+      kind: "branch",
+      targets: ["Branch: Downtown"],
+    },
+    ...overrides,
+  };
+}
+
+export function staffSummary(overrides: Partial<StaffSummary> = {}): StaffSummary {
+  return {
+    membershipId: MEMBERSHIP_STAFF_A,
+    identityId: IDENTITY_A,
+    displayName: "Layla Hassan",
+    primaryEmail: "layla@acme.example",
+    status: "active",
+    roleSummaries: [{ id: ROLE_MANAGER, label: "Branch Manager" }],
+    scopeSummaries: [{ id: SCOPE_BRANCH, label: "Downtown Branch", kind: "branch", targets: [] }],
+    ...overrides,
+  };
+}
+
+export function staffDetail(overrides: Partial<StaffDetail> = {}): StaffDetail {
+  return {
+    membershipId: MEMBERSHIP_STAFF_A,
+    identity: {
+      identityId: IDENTITY_A,
+      displayName: "Layla Hassan",
+      primaryEmail: "layla@acme.example",
+      identityStatus: "active",
+    },
+    status: "active",
+    assignments: [staffAssignment()],
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-09-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function eligibleIdentity(overrides: Partial<EligibleIdentity> = {}): EligibleIdentity {
+  return {
+    identityId: IDENTITY_B,
+    displayName: "Omar Fathy",
+    email: "omar@acme.example",
+    identityStatus: "active",
+    ...overrides,
+  };
+}
+
+/**
+ * Build a fake {@link StaffAdapter} for tests. Each method defaults to a schema-valid success and can be
+ * overridden per test (including with rejections). This is the test-only stand-in for the future
+ * SDK-backed adapter; production still resolves to `null` (unavailable).
+ */
+export function fakeStaffAdapter(overrides: Partial<StaffAdapter> = {}): StaffAdapter {
+  return {
+    listStaff: async () => page([staffSummary()]),
+    getStaff: async () => staffDetail(),
+    searchEligibleIdentities: async () => page([eligibleIdentity()]),
+    addStaff: async (input) =>
+      staffDetail({
+        membershipId: MEMBERSHIP_STAFF_A,
+        identity: {
+          identityId: input.identityId,
+          displayName: "Omar Fathy",
+          primaryEmail: "omar@acme.example",
+          identityStatus: "active",
+        },
+        assignments: [],
+      }),
+    updateMembershipStatus: async (membershipId, status) => staffDetail({ membershipId, status }),
+    assignRoleScope: async (membershipId, input) =>
+      staffDetail({
+        membershipId,
+        assignments: [
+          staffAssignment({
+            role: { id: input.roleId, label: "Assigned Role" },
+            scope: { id: input.scopeId, label: "Assigned Scope", kind: "tenant", targets: [] },
+          }),
+        ],
+      }),
+    unassignRoleScope: async (membershipId) => staffDetail({ membershipId, assignments: [] }),
+    listAssignableRoles: async () => [
+      roleOption(),
+      roleOption({ id: ROLE_STOCK, label: "Stock Clerk" }),
+    ],
+    listAssignableScopes: async () => [tenantScopeOption(), accessScopeOption()],
+    ...overrides,
+  };
 }
 
 export interface RecordedRequest {
