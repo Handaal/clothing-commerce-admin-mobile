@@ -2,7 +2,6 @@ import { useState } from "react";
 import { View } from "react-native";
 
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
-import { errorHeading, isRetryable } from "../products/display";
 import {
   Body,
   Divider,
@@ -16,7 +15,7 @@ import {
   TextField,
   Title,
 } from "../ui/components";
-import { useMutation } from "../ui/useMutation";
+import { useMutation, type Mutation } from "../ui/useMutation";
 import type { SupplierAdapter } from "./adapter";
 import {
   hasSupplierErrors,
@@ -29,6 +28,7 @@ import {
   type SupplierStatus,
 } from "./model";
 import { supplierStatusLabel } from "./status";
+import { describeSupplierWriteError } from "./write-errors";
 
 export type SupplierFormMode = "create" | "edit";
 
@@ -249,20 +249,7 @@ export function SupplierForm({
       <FieldError message={errors.notes} testID="supplier-notes-error" />
 
       {submitError ? (
-        <View style={{ gap: 8 }} testID="supplier-submit-error">
-          <Title>{errorHeading(submitError.kind)}</Title>
-          <Body>{submitError.message}</Body>
-          {isRetryable(submitError.kind) ? (
-            // Ambiguous failure: retry reuses the SAME idempotency key (at-most-once at the API).
-            <PrimaryButton
-              label="Retry"
-              testID="supplier-submit-retry"
-              onPress={() => mutation.retry()}
-            />
-          ) : (
-            <TextButton label="Dismiss" onPress={() => mutation.reset()} />
-          )}
-        </View>
+        <SubmitError described={describeSupplierWriteError(submitError)} mutation={mutation} />
       ) : null}
 
       <PrimaryButton
@@ -294,4 +281,35 @@ function PageTitle({ mode, onBack }: { mode: SupplierFormMode; onBack: () => voi
 function FieldError({ message, testID }: { message?: string; testID: string }) {
   if (!message) return null;
   return <Body testID={testID}>{message}</Body>;
+}
+
+function SubmitError({
+  described,
+  mutation,
+}: {
+  described: ReturnType<typeof describeSupplierWriteError>;
+  mutation: Mutation<SupplierDraft, Supplier>;
+}) {
+  return (
+    <View style={{ gap: 8 }} testID="supplier-submit-error">
+      <Title>{described.heading}</Title>
+      <Body>{described.message}</Body>
+      {described.recovery === "retry" ? (
+        // Ambiguous failure: retry reuses the SAME idempotency key (at-most-once at the API).
+        <PrimaryButton
+          label="Retry"
+          testID="supplier-submit-retry"
+          onPress={() => mutation.retry()}
+        />
+      ) : described.recovery === "edit" ? (
+        <PrimaryButton
+          label="Edit and try again"
+          testID="supplier-submit-edit"
+          onPress={() => mutation.reset()}
+        />
+      ) : (
+        <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+      )}
+    </View>
+  );
 }

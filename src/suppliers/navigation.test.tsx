@@ -82,4 +82,13 @@ describe("management navigation — Suppliers entry", () => {
     expect(screen.getByTestId("open-inventory")).toBeTruthy();
     expect(screen.getByTestId("open-orders")).toBeTruthy();
   });
+
+  it("hides the Suppliers entry when the context grants no supplier read access", async () => {
+    // Suppliers capability absent entirely (older server / no access): navigation is not offered.
+    mocks.getContext.mockResolvedValue(meContext(TENANT_A, { suppliers: null }));
+    renderHome();
+    // Wait for a known entry to confirm the ready screen rendered, then assert Suppliers is absent.
+    await screen.findByTestId("open-products");
+    expect(screen.queryByTestId("open-suppliers")).toBeNull();
+  });
 });

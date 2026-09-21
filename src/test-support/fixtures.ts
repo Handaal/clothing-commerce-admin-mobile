@@ -19,6 +19,11 @@ import type {
   ReturnDetailResponse,
   ReturnHistoryResponse,
   SetVariantPriceResponse,
+  Supplier as SdkSupplier,
+  SupplierListResponse,
+  SupplierReceipt as SdkSupplierReceipt,
+  SupplierReceiptsResponse,
+  SupplierSummary as SdkSupplierSummary,
   TransferInventoryResponse,
   UnpublishProductResponse,
 } from "@shifted/clothing-commerce-sdk";
@@ -41,6 +46,8 @@ export interface MeContextOverrides {
   catalog?: Partial<MeContextResponse["access"]["catalog"]>;
   inventory?: Partial<MeContextResponse["access"]["inventory"]>;
   orders?: Partial<MeContextResponse["access"]["orders"]>;
+  /** `null` omits the suppliers capability entirely (older server / no access at all). */
+  suppliers?: NonNullable<MeContextResponse["access"]["suppliers"]> | null;
 }
 
 export function meContext(tenantId: string, overrides: MeContextOverrides = {}): MeContextResponse {
@@ -57,6 +64,11 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
         ...overrides.inventory,
       },
       orders: { canRead: true, tenantWide: false, brands: [], branches: [], ...overrides.orders },
+      // Suppliers capability is optional on the real context. Default to read+manage so navigation and
+      // management affordances are exercised; pass `suppliers: null` to omit it, or a partial to vary it.
+      ...(overrides.suppliers === null
+        ? {}
+        : { suppliers: overrides.suppliers ?? { canRead: true, canManage: true } }),
     },
   };
 }
@@ -539,6 +551,85 @@ export function fakeSupplierAdapter(overrides: Partial<SupplierAdapter> = {}): S
     listSupplierReceipts: async () => page([supplierReceipt()]),
     ...overrides,
   };
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Phase 2N Suppliers — REAL SDK 0.9.0 DTO fixtures. These are the wire shapes the SDK returns; the
+// adapter maps them onto the local model above. Kept separate from the local-model fixtures so adapter
+// tests assert the mapping against the actual contract, never against the app's own vocabulary.
+// ---------------------------------------------------------------------------------------------------
+
+export function sdkSupplier(overrides: Partial<SdkSupplier> = {}): SdkSupplier {
+  return {
+    id: SUPPLIER_A,
+    tenantId: TENANT_A,
+    name: "Nile Textiles Co.",
+    code: "SUP-001",
+    status: "active",
+    contactPerson: "Mona Adel",
+    phone: "+20 10 1234 5678",
+    email: "orders@niletextiles.example",
+    address: "12 Corniche El Nil, Cairo",
+    notes: "Primary linen supplier.",
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-09-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function sdkSupplierSummary(
+  overrides: Partial<SdkSupplierSummary> = {},
+): SdkSupplierSummary {
+  return {
+    id: SUPPLIER_A,
+    tenantId: TENANT_A,
+    name: "Nile Textiles Co.",
+    code: "SUP-001",
+    status: "active",
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-09-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function sdkSupplierListResponse(
+  items: SdkSupplierSummary[] = [sdkSupplierSummary()],
+  pageInfo: Partial<SupplierListResponse["pageInfo"]> = {},
+): SupplierListResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
+}
+
+export function sdkSupplierReceipt(
+  overrides: Partial<SdkSupplierReceipt> = {},
+): SdkSupplierReceipt {
+  return {
+    operationId: SUPPLIER_RECEIPT_A,
+    receivedAt: "2026-09-12T10:00:00.000Z",
+    supplierId: SUPPLIER_A,
+    supplierName: "Nile Textiles Co.",
+    supplierCode: "SUP-001",
+    supplierReference: "GRN-2026-0012",
+    actorMembershipId: MEMBERSHIP_A,
+    lines: [
+      {
+        variantId: VARIANT_A,
+        sku: "LS-001-M",
+        productName: "Linen Shirt",
+        quantity: 20,
+        inventoryLocationId: INVENTORY_LOCATION_A,
+        inventoryLocationName: "Flagship Stockroom",
+        branchId: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function sdkSupplierReceiptsResponse(
+  items: SdkSupplierReceipt[] = [sdkSupplierReceipt()],
+  pageInfo: Partial<SupplierReceiptsResponse["pageInfo"]> = {},
+): SupplierReceiptsResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
 }
 
 export interface RecordedRequest {

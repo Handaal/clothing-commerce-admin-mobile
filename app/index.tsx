@@ -148,6 +148,16 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           "brands",
         )}
       />
+      <InfoRow
+        label="Suppliers"
+        value={
+          access.suppliers?.canRead
+            ? access.suppliers.canManage
+              ? "Read · manage"
+              : "Read"
+            : "No read access"
+        }
+      />
       <Divider />
       {access.catalog.canRead ? (
         <PrimaryButton
@@ -170,14 +180,15 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           onPress={() => router.push("/orders")}
         />
       ) : null}
-      {/* Suppliers has no `/me/context` access flag yet (the Supplier API is not built). We surface the
-          entry unconditionally rather than invent a client-side capability check; the future API is the
-          sole authority, and until it exists the Suppliers screen shows an explicit unavailable state. */}
-      <PrimaryButton
-        testID="open-suppliers"
-        label="Manage suppliers"
-        onPress={() => router.push("/suppliers")}
-      />
+      {/* Suppliers navigation follows the server's supplier read capability from `/me/context`
+          (optional — absent means no access). The API remains the sole authority for every read/write. */}
+      {access.suppliers?.canRead ? (
+        <PrimaryButton
+          testID="open-suppliers"
+          label="Manage suppliers"
+          onPress={() => router.push("/suppliers")}
+        />
+      ) : null}
       <SignOutButton />
     </Frame>
   );

@@ -24,6 +24,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={null}
+        canManage
         onOpenSupplier={noop}
         onCreateSupplier={noop}
         onBack={noop}
@@ -39,6 +40,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={adapter}
+        canManage
         onOpenSupplier={noop}
         onCreateSupplier={noop}
         onBack={noop}
@@ -58,6 +60,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={adapter}
+        canManage
         onOpenSupplier={noop}
         onCreateSupplier={noop}
         onBack={noop}
@@ -75,6 +78,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={adapter}
+        canManage
         onOpenSupplier={noop}
         onCreateSupplier={noop}
         onBack={noop}
@@ -89,6 +93,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={adapter}
+        canManage
         onOpenSupplier={noop}
         onCreateSupplier={noop}
         onBack={noop}
@@ -112,6 +117,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={adapter}
+        canManage
         onOpenSupplier={noop}
         onCreateSupplier={noop}
         onBack={noop}
@@ -132,6 +138,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={adapter}
+        canManage
         onOpenSupplier={noop}
         onCreateSupplier={noop}
         onBack={noop}
@@ -150,6 +157,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={adapter}
+        canManage
         onOpenSupplier={noop}
         onCreateSupplier={noop}
         onBack={noop}
@@ -169,6 +177,7 @@ describe("SuppliersListScreen", () => {
     render(
       <SuppliersListScreen
         adapter={adapter}
+        canManage
         onOpenSupplier={onOpenSupplier}
         onCreateSupplier={onCreateSupplier}
         onBack={noop}
@@ -179,5 +188,23 @@ describe("SuppliersListScreen", () => {
 
     fireEvent.click(screen.getByTestId("create-supplier"));
     expect(onCreateSupplier).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the create affordance when the caller cannot manage suppliers", async () => {
+    const adapter = fakeSupplierAdapter({
+      listSuppliers: async () => page([supplierSummary({ id: SUPPLIER_A })]),
+    });
+    render(
+      <SuppliersListScreen
+        adapter={adapter}
+        canManage={false}
+        onOpenSupplier={noop}
+        onCreateSupplier={noop}
+        onBack={noop}
+      />,
+    );
+    // The read surface still works (rows load); only the create affordance is withheld.
+    await screen.findByTestId(`supplier-row-${SUPPLIER_A}`);
+    expect(screen.queryByTestId("create-supplier")).toBeNull();
   });
 });

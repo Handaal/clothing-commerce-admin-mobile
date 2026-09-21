@@ -1,5 +1,5 @@
 import type { MeContextResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 
 import {
@@ -51,14 +51,14 @@ export interface InventoryOperationsProps {
   /** Test seam: deterministic idempotency keys. Production uses the secure default. */
   generateIdempotencyKey?: IdempotencyKeyFactory;
   /**
-   * Optional Phase 2N seam: a Supplier selector rendered inside the Receive form. Until the Supplier
-   * API defines a receipt supplier field, choosing a supplier has NO effect on the receive request —
-   * this slot is structural only, so the eventual wiring (attach the chosen supplierId to the receipt)
-   * is a narrow change. Production passes nothing today, and the Receive flow works exactly as before
-   * without it. No supplier value is ever added to `receiveStock`/`receiveInventory` here — inventing a
-   * `supplierId` request field before the API contract exists is deliberately avoided.
+   * Phase 2N: OPTIONAL supplier linking for the Receive form. When provided, the form offers these
+   * ACTIVE suppliers (the caller excludes inactive ones — they cannot back a new receipt) plus an
+   * explicit "No supplier" choice, and an optional supplier reference. When omitted, or when the
+   * operator leaves it on "No supplier", the receipt is a legacy no-supplier receipt and behaves
+   * exactly as before. The chosen `supplierId`/`supplierReference` are part of the receive intent, so
+   * changing them changes the idempotency intent (a new key), never a silently mutated retry.
    */
-  receiveSupplierSlot?: ReactNode;
+  receiveSuppliers?: SelectOption[];
 }
 
 type OpKind = "receive" | "adjust" | "transfer";
@@ -142,7 +142,7 @@ export function InventoryOperations(props: InventoryOperationsProps) {
           generateKey={generateKey}
           variantOptions={variantOptions}
           locationOptions={receiveLocationOptions}
-          supplierSlot={props.receiveSupplierSlot}
+          supplierOptions={props.receiveSuppliers}
         />
       ) : null}
       {activeOp === "adjust" && props.write.canAdjust ? (
@@ -181,6 +181,11 @@ function OpTab({
 
 function locationName(locations: InventoryLocationRef[], id: string): string {
   return locations.find((l) => l.id === id)?.name ?? id;
+}
+
+/** Resolve a supplier's display label from the offered options, falling back to the raw id. */
+function supplierLabel(options: SelectOption[] | undefined, id: string): string {
+  return options?.find((o) => o.value === id)?.label ?? id;
 }
 
 /**
@@ -246,23 +251,43 @@ function WriteError<TArgs, TResult>({
 // Receive
 // ---------------------------------------------------------------------------------------------------
 
+/** Sentinel option value for "no supplier" — kept distinct from any real supplier id (a UUID). */
+const NO_SUPPLIER = "";
+
 function ReceiveForm(
   props: InventoryOperationsProps & {
     generateKey: IdempotencyKeyFactory;
     variantOptions: SelectOption[];
     locationOptions: SelectOption[];
-    supplierSlot?: ReactNode;
+    supplierOptions?: SelectOption[];
   },
 ) {
   const [variantId, setVariantId] = useState<string | null>(null);
   const [inventoryLocationId, setLocationId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
+  const [supplierId, setSupplierId] = useState<string>(NO_SUPPLIER);
+  const [supplierReference, setSupplierReference] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+
+  const suppliersEnabled = (props.supplierOptions?.length ?? 0) > 0;
+  // Prepend an explicit "No supplier" choice so leaving a receipt unlinked is a deliberate selection.
+  const supplierSelectOptions = useMemo<SelectOption[]>(
+    () => [{ value: NO_SUPPLIER, label: "No supplier" }, ...(props.supplierOptions ?? [])],
+    [props.supplierOptions],
+  );
+  const hasSupplier = suppliersEnabled && supplierId !== NO_SUPPLIER;
 
   const mutation = useMutation(
     (
-      args: { variantId: string; inventoryLocationId: string; quantity: number; note?: string },
+      args: {
+        variantId: string;
+        inventoryLocationId: string;
+        quantity: number;
+        note?: string;
+        supplierId?: string;
+        supplierReference?: string;
+      },
       key,
     ) => receiveStock(props.client, args, key),
     props.generateKey,
@@ -278,11 +303,15 @@ function ReceiveForm(
         : validatePositiveQuantity(qty);
     setLocalError(problem);
     if (problem || !variantId || !inventoryLocationId) return;
+    const reference = supplierReference.trim();
     mutation.submit({
       variantId,
       inventoryLocationId,
       quantity: qty,
       ...(note.trim() ? { note: note.trim() } : {}),
+      // Supplier link is optional; both fields are omitted entirely for a legacy no-supplier receipt.
+      ...(hasSupplier ? { supplierId } : {}),
+      ...(hasSupplier && reference ? { supplierReference: reference } : {}),
     });
   }
 
@@ -296,12 +325,22 @@ function ReceiveForm(
           mutation.reset();
           setQuantity("");
           setNote("");
+          setSupplierId(NO_SUPPLIER);
+          setSupplierReference("");
         }}
         resetLabel="New receipt"
       >
         <Title>Stock received</Title>
         <InfoRow label="Item" value={`${productName} · ${sku}`} />
         <InfoRow label="Location" value={locationName(props.locations, r.inventoryLocationId)} />
+        {r.supplierId ? (
+          <View testID="receive-supplier-result">
+            <InfoRow label="Supplier" value={supplierLabel(props.supplierOptions, r.supplierId)} />
+          </View>
+        ) : null}
+        {r.supplierReference ? (
+          <InfoRow label="Supplier reference" value={r.supplierReference} />
+        ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Body>On hand now</Body>
           <Badge label={String(r.observedOnHand)} testID="receive-observed-onhand" />
@@ -327,9 +366,29 @@ function ReceiveForm(
         onSelect={setLocationId}
         testIDPrefix="receive-location"
       />
-      {/* Phase 2N seam: an optional Supplier selector slots in here. It does not feed the request until
-          the Supplier API defines a receipt supplier field (see receiveSupplierSlot). */}
-      {props.supplierSlot ?? null}
+      {/* Phase 2N: optional supplier link. Only active suppliers are offered; "No supplier" keeps the
+          receipt a legacy unlinked receipt. A supplier reference is only sent alongside a supplier. */}
+      {suppliersEnabled ? (
+        <>
+          <SelectField
+            label="Supplier (optional)"
+            options={supplierSelectOptions}
+            selected={supplierId}
+            onSelect={setSupplierId}
+            testIDPrefix="receive-supplier"
+          />
+          {hasSupplier ? (
+            <TextField
+              label="Supplier reference (optional)"
+              value={supplierReference}
+              onChangeText={setSupplierReference}
+              placeholder="e.g. GRN-2026-0012"
+              testID="receive-supplier-reference"
+              autoCapitalize="characters"
+            />
+          ) : null}
+        </>
+      ) : null}
       <NumberField
         label="Quantity received"
         value={quantity}

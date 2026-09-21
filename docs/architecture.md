@@ -4,7 +4,7 @@
 Clerk (auth, owned by Mobile)
   │  getToken callback (token only — never a Clerk object)
   ▼
-@shifted/clothing-commerce-sdk 0.7.0  (packed tarball under vendor/, relative file: path)
+@shifted/clothing-commerce-sdk 0.9.0  (packed tarball under vendor/, relative file: path)
   │  owns Authorization, X-Client-Type/Version, X-Tenant-Id
   ▼
 Commerce API  →  authoritative commerce core
@@ -49,19 +49,22 @@ writes). Two contract facts shape the design:
   `access.inventory.write.*`), so write controls cannot be pre-gated per capability; the server is the
   sole authority and a real `403` renders as "Not authorized — nothing was applied".
 
-## Phase 2N Supplier foundation (no API yet)
+## Phase 2N Supplier management (SDK 0.9.0)
 
-The Supplier API/SDK does not exist yet, so Phase 2N ships only the Admin-Mobile UX/domain foundation
-behind a single seam: `resolveSupplierAdapter(client)` (`src/suppliers/adapter.ts`), which returns
-`null` today. Every supplier screen depends on the `SupplierAdapter` interface, never a concrete
-client; with no adapter they render an explicit "not available yet" state and never fabricate
-suppliers, mutations or receiving history. The domain model (`src/suppliers/model.ts`) is Admin-owned
-and independent of any future SDK DTO, so final integration is a narrow DTO→model mapping inside
-`resolveSupplierAdapter`. Reads reuse `useAsync` + the shared bounded paginator; the create/edit form
-and status toggle reuse the `useMutation` + idempotency-key discipline. Search is a typed
-`SupplierListQuery` mapped to a future server query — never a client-side filter. The Inventory Receive
-form exposes an optional, structural-only `receiveSupplierSlot`: it adds no `supplierId` to the receive
-request (the field is not invented before the contract exists), and Receive is unchanged without it.
+Suppliers integrate behind a single seam: `resolveSupplierAdapter(client)` (`src/suppliers/adapter.ts`)
+returns a concrete, SDK-backed `SupplierAdapter` that maps SDK DTOs ⇄ the Admin-owned domain model
+(`src/suppliers/model.ts`). Every supplier screen depends on the interface, never a concrete client, so
+they stay transport-agnostic; the adapter hand-writes no HTTP and imports no API source. Capabilities
+come from the optional `/me/context` `access.suppliers` block via `supplierCapabilities`
+(`src/suppliers/capabilities.ts`): `canRead` gates navigation, `canManage` gates create/edit/status —
+the server stays authoritative (403 renders as access-denied). Reads reuse `useAsync` + the shared
+bounded paginator; the create/edit form and status toggle reuse the `useMutation` + idempotency-key
+discipline, with typed error mapping in `src/suppliers/write-errors.ts`. Search is a typed
+`SupplierListQuery` (search/status/cursor) sent server-side — never a client-side filter. The Inventory
+Receive form takes an **optional** active-supplier selector (`receiveSuppliers`) plus an optional
+supplier reference; "No supplier" is a legacy receipt (unchanged), inactive suppliers are excluded, and
+supplier loading is best-effort so it never blocks receiving. No unit-cost/cost-basis fields exist
+(deliberately deferred by the API).
 
 ## Dependency direction
 
@@ -77,30 +80,30 @@ no tokens, build no headers, and issue no direct `fetch`.
 
 ## Module map
 
-| Concern                               | Module(s)                                                                                                  |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Routes: home                          | `app/index.tsx`                                                                                            |
-| Routes: products                      | `app/products/index.tsx`, `app/products/new.tsx`, `app/products/[productId].tsx`                           |
-| Routes: inventory                     | `app/inventory/index.tsx`                                                                                  |
-| Routes: orders                        | `app/orders/index.tsx`, `app/orders/[orderId].tsx`                                                         |
-| Public config                         | `src/config/env.ts`, `src/config/client-metadata.ts`                                                       |
-| Clerk provider + cache                | `app/_layout.tsx`, `src/auth/token-cache.ts`                                                               |
-| Commerce SDK boundary                 | `src/commerce/client.ts` (getToken wiring)                                                                 |
-| Error classification                  | `src/commerce/errors.ts`                                                                                   |
-| Shared cursor pagination              | `src/commerce/pagination.ts`                                                                               |
-| Tenant policy (pure)                  | `src/tenant/selection.ts`                                                                                  |
-| Tenant bootstrap + storage            | `src/tenant/bootstrap.ts`, `src/tenant/{storage,secure-storage}.ts`                                        |
-| Session state machine                 | `src/session/reducer.ts` (pure), `src/session/SessionProvider.tsx`                                         |
-| Request lifecycle                     | `src/ui/useAsync.ts`                                                                                       |
-| Products screens (2K)                 | `src/products/{ProductsListScreen,CreateProductScreen,ProductManageScreen}.tsx`, `src/products/display.ts` |
-| Catalog logic (pure, 2K)              | `src/catalog/{operations,money,write-errors,observations,brands,media}.ts`                                 |
-| Inventory screen + loader             | `src/inventory/InventoryScreen.tsx`, `src/inventory/load.ts`                                               |
-| Inventory write operations (2G)       | `src/inventory/InventoryOperations.tsx`, `src/inventory/operations.ts`, `src/inventory/write-errors.ts`    |
-| Write lifecycle + idempotency         | `src/ui/useMutation.ts`, `src/inventory/idempotency.ts`                                                    |
-| Orders screens + loader + fulfillment | `src/orders/{OrdersListScreen,OrderDetailScreen}.tsx`, `src/orders/load.ts`, `src/orders/fulfillment.ts`   |
-| Shared UI primitives                  | `src/ui/components.tsx`, `src/ui/SignInScreen.tsx`                                                         |
-| Routes: suppliers (2N)                | `app/suppliers/{index,new,[supplierId]}.tsx`, `app/suppliers/edit/[supplierId].tsx`                        |
-| Supplier foundation (2N)              | `src/suppliers/{model,search,status,adapter,load}.ts`, `src/suppliers/Supplier*.tsx`                       |
+| Concern                               | Module(s)                                                                                                      |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Routes: home                          | `app/index.tsx`                                                                                                |
+| Routes: products                      | `app/products/index.tsx`, `app/products/new.tsx`, `app/products/[productId].tsx`                               |
+| Routes: inventory                     | `app/inventory/index.tsx`                                                                                      |
+| Routes: orders                        | `app/orders/index.tsx`, `app/orders/[orderId].tsx`                                                             |
+| Public config                         | `src/config/env.ts`, `src/config/client-metadata.ts`                                                           |
+| Clerk provider + cache                | `app/_layout.tsx`, `src/auth/token-cache.ts`                                                                   |
+| Commerce SDK boundary                 | `src/commerce/client.ts` (getToken wiring)                                                                     |
+| Error classification                  | `src/commerce/errors.ts`                                                                                       |
+| Shared cursor pagination              | `src/commerce/pagination.ts`                                                                                   |
+| Tenant policy (pure)                  | `src/tenant/selection.ts`                                                                                      |
+| Tenant bootstrap + storage            | `src/tenant/bootstrap.ts`, `src/tenant/{storage,secure-storage}.ts`                                            |
+| Session state machine                 | `src/session/reducer.ts` (pure), `src/session/SessionProvider.tsx`                                             |
+| Request lifecycle                     | `src/ui/useAsync.ts`                                                                                           |
+| Products screens (2K)                 | `src/products/{ProductsListScreen,CreateProductScreen,ProductManageScreen}.tsx`, `src/products/display.ts`     |
+| Catalog logic (pure, 2K)              | `src/catalog/{operations,money,write-errors,observations,brands,media}.ts`                                     |
+| Inventory screen + loader             | `src/inventory/InventoryScreen.tsx`, `src/inventory/load.ts`                                                   |
+| Inventory write operations (2G)       | `src/inventory/InventoryOperations.tsx`, `src/inventory/operations.ts`, `src/inventory/write-errors.ts`        |
+| Write lifecycle + idempotency         | `src/ui/useMutation.ts`, `src/inventory/idempotency.ts`                                                        |
+| Orders screens + loader + fulfillment | `src/orders/{OrdersListScreen,OrderDetailScreen}.tsx`, `src/orders/load.ts`, `src/orders/fulfillment.ts`       |
+| Shared UI primitives                  | `src/ui/components.tsx`, `src/ui/SignInScreen.tsx`                                                             |
+| Routes: suppliers (2N)                | `app/suppliers/{index,new,[supplierId]}.tsx`, `app/suppliers/edit/[supplierId].tsx`                            |
+| Supplier management (2N)              | `src/suppliers/{model,search,status,adapter,load,capabilities,write-errors}.ts`, `src/suppliers/Supplier*.tsx` |
 
 ## Server-authoritative authorization
 

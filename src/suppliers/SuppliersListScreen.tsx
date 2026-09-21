@@ -34,8 +34,10 @@ import { statusFilterLabel, supplierStatusLabel } from "./status";
 import { SupplierUnavailable } from "./SupplierUnavailable";
 
 export interface SuppliersListScreenProps {
-  /** The Supplier integration seam. `null` until the Supplier API/SDK exists (production today). */
+  /** The Supplier integration seam. `null` renders an explicit unavailable state (tests/safety net). */
   adapter: SupplierAdapter | null;
+  /** Server-derived: whether this caller may create suppliers (UX affordance only). */
+  canManage: boolean;
   onOpenSupplier: (supplierId: string) => void;
   onCreateSupplier: () => void;
   onBack: () => void;
@@ -51,6 +53,7 @@ const STATUS_FILTERS: SupplierStatusFilter[] = ["all", "active", "inactive"];
  */
 export function SuppliersListScreen({
   adapter,
+  canManage,
   onOpenSupplier,
   onCreateSupplier,
   onBack,
@@ -65,6 +68,7 @@ export function SuppliersListScreen({
   return (
     <SuppliersListContent
       adapter={adapter}
+      canManage={canManage}
       onOpenSupplier={onOpenSupplier}
       onCreateSupplier={onCreateSupplier}
       onBack={onBack}
@@ -74,6 +78,7 @@ export function SuppliersListScreen({
 
 function SuppliersListContent({
   adapter,
+  canManage,
   onOpenSupplier,
   onCreateSupplier,
   onBack,
@@ -101,9 +106,11 @@ function SuppliersListContent({
   return (
     <ScrollScreen>
       <PageHeader eyebrow="Suppliers" title="Suppliers" onBack={onBack} />
-      {/* Create is offered unconditionally: there is no supplier capability flag in the context yet, and
-          the app must not invent one. The API is the sole authority and a real 403 surfaces on submit. */}
-      <PrimaryButton label="Add supplier" testID="create-supplier" onPress={onCreateSupplier} />
+      {/* Create is offered only when /me/context grants supplier management. The API remains the sole
+          authority and still authorizes the write — a real 403 surfaces on submit even if shown. */}
+      {canManage ? (
+        <PrimaryButton label="Add supplier" testID="create-supplier" onPress={onCreateSupplier} />
+      ) : null}
       <Divider />
 
       <TextField

@@ -11,6 +11,8 @@ vi.mock("expo-crypto", () => ({ randomUUID: () => "unused-native-uuid" }));
 import {
   INVENTORY_LOCATION_A,
   INVENTORY_LOCATION_B,
+  SUPPLIER_A,
+  SUPPLIER_B,
   VARIANT_A,
   adjustResponse,
   inventoryItem,
@@ -473,10 +475,10 @@ describe("Transfer stock", () => {
   });
 });
 
-// Phase 2N prepares Receive for an OPTIONAL Supplier selection. The seam is structural only: without a
-// slot the flow is byte-for-byte unchanged, and even with a slot no supplier value is added to the
-// receive request (inventing a supplierId field before the API contract exists is deliberately avoided).
-describe("Phase 2N supplier receive seam", () => {
+// Phase 2N: Receive gains an OPTIONAL supplier link. Without supplier options the flow is byte-for-byte
+// unchanged (legacy receipt). With options, only the offered (active) suppliers are selectable, and a
+// linked receipt sends supplierId (+ optional supplierReference) as part of the receive intent.
+describe("Phase 2N supplier receive integration", () => {
   const baseProps = {
     locations: LOCATIONS,
     write: WRITE_ACCESS,
@@ -484,7 +486,12 @@ describe("Phase 2N supplier receive seam", () => {
     onConcurrencyConflict: vi.fn(),
   };
 
-  it("renders no supplier field when no slot is provided (Receive is unchanged)", () => {
+  const SUPPLIER_OPTIONS = [
+    { value: SUPPLIER_A, label: "Nile Textiles · SUP-001" },
+    { value: SUPPLIER_B, label: "Delta Fabrics · SUP-002" },
+  ];
+
+  it("renders no supplier field when no supplier options are provided (Receive is unchanged)", () => {
     render(
       <InventoryOperations
         {...baseProps}
@@ -494,11 +501,11 @@ describe("Phase 2N supplier receive seam", () => {
       />,
     );
     fireEvent.click(screen.getByTestId("open-receive"));
-    expect(screen.queryByTestId("supplier-receive-slot")).toBeNull();
+    expect(screen.queryByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeNull();
     expect(screen.getByTestId("receive-submit")).toBeTruthy();
   });
 
-  it("renders a provided supplier slot and still receives with unchanged args (no supplier data sent)", async () => {
+  it("performs a legacy no-supplier receipt (no supplier fields sent) when 'No supplier' is left selected", async () => {
     const receiveInventory = vi.fn().mockResolvedValue(receiveResponse());
     render(
       <InventoryOperations
@@ -506,11 +513,12 @@ describe("Phase 2N supplier receive seam", () => {
         client={{ receiveInventory, adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
         generateIdempotencyKey={keyFactory("K1")}
-        receiveSupplierSlot={<span data-testid="supplier-receive-slot">supplier picker</span>}
+        receiveSuppliers={SUPPLIER_OPTIONS}
       />,
     );
     fireEvent.click(screen.getByTestId("open-receive"));
-    expect(screen.getByTestId("supplier-receive-slot")).toBeTruthy();
+    // The supplier selector is offered but defaults to "No supplier".
+    expect(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeTruthy();
 
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
@@ -518,12 +526,64 @@ describe("Phase 2N supplier receive seam", () => {
     fireEvent.click(screen.getByTestId("receive-submit"));
 
     expect(await screen.findByTestId("receive-success")).toBeTruthy();
-    // The request carries no supplier field — exactly the current contract.
+    // Legacy receipt: no supplier fields on the request — exactly the pre-2N contract.
     expect(receiveInventory).toHaveBeenCalledWith({
       variantId: VARIANT_A,
       inventoryLocationId: INVENTORY_LOCATION_A,
       quantity: 5,
       idempotencyKey: "K1",
     });
+  });
+
+  it("sends supplierId and supplierReference when a supplier is chosen", async () => {
+    const receiveInventory = vi
+      .fn()
+      .mockResolvedValue(
+        receiveResponse({ supplierId: SUPPLIER_A, supplierReference: "GRN-2026-0012" }),
+      );
+    render(
+      <InventoryOperations
+        {...baseProps}
+        client={{ receiveInventory, adjustInventory: vi.fn(), transferInventory: vi.fn() }}
+        onRefresh={vi.fn()}
+        generateIdempotencyKey={keyFactory("K1")}
+        receiveSuppliers={SUPPLIER_OPTIONS}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
+    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
+    fireEvent.click(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`));
+    typeInto("receive-supplier-reference", "GRN-2026-0012");
+    typeInto("receive-quantity", "5");
+    fireEvent.click(screen.getByTestId("receive-submit"));
+
+    expect(await screen.findByTestId("receive-success")).toBeTruthy();
+    expect(receiveInventory).toHaveBeenCalledWith({
+      variantId: VARIANT_A,
+      inventoryLocationId: INVENTORY_LOCATION_A,
+      quantity: 5,
+      supplierId: SUPPLIER_A,
+      supplierReference: "GRN-2026-0012",
+      idempotencyKey: "K1",
+    });
+    // The success panel echoes the linked supplier from the authoritative response.
+    expect(screen.getByTestId("receive-supplier-result")).toBeTruthy();
+  });
+
+  it("only offers the supplied (active) suppliers — an unlisted supplier is not selectable", () => {
+    render(
+      <InventoryOperations
+        {...baseProps}
+        client={{ receiveInventory: vi.fn(), adjustInventory: vi.fn(), transferInventory: vi.fn() }}
+        onRefresh={vi.fn()}
+        generateIdempotencyKey={keyFactory("K1")}
+        receiveSuppliers={[SUPPLIER_OPTIONS[0]]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("open-receive"));
+    expect(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeTruthy();
+    // A supplier the caller excluded (e.g. inactive) is never rendered as an option.
+    expect(screen.queryByTestId(`receive-supplier-${SUPPLIER_B}`)).toBeNull();
   });
 });

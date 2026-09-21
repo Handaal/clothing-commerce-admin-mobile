@@ -24,10 +24,13 @@ import type { Supplier, SupplierAddress, SupplierStatus } from "./model";
 import { SupplierReceivingHistory } from "./SupplierReceivingHistory";
 import { describeSupplierStatus, supplierStatusLabel, supplierStatusToggle } from "./status";
 import { SupplierUnavailable } from "./SupplierUnavailable";
+import { describeSupplierWriteError } from "./write-errors";
 
 export interface SupplierDetailScreenProps {
   adapter: SupplierAdapter | null;
   supplierId: string;
+  /** Server-derived: whether this caller may edit/change the lifecycle of suppliers (UX only). */
+  canManage: boolean;
   onBack: () => void;
   onEdit: (supplierId: string) => void;
   generateIdempotencyKey?: IdempotencyKeyFactory;
@@ -42,6 +45,7 @@ export interface SupplierDetailScreenProps {
 export function SupplierDetailScreen({
   adapter,
   supplierId,
+  canManage,
   onBack,
   onEdit,
   generateIdempotencyKey,
@@ -57,6 +61,7 @@ export function SupplierDetailScreen({
     <SupplierDetailContent
       adapter={adapter}
       supplierId={supplierId}
+      canManage={canManage}
       onBack={onBack}
       onEdit={onEdit}
       generateIdempotencyKey={generateIdempotencyKey}
@@ -67,6 +72,7 @@ export function SupplierDetailScreen({
 function SupplierDetailContent({
   adapter,
   supplierId,
+  canManage,
   onBack,
   onEdit,
   generateIdempotencyKey,
@@ -125,11 +131,13 @@ function SupplierDetailContent({
         <Badge label={supplierStatusLabel(supplier.status)} testID="supplier-detail-status" />
       </View>
       <Body>{describeSupplierStatus(supplier.status)}</Body>
-      <PrimaryButton
-        label="Edit supplier"
-        testID="supplier-edit"
-        onPress={() => onEdit(supplier.id)}
-      />
+      {canManage ? (
+        <PrimaryButton
+          label="Edit supplier"
+          testID="supplier-edit"
+          onPress={() => onEdit(supplier.id)}
+        />
+      ) : null}
       <Divider />
 
       <Eyebrow>Supplier record</Eyebrow>
@@ -143,38 +151,56 @@ function SupplierDetailContent({
       {supplier.updatedAt ? <InfoRow label="Updated" value={supplier.updatedAt} /> : null}
       <InfoRow label="Supplier id" value={supplier.id} />
 
-      <Divider />
-      <Eyebrow>Status</Eyebrow>
-      <Body>
-        Marking a supplier inactive keeps it and its history; it is never deleted. Whether an
-        inactive supplier can be chosen for new receipts is decided by the Commerce API.
-      </Body>
-      <ConfirmButton
-        label={statusMutation.state.status === "submitting" ? "Saving…" : toggle.label}
-        confirmLabel={toggle.confirmLabel}
-        disabled={statusMutation.state.status === "submitting"}
-        testID="supplier-status-toggle"
-        onConfirm={() => statusMutation.submit(toggle.next)}
-      />
-      {submitError ? (
-        <View style={{ gap: 8 }} testID="supplier-status-error">
-          <Title>{errorHeading(submitError.kind)}</Title>
-          <Body>{submitError.message}</Body>
-          {isRetryable(submitError.kind) ? (
-            <PrimaryButton
-              label="Retry"
-              testID="supplier-status-retry"
-              onPress={() => statusMutation.retry()}
+      {canManage ? (
+        <>
+          <Divider />
+          <Eyebrow>Status</Eyebrow>
+          <Body>
+            Marking a supplier inactive keeps it and its history; it is never deleted. An inactive
+            supplier cannot be chosen for new receipts, but its past receipts remain visible.
+          </Body>
+          <ConfirmButton
+            label={statusMutation.state.status === "submitting" ? "Saving…" : toggle.label}
+            confirmLabel={toggle.confirmLabel}
+            disabled={statusMutation.state.status === "submitting"}
+            testID="supplier-status-toggle"
+            onConfirm={() => statusMutation.submit(toggle.next)}
+          />
+          {submitError ? (
+            <StatusError
+              described={describeSupplierWriteError(submitError)}
+              onRetry={() => statusMutation.retry()}
+              onDismiss={() => statusMutation.reset()}
             />
-          ) : (
-            <TextButton label="Dismiss" onPress={() => statusMutation.reset()} />
-          )}
-        </View>
+          ) : null}
+        </>
       ) : null}
 
       {/* Historical receiving records — clearly separated from the editable supplier data above. */}
       <SupplierReceivingHistory adapter={adapter} supplierId={supplier.id} />
     </ScrollScreen>
+  );
+}
+
+function StatusError({
+  described,
+  onRetry,
+  onDismiss,
+}: {
+  described: ReturnType<typeof describeSupplierWriteError>;
+  onRetry: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <View style={{ gap: 8 }} testID="supplier-status-error">
+      <Title>{described.heading}</Title>
+      <Body>{described.message}</Body>
+      {described.recovery === "retry" ? (
+        <PrimaryButton label="Retry" testID="supplier-status-retry" onPress={onRetry} />
+      ) : (
+        <TextButton label="Dismiss" onPress={onDismiss} />
+      )}
+    </View>
   );
 }
 

@@ -14,8 +14,8 @@ export function supplierStatusLabel(status: SupplierStatus): string {
 /** A one-line explanation shown next to the status, reinforcing that inactive is not deleted. */
 export function describeSupplierStatus(status: SupplierStatus): string {
   return status === "active"
-    ? "Active — available for new receiving once the Supplier API is connected."
-    : "Inactive — retained for history; not deleted. Eligibility for new receipts is server-decided.";
+    ? "Active — available to select for new stock receipts."
+    : "Inactive — retained for history; not deleted, and not selectable for new receipts.";
 }
 
 /** The label/verb for the status-toggle confirmation control. */

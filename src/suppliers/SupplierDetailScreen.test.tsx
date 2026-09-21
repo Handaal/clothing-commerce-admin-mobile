@@ -29,7 +29,13 @@ function receiptPage(items = [supplierReceipt()]) {
 describe("SupplierDetailScreen", () => {
   it("renders the unavailable state (no fabricated supplier) when there is no adapter", () => {
     render(
-      <SupplierDetailScreen adapter={null} supplierId={SUPPLIER_A} onBack={noop} onEdit={noop} />,
+      <SupplierDetailScreen
+        adapter={null}
+        canManage
+        supplierId={SUPPLIER_A}
+        onBack={noop}
+        onEdit={noop}
+      />,
     );
     expect(screen.getByTestId("supplier-unavailable")).toBeTruthy();
     expect(screen.queryByTestId("supplier-detail-status")).toBeNull();
@@ -46,6 +52,7 @@ describe("SupplierDetailScreen", () => {
       <SupplierDetailScreen
         adapter={adapter}
         supplierId={SUPPLIER_A}
+        canManage
         onBack={noop}
         onEdit={onEdit}
       />,
@@ -66,6 +73,7 @@ describe("SupplierDetailScreen", () => {
       <SupplierDetailScreen
         adapter={adapter}
         supplierId={SUPPLIER_A}
+        canManage
         onBack={noop}
         onEdit={noop}
       />,
@@ -90,6 +98,7 @@ describe("SupplierDetailScreen", () => {
       <SupplierDetailScreen
         adapter={adapter}
         supplierId={SUPPLIER_A}
+        canManage
         onBack={noop}
         onEdit={noop}
         generateIdempotencyKey={keyFactory("K1")}
@@ -117,6 +126,7 @@ describe("SupplierDetailScreen", () => {
       <SupplierDetailScreen
         adapter={adapter}
         supplierId={SUPPLIER_A}
+        canManage
         onBack={noop}
         onEdit={noop}
       />,
@@ -124,6 +134,26 @@ describe("SupplierDetailScreen", () => {
     await screen.findByTestId("supplier-detail-status");
     expect(screen.queryByText(/^delete$/i)).toBeNull();
     expect(screen.queryByText(/permanently/i)).toBeNull();
+  });
+
+  it("hides edit and status controls when the caller cannot manage suppliers", async () => {
+    const adapter = fakeSupplierAdapter({
+      getSupplier: async () => supplier({ id: SUPPLIER_A, status: "active" }),
+      listSupplierReceipts: async () => receiptPage([]),
+    });
+    render(
+      <SupplierDetailScreen
+        adapter={adapter}
+        canManage={false}
+        supplierId={SUPPLIER_A}
+        onBack={noop}
+        onEdit={noop}
+      />,
+    );
+    // The record is still readable; only the management affordances are withheld.
+    await screen.findByTestId("supplier-detail-status");
+    expect(screen.queryByTestId("supplier-edit")).toBeNull();
+    expect(screen.queryByTestId("supplier-status-toggle")).toBeNull();
   });
 
   it("surfaces a load error", async () => {
@@ -136,6 +166,7 @@ describe("SupplierDetailScreen", () => {
       <SupplierDetailScreen
         adapter={adapter}
         supplierId={SUPPLIER_A}
+        canManage
         onBack={noop}
         onEdit={noop}
       />,

@@ -155,6 +155,32 @@ describe("SupplierForm — create", () => {
     expect(await screen.findByText("Access denied")).toBeTruthy();
     expect(screen.queryByTestId("supplier-submit-retry")).toBeNull();
   });
+
+  it("surfaces a duplicate reference code as a correctable edit (never a fake success)", async () => {
+    const onSaved = vi.fn();
+    const createSupplier = vi
+      .fn()
+      .mockRejectedValue(new ApiHttpError("dup", 409, "SUPPLIER_CODE_CONFLICT", null));
+    const adapter = fakeSupplierAdapter({ createSupplier });
+    render(
+      <SupplierForm
+        mode="create"
+        adapter={adapter}
+        onSaved={onSaved}
+        onBack={noop}
+        generateIdempotencyKey={keyFactory("K1")}
+      />,
+    );
+    typeInto("supplier-name", "Nile Textiles");
+    typeInto("supplier-reference", "SUP-001");
+    fireEvent.click(screen.getByTestId("supplier-submit"));
+
+    expect(await screen.findByText("Reference code already in use")).toBeTruthy();
+    // A correctable rejection offers an edit affordance, not a key-reusing retry, and never saves.
+    expect(screen.getByTestId("supplier-submit-edit")).toBeTruthy();
+    expect(screen.queryByTestId("supplier-submit-retry")).toBeNull();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
 });
 
 describe("SupplierForm — edit", () => {

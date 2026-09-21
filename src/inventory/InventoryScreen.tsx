@@ -5,6 +5,9 @@ import { View } from "react-native";
 // Feature-agnostic Commerce-error display helpers, shared with the Products read surface.
 import { errorHeading, isRetryable } from "../products/display";
 import { useSession } from "../session/SessionProvider";
+import { resolveSupplierAdapter } from "../suppliers/adapter";
+import { loadAllSuppliers } from "../suppliers/load";
+import type { SupplierSummary } from "../suppliers/model";
 import {
   Badge,
   Body,
@@ -14,6 +17,7 @@ import {
   PageHeader,
   PrimaryButton,
   ScrollScreen,
+  type SelectOption,
   SurfaceRow,
   Title,
 } from "../ui/components";
@@ -57,6 +61,33 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
   const load = useCallback(() => loadAllInventory(client), [client]);
   const { state, reload } = useAsync<InventoryItem[]>(load);
 
+  // Phase 2N: load ACTIVE suppliers to offer for optional receipt linking, only when the caller has
+  // supplier read access. This is best-effort — supplier linking is optional, so a failed or in-flight
+  // supplier load never blocks receiving: the Receive form simply falls back to a legacy no-supplier
+  // receipt. Inactive suppliers are excluded server-side (status filter) so they are never selectable.
+  const supplierAdapter = useMemo(
+    () => (context.access.suppliers?.canRead ? resolveSupplierAdapter(client) : null),
+    [client, context.access.suppliers?.canRead],
+  );
+  const loadSuppliers = useCallback(
+    () =>
+      supplierAdapter
+        ? loadAllSuppliers(supplierAdapter, { status: "active" })
+        : Promise.resolve<SupplierSummary[]>([]),
+    [supplierAdapter],
+  );
+  const suppliers = useAsync<SupplierSummary[]>(loadSuppliers);
+  const receiveSuppliers = useMemo<SelectOption[] | undefined>(
+    () =>
+      suppliers.state.status === "success"
+        ? suppliers.state.data.map((s) => ({
+            value: s.id,
+            label: s.referenceCode ? `${s.name} · ${s.referenceCode}` : s.name,
+          }))
+        : undefined,
+    [suppliers.state],
+  );
+
   // The inventory item carries only a location id; the human name comes from /me/context access,
   // mirroring how Products resolves brand names. Locations not present in access simply show their
   // id — the quantity is never hidden or altered because a name is missing.
@@ -96,6 +127,7 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
           items={state.data}
           onRefresh={reload}
           onConcurrencyConflict={refreshAfterConcurrency}
+          receiveSuppliers={receiveSuppliers}
         />
       ) : null}
       {state.status === "success" ? <Divider /> : null}
