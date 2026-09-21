@@ -148,6 +148,16 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           "brands",
         )}
       />
+      <InfoRow
+        label="Suppliers"
+        value={
+          access.suppliers?.canRead
+            ? access.suppliers.canManage
+              ? "Read · manage"
+              : "Read"
+            : "No read access"
+        }
+      />
       <Divider />
       {access.catalog.canRead ? (
         <PrimaryButton
@@ -168,6 +178,15 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           testID="open-orders"
           label="View orders"
           onPress={() => router.push("/orders")}
+        />
+      ) : null}
+      {/* Suppliers navigation follows the server's supplier read capability from `/me/context`
+          (optional — absent means no access). The API remains the sole authority for every read/write. */}
+      {access.suppliers?.canRead ? (
+        <PrimaryButton
+          testID="open-suppliers"
+          label="Manage suppliers"
+          onPress={() => router.push("/suppliers")}
         />
       ) : null}
       <SignOutButton />

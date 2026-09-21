@@ -99,6 +99,47 @@ here, even though the SDK exposes `createReturn` / `settleRefund`).
 
 See [Phase 2M validation](docs/phase-2m-validation.md) for acceptance evidence and limits.
 
+## Supplier management (Phase 2N)
+
+**Integrated against the real Supplier API (SDK 0.9.0).** The Commerce API's Supplier Core has merged
+and its contract is frozen; Admin Mobile now reads and writes suppliers through the SDK. The Phase 2N
+foundation was built first, so this was a narrow, mapping-only integration. Nothing fabricates supplier
+data — the server is authoritative for persistence, uniqueness, lifecycle and permissions. See
+[docs/phase-2n-foundation.md](docs/phase-2n-foundation.md) for the full contract write-up.
+
+- **Capabilities & navigation:** `/me/context` exposes an optional `access.suppliers`
+  `{ canRead, canManage }`, read by `supplierCapabilities` (`src/suppliers/capabilities.ts`). `canRead`
+  gates the **Manage suppliers** entry; `canManage` gates **create** (list) and **edit** + **status
+  change** (detail). The API still authorizes every read/write, and a 403 surfaces as access-denied
+  (Catalog · Inventory · Orders · Returns are untouched).
+- **Integration seam** (`resolveSupplierAdapter`, `src/suppliers/adapter.ts`): a concrete, SDK-backed
+  `SupplierAdapter` mapping SDK DTOs ⇄ the Admin-owned model (`referenceCode`⇄`code`, null⇄undefined,
+  structured address⇄flat string). Screens depend only on the interface; no hand-written HTTP, no API
+  source imports, and the SDK owns the idempotency header.
+- **List + search** (`SuppliersListScreen.tsx`, `search.ts`): loading / empty / classified-error /
+  populated states and active-inactive presentation. The typed search state (`term` + status filter)
+  maps to a **server-side** `SupplierListQuery` (search/status/cursor) followed by the shared bounded
+  paginator — never a client-side filter of a downloaded set.
+- **Detail** (`SupplierDetailScreen.tsx`): the editable record and its **receiving-history** section
+  are clearly separated, with a confirmed, reversible active/inactive toggle — never a delete.
+- **Create/edit** (`SupplierForm.tsx`): one reusable form mapping the normalized draft to the SDK
+  create/update inputs, submitting with an idempotency key (retry reuses the same key; a correctable
+  rejection like a duplicate code offers an edit affordance). `onSaved` fires only on the real response.
+- **Receiving history** (`SupplierReceivingHistory.tsx`): reads the canonical `listSupplierReceipts`
+  page (date · destination · reference · lines · quantities · actor). Not a second ledger, never
+  reconstructed client-side; loads independently so an `inventory.read` scope denial renders distinctly.
+- **Inventory Receive linkage:** the Receive form offers an **optional** active-supplier selector plus
+  an optional supplier reference (`InventoryOperations.tsx` `receiveSuppliers`, active suppliers loaded
+  in `InventoryScreen.tsx`). **"No supplier"** keeps a legacy receipt unchanged; inactive suppliers are
+  excluded; supplier linking is best-effort and never blocks receiving.
+
+### Deferrals & non-goals
+
+**No unit-cost/cost-basis of any kind** (supplier cost, cost price, acquisition/landed cost,
+margin/profit) — the API deliberately deferred cost accounting. Also **not** built: Purchase Orders,
+RFQs, supplier invoices, Accounts Payable, procurement approvals, a supplier portal, supplier payments,
+and **permanent supplier deletion** (inactive is a retained state, not a delete).
+
 ## Separate-repo architecture
 
 This repository is fully standalone. It talks to the Commerce API **only** through a versioned,
@@ -656,8 +697,11 @@ against the real SDK 0.6.0 types.
 ## Not in this phase
 
 The writes are the catalog operations (Create / Edit / Lifecycle / Variants / Prices / Media /
-Publish) and Inventory **Receive / Adjust / Transfer**. Order and fulfillment mutations, payments,
-refunds/returns, customer management, suppliers, staff, vouchers, returns, dashboards,
+Publish), Inventory **Receive / Adjust / Transfer**, and Supplier **create / edit / activate–deactivate**
+plus optional supplier-linked receiving (Phase 2N, integrated on SDK 0.9.0). Order and fulfillment
+mutations, payments, refunds/returns, customer management, staff, vouchers, dashboards,
 reporting/analytics, taxonomy (category/collection) writes, website layout editing, POS, storefront
-checkout, and cart are **out of scope** and not implemented here. The catalog UX is left extensible for
-a future additive taxonomy slice.
+checkout, and cart are **out of scope** and not implemented here. Supplier **unit cost / cost-basis**
+accounting and procurement (Purchase Orders, RFQs, invoices, Accounts Payable, approvals, portal,
+payments) plus permanent supplier deletion are explicit **non-goals**. The catalog UX is left extensible
+for a future additive taxonomy slice.

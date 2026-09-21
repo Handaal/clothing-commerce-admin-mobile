@@ -19,9 +19,18 @@ import type {
   ReturnDetailResponse,
   ReturnHistoryResponse,
   SetVariantPriceResponse,
+  Supplier as SdkSupplier,
+  SupplierListResponse,
+  SupplierReceipt as SdkSupplierReceipt,
+  SupplierReceiptsResponse,
+  SupplierSummary as SdkSupplierSummary,
   TransferInventoryResponse,
   UnpublishProductResponse,
 } from "@shifted/clothing-commerce-sdk";
+
+import type { CursorPage } from "../commerce/pagination";
+import type { SupplierAdapter } from "../suppliers/adapter";
+import type { Supplier, SupplierReceipt, SupplierSummary } from "../suppliers/model";
 
 // Deterministic, schema-valid fixtures for the SDK contracts (UUIDs must be valid v4-shaped strings).
 export const TENANT_A = "11111111-1111-4111-8111-111111111111";
@@ -37,6 +46,8 @@ export interface MeContextOverrides {
   catalog?: Partial<MeContextResponse["access"]["catalog"]>;
   inventory?: Partial<MeContextResponse["access"]["inventory"]>;
   orders?: Partial<MeContextResponse["access"]["orders"]>;
+  /** `null` omits the suppliers capability entirely (older server / no access at all). */
+  suppliers?: NonNullable<MeContextResponse["access"]["suppliers"]> | null;
 }
 
 export function meContext(tenantId: string, overrides: MeContextOverrides = {}): MeContextResponse {
@@ -53,6 +64,11 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
         ...overrides.inventory,
       },
       orders: { canRead: true, tenantWide: false, brands: [], branches: [], ...overrides.orders },
+      // Suppliers capability is optional on the real context. Default to read+manage so navigation and
+      // management affordances are exercised; pass `suppliers: null` to omit it, or a partial to vary it.
+      ...(overrides.suppliers === null
+        ? {}
+        : { suppliers: overrides.suppliers ?? { canRead: true, canManage: true } }),
     },
   };
 }
@@ -454,6 +470,159 @@ export function returnHistory(
   items: ReturnDetailResponse[],
   pageInfo: Partial<ReturnHistoryResponse["pageInfo"]> = {},
 ): ReturnHistoryResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Phase 2N Suppliers (foundation only — no Supplier SDK exists yet). These fixtures build the local,
+// Admin-owned model and a fake adapter, used ONLY in tests. Production has no adapter and shows the
+// unavailable state; nothing here fabricates production supplier data.
+// ---------------------------------------------------------------------------------------------------
+
+export const SUPPLIER_A = "a5a5a5a5-a5a5-4a5a-8a5a-a5a5a5a5a5a5";
+export const SUPPLIER_B = "b6b6b6b6-b6b6-4b6b-8b6b-b6b6b6b6b6b6";
+export const SUPPLIER_RECEIPT_A = "c7c7c7c7-c7c7-4c7c-8c7c-c7c7c7c7c7c7";
+
+export function supplierSummary(overrides: Partial<SupplierSummary> = {}): SupplierSummary {
+  return {
+    id: SUPPLIER_A,
+    name: "Nile Textiles Co.",
+    referenceCode: "SUP-001",
+    contactPerson: "Mona Adel",
+    phone: "+20 10 1234 5678",
+    email: "orders@niletextiles.example",
+    status: "active",
+    ...overrides,
+  };
+}
+
+export function supplier(overrides: Partial<Supplier> = {}): Supplier {
+  return {
+    id: SUPPLIER_A,
+    name: "Nile Textiles Co.",
+    referenceCode: "SUP-001",
+    contactPerson: "Mona Adel",
+    phone: "+20 10 1234 5678",
+    email: "orders@niletextiles.example",
+    address: "12 Corniche El Nil, Cairo, Cairo Governorate, 11511, EG",
+    notes: "Primary linen supplier.",
+    status: "active",
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-09-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function supplierReceipt(overrides: Partial<SupplierReceipt> = {}): SupplierReceipt {
+  return {
+    id: SUPPLIER_RECEIPT_A,
+    receivedAt: "2026-09-12T10:00:00.000Z",
+    locationId: INVENTORY_LOCATION_A,
+    locationName: "Flagship Stockroom",
+    reference: "GRN-2026-0012",
+    actor: MEMBERSHIP_A,
+    lines: [{ productName: "Linen Shirt", sku: "LS-001-M", variantId: VARIANT_A, quantity: 20 }],
+    ...overrides,
+  };
+}
+
+function page<T>(items: T[], overrides: Partial<CursorPage<T>["pageInfo"]> = {}): CursorPage<T> {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...overrides } };
+}
+
+/**
+ * Build a fake {@link SupplierAdapter} for tests. Each method defaults to a schema-valid success and
+ * can be overridden per test (including with rejections). This is the test-only stand-in for the
+ * future SDK-backed adapter; production still resolves to `null`.
+ */
+export function fakeSupplierAdapter(overrides: Partial<SupplierAdapter> = {}): SupplierAdapter {
+  return {
+    listSuppliers: async () => page([supplierSummary()]),
+    getSupplier: async () => supplier(),
+    createSupplier: async (draft) => supplier({ ...draft, id: SUPPLIER_A }),
+    updateSupplier: async (id, draft) => supplier({ ...draft, id }),
+    setSupplierStatus: async (id, status) => supplier({ id, status }),
+    listSupplierReceipts: async () => page([supplierReceipt()]),
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Phase 2N Suppliers — REAL SDK 0.9.0 DTO fixtures. These are the wire shapes the SDK returns; the
+// adapter maps them onto the local model above. Kept separate from the local-model fixtures so adapter
+// tests assert the mapping against the actual contract, never against the app's own vocabulary.
+// ---------------------------------------------------------------------------------------------------
+
+export function sdkSupplier(overrides: Partial<SdkSupplier> = {}): SdkSupplier {
+  return {
+    id: SUPPLIER_A,
+    tenantId: TENANT_A,
+    name: "Nile Textiles Co.",
+    code: "SUP-001",
+    status: "active",
+    contactPerson: "Mona Adel",
+    phone: "+20 10 1234 5678",
+    email: "orders@niletextiles.example",
+    address: "12 Corniche El Nil, Cairo",
+    notes: "Primary linen supplier.",
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-09-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function sdkSupplierSummary(
+  overrides: Partial<SdkSupplierSummary> = {},
+): SdkSupplierSummary {
+  return {
+    id: SUPPLIER_A,
+    tenantId: TENANT_A,
+    name: "Nile Textiles Co.",
+    code: "SUP-001",
+    status: "active",
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-09-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function sdkSupplierListResponse(
+  items: SdkSupplierSummary[] = [sdkSupplierSummary()],
+  pageInfo: Partial<SupplierListResponse["pageInfo"]> = {},
+): SupplierListResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
+}
+
+export function sdkSupplierReceipt(
+  overrides: Partial<SdkSupplierReceipt> = {},
+): SdkSupplierReceipt {
+  return {
+    operationId: SUPPLIER_RECEIPT_A,
+    receivedAt: "2026-09-12T10:00:00.000Z",
+    supplierId: SUPPLIER_A,
+    supplierName: "Nile Textiles Co.",
+    supplierCode: "SUP-001",
+    supplierReference: "GRN-2026-0012",
+    actorMembershipId: MEMBERSHIP_A,
+    lines: [
+      {
+        variantId: VARIANT_A,
+        sku: "LS-001-M",
+        productName: "Linen Shirt",
+        quantity: 20,
+        inventoryLocationId: INVENTORY_LOCATION_A,
+        inventoryLocationName: "Flagship Stockroom",
+        branchId: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function sdkSupplierReceiptsResponse(
+  items: SdkSupplierReceipt[] = [sdkSupplierReceipt()],
+  pageInfo: Partial<SupplierReceiptsResponse["pageInfo"]> = {},
+): SupplierReceiptsResponse {
   return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
 }
 

@@ -6,12 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   INVENTORY_LOCATION_A,
   MEMBERSHIP_A,
+  SUPPLIER_A,
   TENANT_A,
   VARIANT_A,
   VARIANT_B,
   inventoryItem,
   inventoryList,
   meContext,
+  sdkSupplierListResponse,
+  sdkSupplierSummary,
   tenant,
 } from "../test-support/fixtures";
 import { createMemoryTenantStorage } from "../tenant/storage";
@@ -21,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   getMyTenants: vi.fn(),
   getContext: vi.fn(),
   listInventory: vi.fn(),
+  listSuppliers: vi.fn(),
   receiveInventory: vi.fn(),
   adjustInventory: vi.fn(),
   transferInventory: vi.fn(),
@@ -52,6 +56,7 @@ vi.mock("../commerce/client", () => ({
         tenantId,
         getContext: mocks.getContext,
         listInventory: mocks.listInventory,
+        listSuppliers: mocks.listSuppliers,
         receiveInventory: mocks.receiveInventory,
         adjustInventory: mocks.adjustInventory,
         transferInventory: mocks.transferInventory,
@@ -114,6 +119,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getMyTenants.mockResolvedValue([tenant(TENANT_A, "Acme", MEMBERSHIP_A)]);
   mocks.getContext.mockResolvedValue(meContext(TENANT_A, READABLE_INVENTORY));
+  // Default: no suppliers to offer. Supplier linking is best-effort and never blocks receiving.
+  mocks.listSuppliers.mockResolvedValue({
+    items: [],
+    pageInfo: { nextCursor: null, hasMore: false },
+  });
   mocks.randomUUID.mockReset().mockReturnValueOnce("K1").mockReturnValueOnce("K2");
 });
 
@@ -275,6 +285,40 @@ describe("InventoryScreen", () => {
     expect(screen.getByTestId("open-receive")).toBeTruthy();
     expect(screen.getByTestId("open-adjust")).toBeTruthy();
     expect(screen.getByTestId("open-transfer")).toBeTruthy();
+  });
+
+  it("loads ACTIVE suppliers and offers them in the Receive form", async () => {
+    mocks.listInventory.mockResolvedValue(
+      inventoryList([inventoryItem({ productName: "Linen Shirt" })]),
+    );
+    mocks.listSuppliers.mockResolvedValue(
+      sdkSupplierListResponse([sdkSupplierSummary({ id: SUPPLIER_A, name: "Nile Textiles" })]),
+    );
+    renderInventory();
+    await screen.findByText("Linen Shirt");
+
+    // Only ACTIVE suppliers are requested — inactive ones are excluded server-side, never selectable.
+    await waitFor(() =>
+      expect(mocks.listSuppliers).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "active" }),
+      ),
+    );
+    fireEvent.click(screen.getByTestId("open-receive"));
+    expect(await screen.findByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeTruthy();
+  });
+
+  it("still receives (legacy, no supplier field) when supplier loading fails — linking is optional", async () => {
+    mocks.listInventory.mockResolvedValue(
+      inventoryList([inventoryItem({ productName: "Linen Shirt" })]),
+    );
+    mocks.listSuppliers.mockRejectedValue(new ApiNetworkError("suppliers down"));
+    renderInventory();
+    await screen.findByText("Linen Shirt");
+
+    fireEvent.click(screen.getByTestId("open-receive"));
+    // No supplier selector appears, and the Receive form is fully usable — a legacy receipt.
+    expect(screen.queryByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeNull();
+    expect(screen.getByTestId("receive-submit")).toBeTruthy();
   });
 
   it("on adjustment concurrency refreshes, shows a persistent notice, and requires fresh input", async () => {

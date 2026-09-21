@@ -24,6 +24,13 @@ export interface ReceiveArgs {
   inventoryLocationId: string;
   quantity: number;
   note?: string;
+  /**
+   * Phase 2N: an OPTIONAL supplier link for this receipt. Both are omitted for a legacy (no-supplier)
+   * receipt, which behaves exactly as before. The API records them on the operation and rejects an
+   * inactive supplier (SUPPLIER_INACTIVE); the app only offers active suppliers for selection.
+   */
+  supplierId?: string;
+  supplierReference?: string;
 }
 
 export interface AdjustArgs {
