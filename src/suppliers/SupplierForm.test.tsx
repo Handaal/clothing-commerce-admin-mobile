@@ -93,6 +93,32 @@ describe("SupplierForm — create", () => {
     );
   });
 
+  it("submits the free-form address verbatim in the draft", async () => {
+    const createSupplier = vi
+      .fn()
+      .mockResolvedValue(supplier({ id: SUPPLIER_A, name: "Nile Textiles", status: "active" }));
+    const adapter = fakeSupplierAdapter({ createSupplier });
+    render(
+      <SupplierForm
+        mode="create"
+        adapter={adapter}
+        onSaved={noop}
+        onBack={noop}
+        generateIdempotencyKey={keyFactory("K1")}
+      />,
+    );
+    typeInto("supplier-name", "Nile Textiles");
+    typeInto("supplier-address", "12 Corniche El Nil, Cairo");
+    fireEvent.click(screen.getByTestId("supplier-submit"));
+
+    expect(await screen.findByTestId("supplier-saved-continue")).toBeTruthy();
+    expect(createSupplier.mock.calls[0][0]).toEqual({
+      name: "Nile Textiles",
+      address: "12 Corniche El Nil, Cairo",
+      status: "active",
+    });
+  });
+
   it("blocks a duplicate submit while the create is in flight", () => {
     const createSupplier = vi.fn().mockReturnValue(new Promise(() => {}));
     const adapter = fakeSupplierAdapter({ createSupplier });

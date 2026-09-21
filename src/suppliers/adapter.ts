@@ -24,7 +24,6 @@ import type {
 import type { CursorPage } from "../commerce/pagination";
 import type {
   Supplier,
-  SupplierAddress,
   SupplierDraft,
   SupplierReceipt,
   SupplierStatus,
@@ -72,29 +71,10 @@ function orUndefined(value: string | null): string | undefined {
 }
 
 /**
- * The SDK carries `address` as a single free-text string (the API stores no structured address). The
- * local model's structured {@link SupplierAddress} is a UX input convenience; on read the whole
- * returned string is surfaced as `line1` so nothing is fabricated or lost. On write it is flattened
- * back to one string (see {@link flattenAddress}).
+ * The SDK and API both carry `address` as a single free-text string. The local model matches that
+ * contract exactly (`address?: string`), so mapping is a straight `null`↔`undefined` translation with
+ * no flatten/inflate step — a create/edit/reload round-trips the address verbatim.
  */
-function inflateAddress(address: string | null): SupplierAddress | undefined {
-  const trimmed = address?.trim();
-  return trimmed ? { line1: trimmed } : undefined;
-}
-
-function flattenAddress(address: SupplierAddress | undefined): string | null {
-  if (!address) return null;
-  const parts = [
-    address.line1,
-    address.line2,
-    address.city,
-    address.region,
-    address.postalCode,
-    address.countryCode,
-  ].filter((part): part is string => Boolean(part && part.trim()));
-  return parts.length > 0 ? parts.join(", ") : null;
-}
-
 function mapSupplier(dto: SdkSupplier): Supplier {
   return {
     id: dto.id,
@@ -104,7 +84,7 @@ function mapSupplier(dto: SdkSupplier): Supplier {
     contactPerson: orUndefined(dto.contactPerson),
     phone: orUndefined(dto.phone),
     email: orUndefined(dto.email),
-    address: inflateAddress(dto.address),
+    address: orUndefined(dto.address),
     notes: orUndefined(dto.notes),
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
@@ -168,7 +148,7 @@ function toCreateRequest(draft: SupplierDraft): CreateSupplierRequest {
     contactPerson: draft.contactPerson ?? null,
     phone: draft.phone ?? null,
     email: draft.email ?? null,
-    address: flattenAddress(draft.address),
+    address: draft.address ?? null,
     notes: draft.notes ?? null,
   };
 }

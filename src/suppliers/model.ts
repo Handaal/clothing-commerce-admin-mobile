@@ -10,17 +10,6 @@
 
 export type SupplierStatus = "active" | "inactive";
 
-/** A postal address, all parts optional — different suppliers carry different amounts of detail. */
-export interface SupplierAddress {
-  line1?: string;
-  line2?: string;
-  city?: string;
-  region?: string;
-  postalCode?: string;
-  /** ISO-3166 alpha-2 as a UX hint (e.g. "EG"); the API validates the real thing. */
-  countryCode?: string;
-}
-
 /** The editable Supplier fields captured by the create/edit form. */
 export interface SupplierDraft {
   name: string;
@@ -28,7 +17,12 @@ export interface SupplierDraft {
   contactPerson?: string;
   phone?: string;
   email?: string;
-  address?: SupplierAddress;
+  /**
+   * Free-form postal address as one string. The canonical API stores the Supplier address as a single
+   * text field, so V1 captures and round-trips it verbatim rather than parsing structured parts. See
+   * `docs/phase-2n-foundation.md` — structured address fields are deferred unless the API adds them.
+   */
+  address?: string;
   notes?: string;
   status: SupplierStatus;
 }
@@ -87,16 +81,13 @@ export const SUPPLIER_FIELD_LIMITS = {
   contactPerson: 120,
   phone: 40,
   email: 254,
-  addressLine: 120,
-  city: 80,
-  region: 80,
-  postalCode: 20,
-  countryCode: 2,
+  // Matches the canonical API's `address` cap (optionalText(1000)); the server stays authoritative.
+  address: 1000,
   notes: 2000,
 } as const;
 
 export type SupplierField =
-  "name" | "referenceCode" | "contactPerson" | "phone" | "email" | "notes";
+  "name" | "referenceCode" | "contactPerson" | "phone" | "email" | "address" | "notes";
 
 export type SupplierFieldErrors = Partial<Record<SupplierField, string>>;
 
@@ -173,6 +164,11 @@ export function validateSupplierContactPerson(contactPerson: string | undefined)
   return validateOptionalLength(contactPerson, SUPPLIER_FIELD_LIMITS.contactPerson, "contact name");
 }
 
+/** Address is optional free-form text; the only local check is the length cap. */
+export function validateSupplierAddress(address: string | undefined): string | null {
+  return validateOptionalLength(address, SUPPLIER_FIELD_LIMITS.address, "address");
+}
+
 export function validateSupplierNotes(notes: string | undefined): string | null {
   return validateOptionalLength(notes, SUPPLIER_FIELD_LIMITS.notes, "notes");
 }
@@ -190,6 +186,8 @@ export function validateSupplierDraft(draft: SupplierDraft): SupplierFieldErrors
   if (phone) errors.phone = phone;
   const email = validateSupplierEmail(draft.email);
   if (email) errors.email = email;
+  const address = validateSupplierAddress(draft.address);
+  if (address) errors.address = address;
   const notes = validateSupplierNotes(draft.notes);
   if (notes) errors.notes = notes;
   return errors;
@@ -199,27 +197,10 @@ export function hasSupplierErrors(errors: SupplierFieldErrors): boolean {
   return Object.keys(errors).length > 0;
 }
 
-function normalizeAddress(address: SupplierAddress | undefined): SupplierAddress | undefined {
-  if (!address) return undefined;
-  const next: SupplierAddress = {};
-  const line1 = trimOrUndefined(address.line1);
-  const line2 = trimOrUndefined(address.line2);
-  const city = trimOrUndefined(address.city);
-  const region = trimOrUndefined(address.region);
-  const postalCode = trimOrUndefined(address.postalCode);
-  const countryCode = trimOrUndefined(address.countryCode);
-  if (line1) next.line1 = line1;
-  if (line2) next.line2 = line2;
-  if (city) next.city = city;
-  if (region) next.region = region;
-  if (postalCode) next.postalCode = postalCode;
-  if (countryCode) next.countryCode = countryCode.toUpperCase();
-  return Object.keys(next).length > 0 ? next : undefined;
-}
-
 /**
  * Produce the canonical draft to submit: trim every string, drop empty optionals entirely (so the
- * adapter never sends `""`), lowercase the email and uppercase the country code. Required `name` and
+ * adapter never sends `""`), and lowercase the email. The address is trimmed free-form text — its
+ * internal newlines are preserved so a multiline address survives verbatim. Required `name` and
  * `status` are always present. This is the single shape the submit seam receives.
  */
 export function normalizeSupplierDraft(draft: SupplierDraft): SupplierDraft {
@@ -231,13 +212,13 @@ export function normalizeSupplierDraft(draft: SupplierDraft): SupplierDraft {
   const contactPerson = trimOrUndefined(draft.contactPerson);
   const phone = trimOrUndefined(draft.phone);
   const email = trimOrUndefined(draft.email);
+  const address = trimOrUndefined(draft.address);
   const notes = trimOrUndefined(draft.notes);
-  const address = normalizeAddress(draft.address);
   if (referenceCode) normalized.referenceCode = referenceCode;
   if (contactPerson) normalized.contactPerson = contactPerson;
   if (phone) normalized.phone = phone;
   if (email) normalized.email = email.toLowerCase();
-  if (notes) normalized.notes = notes;
   if (address) normalized.address = address;
+  if (notes) normalized.notes = notes;
   return normalized;
 }

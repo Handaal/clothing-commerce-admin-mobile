@@ -141,9 +141,20 @@ function mount(node: React.ReactNode) {
   render(<SessionProvider storage={createMemoryTenantStorage(tenantId)}>{node}</SessionProvider>);
 }
 
-// SCENARIO A — SUPPLIER CRUD: create, list, search, detail, edit, refresh.
-it("A: creates an active supplier, finds it by search, and edits its contact/notes", async () => {
+// The shared PageHeader renders its back control as "‹ Back"; match on the trailing word so the test is
+// robust to the leading chevron glyph.
+function clickBack() {
+  fireEvent.click(
+    screen.getByText((content) => content.replace(/\s+/g, " ").trim().endsWith("Back")),
+  );
+}
+
+// SCENARIO A — SUPPLIER CRUD: create, list, search, detail, edit, refresh, with an explicit free-form
+// address round-trip (create → reload → edit → reload) proving the single-string address contract.
+it("A: creates an active supplier, finds it by search, and edits its contact/notes/address", async () => {
   const name = `${unique} Nile Textiles`;
+  const createdAddress = "12 Corniche El Nil, Cairo, Cairo Governorate, EG";
+  const editedAddress = "45 Tahrir Square, Giza, Giza Governorate, EG";
   mount(<SupplierApp />);
 
   // Create.
@@ -151,16 +162,18 @@ it("A: creates an active supplier, finds it by search, and edits its contact/not
   fireEvent.change(await screen.findByTestId("supplier-name"), { target: { value: name } });
   fireEvent.change(screen.getByTestId("supplier-reference"), { target: { value: unique } });
   fireEvent.change(screen.getByTestId("supplier-contact"), { target: { value: "Mona Adel" } });
+  fireEvent.change(screen.getByTestId("supplier-address"), { target: { value: createdAddress } });
   fireEvent.click(screen.getByTestId("supplier-submit"));
 
-  // Saved → detail shows the new active supplier.
+  // Saved → detail shows the new active supplier and the address exactly as entered (round-trip #1).
   fireEvent.click(await screen.findByTestId("supplier-saved-continue"));
   await screen.findByTestId("supplier-detail-status");
   expect(screen.getByTestId("supplier-detail-status").textContent).toBe("Active");
   expect(screen.getByText(name)).toBeTruthy();
+  expect(screen.getByText(createdAddress)).toBeTruthy();
 
   // Back to list, search by name (server-side), open detail.
-  fireEvent.click(screen.getByText("Back"));
+  clickBack();
   fireEvent.change(await screen.findByTestId("supplier-search-term"), {
     target: { value: unique },
   });
@@ -168,19 +181,25 @@ it("A: creates an active supplier, finds it by search, and edits its contact/not
   const row = await screen.findByText(name);
   fireEvent.click(row);
 
-  // Edit contact + notes, save, and confirm the refreshed detail shows the update.
+  // Edit contact + notes + address, save, and confirm the refreshed detail shows the updates. The edit
+  // form must seed the existing address, then persist the changed one (round-trip #2).
   fireEvent.click(await screen.findByTestId("supplier-edit"));
+  const addressField = await screen.findByTestId("supplier-address");
+  expect((addressField as HTMLInputElement | HTMLTextAreaElement).value).toBe(createdAddress);
   fireEvent.change(await screen.findByTestId("supplier-contact"), {
     target: { value: "Sara Fouad" },
   });
   fireEvent.change(screen.getByTestId("supplier-notes"), {
     target: { value: "Updated by runtime." },
   });
+  fireEvent.change(addressField, { target: { value: editedAddress } });
   fireEvent.click(screen.getByTestId("supplier-submit"));
   fireEvent.click(await screen.findByTestId("supplier-saved-continue"));
   await screen.findByTestId("supplier-detail-status");
   expect(await screen.findByText("Sara Fouad")).toBeTruthy();
   expect(screen.getByText("Updated by runtime.")).toBeTruthy();
+  expect(screen.getByText(editedAddress)).toBeTruthy();
+  expect(screen.queryByText(createdAddress)).toBeNull();
 });
 
 // SCENARIO B & C — supplier-linked receipt (inventory +N, appears in history) and a legacy receipt.
@@ -211,8 +230,9 @@ it("B/C: receives stock against an active supplier and also via a legacy no-supp
   const receipts = await client.listSupplierReceipts(supplier.id, {});
   expect(receipts.items.some((r) => r.supplierReference === `${unique}-GRN`)).toBe(true);
 
-  // Legacy receipt: leave supplier on "No supplier" — succeeds exactly as before.
-  fireEvent.click(screen.getByText("New receipt"));
+  // Legacy receipt: a successful receive reloads the inventory list (unmounting the success panel), so
+  // start the next receipt from the list's Receive entry point rather than an in-panel reset.
+  fireEvent.click(await screen.findByTestId("open-receive"));
   fireEvent.click(await screen.findByTestId(`receive-variant-${variantId}`));
   fireEvent.click(screen.getByTestId(`receive-location-${inventoryLocationId}`));
   fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
@@ -245,7 +265,7 @@ it("D: a deactivated supplier stays visible and is no longer selectable for a ne
     expect(screen.getByTestId("supplier-detail-status").textContent).toBe("Inactive"),
   );
   // Still visible as a retained inactive record (never deleted).
-  fireEvent.click(screen.getByText("Back"));
+  clickBack();
   fireEvent.change(await screen.findByTestId("supplier-search-term"), {
     target: { value: `${unique}-D` },
   });

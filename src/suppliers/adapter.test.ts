@@ -28,7 +28,7 @@ const NARROW_DRAFT: SupplierDraft = {
   contactPerson: "Mona Adel",
   phone: "+20 10 1234 5678",
   email: "orders@niletextiles.example",
-  address: { line1: "12 Corniche El Nil", city: "Cairo" },
+  address: "12 Corniche El Nil, Cairo",
   notes: "Primary linen supplier.",
   status: "active",
 };
@@ -67,7 +67,7 @@ describe("resolveSupplierAdapter — SDK 0.9.0 mapping", () => {
     expect(listSuppliers).toHaveBeenCalledWith({});
   });
 
-  it("maps a full supplier, converting SDK nulls to undefined and inflating the address", async () => {
+  it("maps a full supplier, converting SDK nulls to undefined and passing the address through", async () => {
     const getSupplier = vi.fn().mockResolvedValue(sdkSupplier());
     const adapter = resolveSupplierAdapter(clientWith({ getSupplier }))!;
 
@@ -82,7 +82,7 @@ describe("resolveSupplierAdapter — SDK 0.9.0 mapping", () => {
       contactPerson: "Mona Adel",
       phone: "+20 10 1234 5678",
       email: "orders@niletextiles.example",
-      address: { line1: "12 Corniche El Nil, Cairo" },
+      address: "12 Corniche El Nil, Cairo",
       notes: "Primary linen supplier.",
       createdAt: "2026-08-01T09:00:00.000Z",
       updatedAt: "2026-09-10T09:00:00.000Z",
@@ -110,7 +110,7 @@ describe("resolveSupplierAdapter — SDK 0.9.0 mapping", () => {
     expect(supplier.notes).toBeUndefined();
   });
 
-  it("maps a create draft to the SDK request (referenceCode → code, structured address → string)", async () => {
+  it("maps a create draft to the SDK request (referenceCode → code, address passed through)", async () => {
     const created = sdkSupplier();
     const createSupplier = vi.fn().mockResolvedValue(created);
     const adapter = resolveSupplierAdapter(clientWith({ createSupplier }))!;

@@ -22,7 +22,6 @@ import {
   normalizeSupplierDraft,
   validateSupplierDraft,
   type Supplier,
-  type SupplierAddress,
   type SupplierDraft,
   type SupplierFieldErrors,
   type SupplierStatus,
@@ -63,19 +62,13 @@ export function SupplierForm({
   generateIdempotencyKey,
 }: SupplierFormProps) {
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
-  const address = initial?.address;
 
   const [name, setName] = useState(initial?.name ?? "");
   const [referenceCode, setReferenceCode] = useState(initial?.referenceCode ?? "");
   const [contactPerson, setContactPerson] = useState(initial?.contactPerson ?? "");
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
-  const [line1, setLine1] = useState(address?.line1 ?? "");
-  const [line2, setLine2] = useState(address?.line2 ?? "");
-  const [city, setCity] = useState(address?.city ?? "");
-  const [region, setRegion] = useState(address?.region ?? "");
-  const [postalCode, setPostalCode] = useState(address?.postalCode ?? "");
-  const [countryCode, setCountryCode] = useState(address?.countryCode ?? "");
+  const [address, setAddress] = useState(initial?.address ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [status, setStatus] = useState<SupplierStatus>(initial?.status ?? "active");
   const [errors, setErrors] = useState<SupplierFieldErrors>({});
@@ -89,14 +82,13 @@ export function SupplierForm({
   );
 
   function currentDraft(): SupplierDraft {
-    const addressDraft: SupplierAddress = { line1, line2, city, region, postalCode, countryCode };
     return normalizeSupplierDraft({
       name,
       referenceCode,
       contactPerson,
       phone,
       email,
-      address: addressDraft,
+      address,
       notes,
       status,
     });
@@ -198,44 +190,14 @@ export function SupplierForm({
       <Divider />
       <Eyebrow>Address</Eyebrow>
       <TextField
-        label="Address line 1 (optional)"
-        value={line1}
-        onChangeText={setLine1}
-        testID="supplier-line1"
+        label="Address (optional)"
+        value={address}
+        onChangeText={setAddress}
+        placeholder={"Street, city, region, postal code, country"}
+        testID="supplier-address"
+        multiline
       />
-      <TextField
-        label="Address line 2 (optional)"
-        value={line2}
-        onChangeText={setLine2}
-        testID="supplier-line2"
-      />
-      <TextField
-        label="City (optional)"
-        value={city}
-        onChangeText={setCity}
-        testID="supplier-city"
-      />
-      <TextField
-        label="Region (optional)"
-        value={region}
-        onChangeText={setRegion}
-        testID="supplier-region"
-      />
-      <TextField
-        label="Postal code (optional)"
-        value={postalCode}
-        onChangeText={setPostalCode}
-        testID="supplier-postal"
-        autoCapitalize="characters"
-      />
-      <TextField
-        label="Country code (optional)"
-        value={countryCode}
-        onChangeText={setCountryCode}
-        placeholder="EG"
-        testID="supplier-country"
-        autoCapitalize="characters"
-      />
+      <FieldError message={errors.address} testID="supplier-address-error" />
 
       <Divider />
       <TextField

@@ -20,7 +20,7 @@ import {
 import { useAsync } from "../ui/useAsync";
 import { useMutation } from "../ui/useMutation";
 import type { SupplierAdapter } from "./adapter";
-import type { Supplier, SupplierAddress, SupplierStatus } from "./model";
+import type { Supplier, SupplierStatus } from "./model";
 import { SupplierReceivingHistory } from "./SupplierReceivingHistory";
 import { describeSupplierStatus, supplierStatusLabel, supplierStatusToggle } from "./status";
 import { SupplierUnavailable } from "./SupplierUnavailable";
@@ -145,7 +145,7 @@ function SupplierDetailContent({
       {supplier.contactPerson ? <InfoRow label="Contact" value={supplier.contactPerson} /> : null}
       {supplier.phone ? <InfoRow label="Phone" value={supplier.phone} /> : null}
       {supplier.email ? <InfoRow label="Email" value={supplier.email} /> : null}
-      <AddressBlock address={supplier.address} />
+      {supplier.address ? <InfoRow label="Address" value={supplier.address} /> : null}
       {supplier.notes ? <InfoRow label="Notes" value={supplier.notes} /> : null}
       {supplier.createdAt ? <InfoRow label="Created" value={supplier.createdAt} /> : null}
       {supplier.updatedAt ? <InfoRow label="Updated" value={supplier.updatedAt} /> : null}
@@ -202,18 +202,4 @@ function StatusError({
       )}
     </View>
   );
-}
-
-function AddressBlock({ address }: { address: SupplierAddress | undefined }) {
-  if (!address) return null;
-  const parts = [
-    address.line1,
-    address.line2,
-    address.city,
-    address.region,
-    address.postalCode,
-    address.countryCode,
-  ].filter((part): part is string => Boolean(part));
-  if (parts.length === 0) return null;
-  return <InfoRow label="Address" value={parts.join(", ")} />;
 }

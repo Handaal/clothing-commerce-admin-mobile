@@ -36,9 +36,12 @@ source — the SDK owns transport, the tenant header, and the `Idempotency-Key` 
 Key mappings:
 
 - `referenceCode` ⇄ SDK `code`; SDK `null` optionals ⇄ local `undefined`.
-- Structured `SupplierAddress` (a UX input convenience) ⇄ the SDK's single `address` string: flattened
-  (non-empty parts joined) on write, and surfaced as `address.line1` on read. The API stores no
-  structured address, so nothing structural is invented or displayed.
+- `address` is **free-form text** (`address?: string`), matching the canonical API/SDK contract, which
+  stores the supplier address as a single string (`optionalText(1000)`). It maps straight through —
+  `null` ⇄ `undefined` — with no flatten/inflate step, so a create → edit → reload round-trips the
+  address verbatim (internal newlines preserved). **Structured address fields (line1/city/region/postal/
+  country) are deferred** unless and until the API contract adds them; V1 invents no structure the server
+  does not persist.
 - `createSupplier` sends no `status` (the API creates suppliers active); an "inactive" choice on create
   is honoured by a follow-up `updateSupplier({ status })` under a derived idempotency key.
 - Receiving history: SDK `operationId` → `id`, `supplierReference` → `reference`, `actorMembershipId`

@@ -4,6 +4,7 @@ import {
   hasSupplierErrors,
   normalizeSupplierDraft,
   SUPPLIER_FIELD_LIMITS,
+  validateSupplierAddress,
   validateSupplierDraft,
   validateSupplierEmail,
   validateSupplierName,
@@ -63,6 +64,20 @@ describe("supplier phone validation", () => {
   });
 });
 
+describe("supplier address validation", () => {
+  it("is optional and accepts free-form multiline text", () => {
+    expect(validateSupplierAddress(undefined)).toBeNull();
+    expect(validateSupplierAddress("")).toBeNull();
+    expect(validateSupplierAddress("12 Corniche El Nil\nCairo\nEG")).toBeNull();
+  });
+
+  it("rejects an address past the length cap", () => {
+    expect(validateSupplierAddress("x".repeat(SUPPLIER_FIELD_LIMITS.address + 1))).toMatch(
+      /characters/,
+    );
+  });
+});
+
 describe("validateSupplierDraft", () => {
   it("returns no errors for a clean draft", () => {
     const errors = validateSupplierDraft(draft({ email: "a@b.co", phone: "+201234567" }));
@@ -99,13 +114,13 @@ describe("normalizeSupplierDraft", () => {
     expect(result.notes).toBeUndefined();
   });
 
-  it("normalizes the address, uppercasing country code and dropping an all-empty address", () => {
+  it("trims the free-form address, preserving internal newlines, and drops a blank one", () => {
     const withAddress = normalizeSupplierDraft(
-      draft({ address: { line1: " 10 Main ", countryCode: " eg " } }),
+      draft({ address: "  12 Corniche El Nil\nCairo\nEG  " }),
     );
-    expect(withAddress.address).toEqual({ line1: "10 Main", countryCode: "EG" });
+    expect(withAddress.address).toBe("12 Corniche El Nil\nCairo\nEG");
 
-    const emptyAddress = normalizeSupplierDraft(draft({ address: { line1: "  ", city: "" } }));
+    const emptyAddress = normalizeSupplierDraft(draft({ address: "   " }));
     expect(emptyAddress.address).toBeUndefined();
   });
 
