@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 
 import { classifyCommerceError } from "../src/commerce/errors";
 import { useSession } from "../src/session/SessionProvider";
+import { staffCapabilities } from "../src/staff/capabilities";
 import {
   Body,
   Divider,
@@ -111,6 +112,7 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
   // infers permissions or grants "owner/manager = everything".
   const { access } = context;
   const router = useRouter();
+  const staff = staffCapabilities(context);
   return (
     <Frame>
       <Title>{context.tenant.name}</Title>
@@ -158,6 +160,10 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
             : "No read access"
         }
       />
+      <InfoRow
+        label="Staff"
+        value={staff.canRead ? (staff.canManage ? "Read · manage" : "Read") : "No read access"}
+      />
       <Divider />
       {access.catalog.canRead ? (
         <PrimaryButton
@@ -187,6 +193,17 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           testID="open-suppliers"
           label="Manage suppliers"
           onPress={() => router.push("/suppliers")}
+        />
+      ) : null}
+      {/* Staff navigation follows the server's staff read capability from `/me/context`, read via the
+          single `staffCapabilities` seam (the final context DTO is not yet frozen). The API remains the
+          sole authority for every read/write; the foundation screen shows an unavailable state until the
+          Staff SDK is integrated. */}
+      {staff.canRead ? (
+        <PrimaryButton
+          testID="open-staff"
+          label="Manage staff"
+          onPress={() => router.push("/staff")}
         />
       ) : null}
       <SignOutButton />
