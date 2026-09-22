@@ -27,7 +27,7 @@ import type {
   StaffDetail,
 } from "./model";
 import { isAddStaffComplete } from "./model";
-import { EligibleIdentitySearch } from "./EligibleIdentitySearch";
+import { EligibleIdentityLookup } from "./EligibleIdentityLookup";
 import { RoleSelector } from "./RoleSelector";
 import { accessScopeTargetLines } from "./scopes";
 import { StaffUnavailable } from "./StaffUnavailable";
@@ -57,10 +57,11 @@ interface Assignables {
  * The Add-Staff workflow: link an EXISTING identity to the tenant with an initial Role + AccessScope.
  *
  * Business decision (V1): Add-Staff = link an existing provisioned identity — no Clerk invitation, no
- * email, no passwords. The four steps are (1) search/select an eligible identity, (2) choose an initial
- * role, (3) choose an EXISTING access scope, (4) review and create the membership. Assignable roles and
- * scopes are adapter-driven; there is NO fake success — `onCreated` fires only with the adapter's real
- * response. With no adapter (Staff SDK not integrated) it shows the unavailable state.
+ * email send, no passwords. The four steps are (1) find an eligible account by its EXACT email and
+ * confirm it, (2) choose an initial role, (3) choose an EXISTING access scope, (4) review and create the
+ * membership. Identity discovery is an exact-email lookup, never a directory browse. Assignable roles
+ * and scopes are adapter-driven; there is NO fake success — `onCreated` fires only with the adapter's
+ * real response. With no adapter (Staff SDK not integrated) it shows the unavailable state.
  */
 export function AddStaffFlow({
   adapter,
@@ -176,8 +177,8 @@ function AddStaffContent({
 
       {step === "identity" ? (
         <View style={{ gap: 12 }} testID="add-staff-step-identity">
-          <Eyebrow>Step 1 — Choose a person</Eyebrow>
-          <EligibleIdentitySearch
+          <Eyebrow>Step 1 — Find the account</Eyebrow>
+          <EligibleIdentityLookup
             adapter={adapter}
             selectedIdentityId={selection.identity?.identityId ?? null}
             onSelect={(identity) => setSelection((prev) => ({ ...prev, identity }))}

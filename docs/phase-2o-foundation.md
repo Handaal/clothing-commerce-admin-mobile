@@ -28,10 +28,12 @@ inputs. These are the app's own vocabulary — not a claimed contract.
 ## Adapter seam (`src/staff/adapter.ts`)
 
 One `StaffAdapter` interface is the whole boundary: `listStaff`, `getStaff`,
-`searchEligibleIdentities`, `addStaff`, `updateMembershipStatus`, `assignRoleScope`,
+`findEligibleIdentityByEmail`, `addStaff`, `updateMembershipStatus`, `assignRoleScope`,
 `unassignRoleScope`, `listAssignableRoles`, `listAssignableScopes`. Screens depend **only** on this
 interface and the local model, never on the SDK. Writes take an app-supplied idempotency key and return
-the fresh authoritative `StaffDetail`.
+the fresh authoritative `StaffDetail`. Identity discovery is `findEligibleIdentityByEmail(email)`, which
+returns the single eligible account **or `null`** — never a list — so the screen cannot browse or
+enumerate the global identity directory.
 
 `resolveStaffAdapter()` returns **`null`** — production is unavailable by design. It imports no Staff
 SDK types, hand-writes no HTTP, and invents no endpoints/DTOs/error codes. Test adapters are the only
@@ -57,11 +59,26 @@ authority — a hidden control is never the security boundary, and a real `403` 
   **Role + AccessScope pairs** (`StaffAssignmentList.tsx`) — clear which role applies at which scope. A
   **deactivated** membership stays fully readable and offers **no delete**. Lifecycle actions
   (`MembershipStatusActions.tsx`) and an add-assignment panel appear only for a manager.
-- **Add-Staff flow** (`AddStaffFlow.tsx`): four steps — (1) search/select an **existing** identity
-  (`EligibleIdentitySearch.tsx`), (2) choose a role (`RoleSelector.tsx`), (3) choose an **existing**
-  access scope (`AccessScopeSelector.tsx`), (4) review + create. **Add-Staff links an existing
-  provisioned identity** — no Clerk invite, no email, no password, and **no raw-UUID entry** as the
-  normal UX. Identity discovery is a deliberate search (no bulk directory dump).
+- **Add-Staff flow** (`AddStaffFlow.tsx`): four steps — (1) find an **existing** account by its **exact
+  email** and confirm it (`EligibleIdentityLookup.tsx`), (2) choose a role (`RoleSelector.tsx`), (3)
+  choose an **existing** access scope (`AccessScopeSelector.tsx`), (4) review + create. **Add-Staff links
+  an existing provisioned identity** — no Clerk invite, no email send, no password, and **no raw-UUID
+  entry** as the normal UX. Identity discovery is an **exact-email lookup** — there is no directory
+  browse, no display-name search, and no wildcard.
+
+  ### Exact-email eligible-account lookup (frozen V1 privacy decision)
+
+  The identity step is an **exact, existing-account email lookup**, not a directory search. The operator
+  types an email → taps **Find account** → the single eligible account is shown to confirm, or one
+  neutral message appears: **"No eligible account was found for this email."** That one message covers
+  every not-eligible case (no such account / inactive identity / already a staff member) — the screen
+  **never distinguishes** them and so cannot be used to probe who exists on the platform. The email is
+  validated (and trimmed/lowercased for convenience) **before** the adapter is called (`search.ts`:
+  `buildEligibleEmailLookup`); an invalid email is blocked at the UX level and never reaches the adapter.
+  There is **no global identity directory browse, no display-name search, no wildcard, and no raw-UUID
+  workflow**. This is a UX convenience only — the server remains the sole authority for matching and is
+  not assumed to normalize the same way. There is still **no Clerk invitation / email send**.
+
 - Routes: `app/staff/index.tsx`, `app/staff/[membershipId].tsx`, `app/staff/new.tsx`; navigation entry
   in `app/index.tsx`.
 
@@ -105,7 +122,8 @@ membership lifecycle UX; read-only behaviour; anti-escalation/last-admin error s
 - the real Staff SDK (`listStaff` / `getStaffMember` / `createStaff` / `updateStaffStatus` /
   `assignStaffRole` / `unassignStaffRole` or their final names) and a concrete `resolveStaffAdapter`;
 - the exact `/me/context` staff capability shape (retype `capabilities.ts`);
-- the exact **eligible-identity discovery** endpoint + DTO (identity-search contract still being decided);
+- the exact **eligible-account email-lookup** endpoint + DTO (the exact-email lookup contract — request
+  shape and the eligible-account projection — is still being finalized by the API workstream);
 - the exact assignable-roles / assignable-scopes endpoints and the assignment/lifecycle endpoints;
 - the exact typed error codes (reconcile `PROVISIONAL_STAFF_ERROR_CODES`).
 
@@ -119,8 +137,9 @@ presentation, the defensive capability read, the unavailable production adapter,
 categorisation (incl. anti-escalation/last-admin/foreign-scope/protected/membership-exists), list
 loading/error/empty/populated + pagination + server search, read-only vs manage, detail rendering +
 assignment coupling + lifecycle confirmation + deactivated readability + unassign, and the full
-Add-Staff step flow (identity search/select → role → scope → review → create) with no fake success and
-no raw-UUID entry. All fakes are test-only; production stays unavailable.
+Add-Staff step flow (exact-email account lookup → confirm → role → scope → review → create) with a
+blocked invalid email, a neutral no-result, no fake success, no directory/display-name search, and no
+raw-UUID entry. All fakes are test-only; production stays unavailable.
 
 **No real Staff runtime API acceptance yet** — by design, the SDK is not integrated. Gate suite green:
 `pnpm install --frozen-lockfile`, `expo install --check`, `format:check`, `lint`, `typecheck`, `test`,

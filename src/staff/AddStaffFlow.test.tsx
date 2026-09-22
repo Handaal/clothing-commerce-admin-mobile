@@ -23,18 +23,14 @@ function keyFactory(...keys: string[]) {
   return () => keys[i++] ?? `overflow-${i}`;
 }
 
-function page<T>(items: T[]) {
-  return { items, pageInfo: { nextCursor: null, hasMore: false } };
-}
-
 const noop = () => {};
 
 /** Drive the flow from step 1 (identity) through to the review step. */
 async function advanceToReview(
-  searchEligibleIdentities = vi.fn().mockResolvedValue(page([eligibleIdentity()])),
+  findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity()),
   overrides: Parameters<typeof fakeStaffAdapter>[0] = {},
 ) {
-  const adapter = fakeStaffAdapter({ searchEligibleIdentities, ...overrides });
+  const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail, ...overrides });
   render(
     <AddStaffFlow
       adapter={adapter}
@@ -43,10 +39,12 @@ async function advanceToReview(
       generateIdempotencyKey={keyFactory("K1")}
     />,
   );
-  // Step 1: search then select an existing identity (never raw UUID entry).
+  // Step 1: look up an existing account by exact email, then select it (never raw UUID entry).
   await screen.findByTestId("add-staff-step-identity");
-  fireEvent.change(screen.getByTestId("eligible-identity-term"), { target: { value: "omar" } });
-  fireEvent.click(screen.getByTestId("eligible-identity-search"));
+  fireEvent.change(screen.getByTestId("eligible-identity-email"), {
+    target: { value: "omar@acme.example" },
+  });
+  fireEvent.click(screen.getByTestId("eligible-identity-find"));
   fireEvent.click(await screen.findByTestId(`eligible-identity-${IDENTITY_B}`));
   fireEvent.click(screen.getByTestId("add-staff-next-role"));
   // Step 2: choose a role.
@@ -66,15 +64,55 @@ describe("AddStaffFlow", () => {
     expect(screen.queryByTestId("add-staff-step-identity")).toBeNull();
   });
 
-  it("prompts to search rather than dumping every identity, and never accepts a raw UUID", async () => {
-    const searchEligibleIdentities = vi.fn().mockResolvedValue(page([eligibleIdentity()]));
-    const adapter = fakeStaffAdapter({ searchEligibleIdentities });
+  it("prompts for an exact email rather than browsing the directory, and never accepts a raw UUID", async () => {
+    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity());
+    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail });
     render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
     await screen.findByTestId("eligible-identity-prompt");
-    // No search has run yet — the identity directory is not bulk-listed.
-    expect(searchEligibleIdentities).not.toHaveBeenCalled();
-    // There is no free-text identity-id field in the normal Add-Staff UX.
+    // No lookup has run yet — the identity directory is never bulk-listed or browsed.
+    expect(findEligibleIdentityByEmail).not.toHaveBeenCalled();
+    // There is no free-text identity-id field and no display-name search in the normal Add-Staff UX.
     expect(screen.queryByTestId("identity-id-input")).toBeNull();
+    expect(screen.queryByTestId("eligible-identity-term")).toBeNull();
+    expect(screen.queryByTestId("eligible-identity-search")).toBeNull();
+  });
+
+  it("blocks an invalid email at the UX level and never calls the adapter", async () => {
+    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity());
+    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail });
+    render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
+    fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
+      target: { value: "not-an-email" },
+    });
+    fireEvent.click(screen.getByTestId("eligible-identity-find"));
+    expect(await screen.findByTestId("eligible-identity-invalid")).toBeTruthy();
+    expect(findEligibleIdentityByEmail).not.toHaveBeenCalled();
+  });
+
+  it("looks up the exact (trimmed, lowercased) email and shows one neutral no-result message", async () => {
+    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(null);
+    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail });
+    render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
+    fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
+      target: { value: "  Missing@Acme.Example " },
+    });
+    fireEvent.click(screen.getByTestId("eligible-identity-find"));
+    expect(await screen.findByText("No eligible account was found for this email.")).toBeTruthy();
+    // Adapter is called with the exact, normalized email — no wildcard, no display name.
+    expect(findEligibleIdentityByEmail).toHaveBeenCalledWith("missing@acme.example");
+  });
+
+  it("finds the account by email and proceeds to the role step", async () => {
+    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity());
+    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail });
+    render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
+    fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
+      target: { value: "omar@acme.example" },
+    });
+    fireEvent.click(screen.getByTestId("eligible-identity-find"));
+    fireEvent.click(await screen.findByTestId(`eligible-identity-${IDENTITY_B}`));
+    fireEvent.click(screen.getByTestId("add-staff-next-role"));
+    expect(await screen.findByTestId("add-staff-step-role")).toBeTruthy();
   });
 
   it("walks all four steps and creates the membership via the adapter (real response only)", async () => {
@@ -88,8 +126,8 @@ describe("AddStaffFlow", () => {
         },
       }),
     );
-    const searchEligibleIdentities = vi.fn().mockResolvedValue(page([eligibleIdentity()]));
-    const adapter = fakeStaffAdapter({ searchEligibleIdentities, addStaff });
+    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity());
+    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail, addStaff });
     const onCreated = vi.fn();
     render(
       <AddStaffFlow
@@ -99,10 +137,10 @@ describe("AddStaffFlow", () => {
         generateIdempotencyKey={keyFactory("K1")}
       />,
     );
-    fireEvent.change(await screen.findByTestId("eligible-identity-term"), {
-      target: { value: "omar" },
+    fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
+      target: { value: "omar@acme.example" },
     });
-    fireEvent.click(screen.getByTestId("eligible-identity-search"));
+    fireEvent.click(screen.getByTestId("eligible-identity-find"));
     fireEvent.click(await screen.findByTestId(`eligible-identity-${IDENTITY_B}`));
     fireEvent.click(screen.getByTestId("add-staff-next-role"));
     fireEvent.click(await screen.findByTestId(`staff-role-${ROLE_MANAGER}`));
@@ -128,7 +166,7 @@ describe("AddStaffFlow", () => {
       .mockRejectedValue(
         new ApiHttpError("dup", 409, PROVISIONAL_STAFF_ERROR_CODES.membershipExists, null),
       );
-    await advanceToReview(vi.fn().mockResolvedValue(page([eligibleIdentity()])), { addStaff });
+    await advanceToReview(vi.fn().mockResolvedValue(eligibleIdentity()), { addStaff });
     fireEvent.click(await screen.findByTestId("add-staff-submit"));
     expect(await screen.findByText("Already a member")).toBeTruthy();
     expect(addStaff).toHaveBeenCalledTimes(1);

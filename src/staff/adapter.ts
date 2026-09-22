@@ -23,11 +23,10 @@ import type {
   StaffDetail,
   StaffSummary,
 } from "./model";
-import type { EligibleIdentityQuery, StaffListQuery } from "./search";
+import type { StaffListQuery } from "./search";
 
 /** List responses reuse the shared cursor-page envelope so the bounded paginator applies unchanged. */
 export type StaffListPage = CursorPage<StaffSummary>;
-export type EligibleIdentityPage = CursorPage<EligibleIdentity>;
 
 /**
  * The complete set of Staff operations the foundation is built against. Write operations take an
@@ -38,13 +37,19 @@ export type EligibleIdentityPage = CursorPage<EligibleIdentity>;
  * header; this app never sets headers itself.
  *
  * Names may be refined when the final Admin architecture/SDK is known; the shape is deliberately close
- * to the anticipated staff-projection operations (list / get / search-identities / add / lifecycle /
+ * to the anticipated staff-projection operations (list / get / find-identity-by-email / add / lifecycle /
  * assign / unassign / list assignable roles / list assignable scopes).
+ *
+ * IDENTITY DISCOVERY IS EXACT-EMAIL LOOKUP (frozen V1 privacy decision): Add-Staff resolves an existing
+ * account by an EXACT email, never by browsing/searching the global identity directory. The lookup
+ * returns the single eligible account or `null` — a `null` covers every "not eligible" case (no such
+ * account, inactive identity, already a staff member) with one neutral, non-enumerating result, so this
+ * screen can never be used to probe who exists on the platform.
  */
 export interface StaffAdapter {
   listStaff(query: StaffListQuery): Promise<StaffListPage>;
   getStaff(membershipId: string): Promise<StaffDetail>;
-  searchEligibleIdentities(query: EligibleIdentityQuery): Promise<EligibleIdentityPage>;
+  findEligibleIdentityByEmail(email: string): Promise<EligibleIdentity | null>;
   addStaff(input: AddStaffInput, idempotencyKey: string): Promise<StaffDetail>;
   updateMembershipStatus(
     membershipId: string,

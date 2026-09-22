@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildEligibleIdentityQuery,
+  buildEligibleEmailLookup,
   buildStaffListQuery,
-  EMPTY_ELIGIBLE_IDENTITY_SEARCH,
   EMPTY_STAFF_SEARCH,
   isEmptyStaffSearch,
+  isValidEligibleEmail,
+  normalizeEligibleEmail,
 } from "./search";
 
 describe("buildStaffListQuery", () => {
@@ -40,17 +41,36 @@ describe("isEmptyStaffSearch", () => {
   });
 });
 
-describe("buildEligibleIdentityQuery", () => {
-  it("returns null for an empty term (search, don't browse the whole directory)", () => {
-    expect(buildEligibleIdentityQuery(EMPTY_ELIGIBLE_IDENTITY_SEARCH)).toBeNull();
-    expect(buildEligibleIdentityQuery({ term: "   " })).toBeNull();
+describe("normalizeEligibleEmail", () => {
+  it("trims and lowercases operator input (UX convenience only)", () => {
+    expect(normalizeEligibleEmail("  Omar@Acme.Example  ")).toBe("omar@acme.example");
+  });
+});
+
+describe("isValidEligibleEmail", () => {
+  it("accepts an address-shaped value", () => {
+    expect(isValidEligibleEmail("omar@acme.example")).toBe(true);
   });
 
-  it("trims and includes the cursor only when present", () => {
-    expect(buildEligibleIdentityQuery({ term: " omar " })).toEqual({ search: "omar" });
-    expect(buildEligibleIdentityQuery({ term: "omar" }, "cur-1")).toEqual({
-      search: "omar",
-      cursor: "cur-1",
-    });
+  it("rejects non-address input — a display name or a bare UUID is never a valid lookup", () => {
+    expect(isValidEligibleEmail("omar")).toBe(false);
+    expect(isValidEligibleEmail("omar@acme")).toBe(false);
+    // A display-name search (has a space, no @) can never be run as an email lookup.
+    expect(isValidEligibleEmail("Omar Fathy")).toBe(false);
+    // A raw identity UUID (no @) can never be run as an email lookup.
+    expect(isValidEligibleEmail("11111111-1111-4111-8111-111111111111")).toBe(false);
+    expect(isValidEligibleEmail("")).toBe(false);
+  });
+});
+
+describe("buildEligibleEmailLookup", () => {
+  it("returns the normalized email for valid input (exact lookup, never a browse)", () => {
+    expect(buildEligibleEmailLookup("  Omar@Acme.Example ")).toBe("omar@acme.example");
+  });
+
+  it("returns null for invalid input so the adapter is never called with a non-email", () => {
+    expect(buildEligibleEmailLookup("   ")).toBeNull();
+    expect(buildEligibleEmailLookup("not-an-email")).toBeNull();
+    expect(buildEligibleEmailLookup("omar*")).toBeNull();
   });
 });

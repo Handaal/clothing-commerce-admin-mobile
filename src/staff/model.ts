@@ -101,7 +101,8 @@ export interface StaffDetail {
 /**
  * An EXISTING provisioned identity that can be linked to the tenant as staff. Add-Staff is a LINK of an
  * already-provisioned {@link StaffIdentity} — there is no Clerk invitation flow, no password, no email
- * send. Discovered only through the adapter's identity search (never raw-UUID entry as the normal UX).
+ * send. Discovered only through the adapter's EXACT-EMAIL lookup (never a directory browse, a
+ * display-name search, or raw-UUID entry as the normal UX).
  */
 export interface EligibleIdentity {
   identityId: string;

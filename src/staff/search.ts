@@ -50,34 +50,36 @@ export function buildStaffListQuery(state: StaffSearchState, cursor?: string): S
   return query;
 }
 
-/** Typed eligible-identity search state for the Add-Staff selector. */
-export interface EligibleIdentitySearchState {
-  term: string;
+// ---------------------------------------------------------------------------------------------------
+// Add-Staff identity discovery — EXACT-EMAIL lookup (frozen V1 privacy decision)
+// ---------------------------------------------------------------------------------------------------
+//
+// Add-Staff resolves an existing account by an EXACT email address. There is deliberately NO directory
+// browse, NO display-name search, NO wildcard, and NO raw identity-UUID entry — those would let the
+// screen enumerate who exists on the platform. The helpers below validate and normalize the operator's
+// typed input at the UX level only (trim + lowercase for convenience); the eventual server stays the
+// sole authority for matching and is NOT assumed to normalize the same way.
+
+// Deliberately permissive local-part@domain.tld check, matching the supplier email gate. The API is
+// authoritative — this only stops an obviously invalid string from reaching the lookup.
+const EMAIL_LOOKUP_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Trim and lowercase typed input so casing/whitespace never causes a spurious miss. UX convenience only. */
+export function normalizeEligibleEmail(raw: string): string {
+  return raw.trim().toLowerCase();
 }
 
-export const EMPTY_ELIGIBLE_IDENTITY_SEARCH: EligibleIdentitySearchState = { term: "" };
-
-/**
- * A request-shaped eligible-identity query. The identity-discovery contract is still being finalized by
- * the API workstream, so this is intentionally minimal (a search term + cursor) and lives behind the
- * adapter — the UI never guesses an endpoint or DTO. The `search` term is REQUIRED to be non-empty by
- * {@link buildEligibleIdentityQuery} returning `null`, so the app never bulk-lists every identity.
- */
-export interface EligibleIdentityQuery {
-  search: string;
-  cursor?: string;
+/** True when the (already-normalized) email is shaped like an address the lookup can be run with. */
+export function isValidEligibleEmail(email: string): boolean {
+  return EMAIL_LOOKUP_PATTERN.test(email);
 }
 
 /**
- * Build an eligible-identity query, or `null` when there is nothing to search for. Returning `null`
- * (rather than an all-identities query) enforces "search, don't browse" — identity discovery is a
- * deliberate lookup, never an unbounded directory dump.
+ * Prepare an exact-email lookup value from raw operator input, or `null` when it is not a valid email.
+ * Returning `null` (rather than a wildcard/partial) enforces "look up an exact account, don't browse":
+ * the adapter is only ever called with a single, validated, normalized email.
  */
-export function buildEligibleIdentityQuery(
-  state: EligibleIdentitySearchState,
-  cursor?: string,
-): EligibleIdentityQuery | null {
-  const term = state.term.trim();
-  if (term === "") return null;
-  return cursor ? { search: term, cursor } : { search: term };
+export function buildEligibleEmailLookup(raw: string): string | null {
+  const email = normalizeEligibleEmail(raw);
+  return isValidEligibleEmail(email) ? email : null;
 }
