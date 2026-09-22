@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("expo-crypto", () => ({ randomUUID: () => "unused-native-uuid" }));
 
 import {
+  IDENTITY_A,
   IDENTITY_B,
   ROLE_MANAGER,
   SCOPE_TENANT,
@@ -27,10 +28,10 @@ const noop = () => {};
 
 /** Drive the flow from step 1 (identity) through to the review step. */
 async function advanceToReview(
-  findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity()),
+  findEligibleIdentitiesByEmail = vi.fn().mockResolvedValue([eligibleIdentity()]),
   overrides: Parameters<typeof fakeStaffAdapter>[0] = {},
 ) {
-  const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail, ...overrides });
+  const adapter = fakeStaffAdapter({ findEligibleIdentitiesByEmail, ...overrides });
   render(
     <AddStaffFlow
       adapter={adapter}
@@ -65,12 +66,12 @@ describe("AddStaffFlow", () => {
   });
 
   it("prompts for an exact email rather than browsing the directory, and never accepts a raw UUID", async () => {
-    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity());
-    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail });
+    const findEligibleIdentitiesByEmail = vi.fn().mockResolvedValue([eligibleIdentity()]);
+    const adapter = fakeStaffAdapter({ findEligibleIdentitiesByEmail });
     render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
     await screen.findByTestId("eligible-identity-prompt");
     // No lookup has run yet — the identity directory is never bulk-listed or browsed.
-    expect(findEligibleIdentityByEmail).not.toHaveBeenCalled();
+    expect(findEligibleIdentitiesByEmail).not.toHaveBeenCalled();
     // There is no free-text identity-id field and no display-name search in the normal Add-Staff UX.
     expect(screen.queryByTestId("identity-id-input")).toBeNull();
     expect(screen.queryByTestId("eligible-identity-term")).toBeNull();
@@ -78,20 +79,20 @@ describe("AddStaffFlow", () => {
   });
 
   it("blocks an invalid email at the UX level and never calls the adapter", async () => {
-    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity());
-    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail });
+    const findEligibleIdentitiesByEmail = vi.fn().mockResolvedValue([eligibleIdentity()]);
+    const adapter = fakeStaffAdapter({ findEligibleIdentitiesByEmail });
     render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
     fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
       target: { value: "not-an-email" },
     });
     fireEvent.click(screen.getByTestId("eligible-identity-find"));
     expect(await screen.findByTestId("eligible-identity-invalid")).toBeTruthy();
-    expect(findEligibleIdentityByEmail).not.toHaveBeenCalled();
+    expect(findEligibleIdentitiesByEmail).not.toHaveBeenCalled();
   });
 
-  it("looks up the exact (trimmed, lowercased) email and shows one neutral no-result message", async () => {
-    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(null);
-    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail });
+  it("looks up the exact (trimmed, lowercased) email and shows one neutral no-result message for 0 matches", async () => {
+    const findEligibleIdentitiesByEmail = vi.fn().mockResolvedValue([]);
+    const adapter = fakeStaffAdapter({ findEligibleIdentitiesByEmail });
     render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
     fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
       target: { value: "  Missing@Acme.Example " },
@@ -99,18 +100,47 @@ describe("AddStaffFlow", () => {
     fireEvent.click(screen.getByTestId("eligible-identity-find"));
     expect(await screen.findByText("No eligible account was found for this email.")).toBeTruthy();
     // Adapter is called with the exact, normalized email — no wildcard, no display name.
-    expect(findEligibleIdentityByEmail).toHaveBeenCalledWith("missing@acme.example");
+    expect(findEligibleIdentitiesByEmail).toHaveBeenCalledWith("missing@acme.example");
   });
 
-  it("finds the account by email and proceeds to the role step", async () => {
-    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity());
-    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail });
+  it("finds a single account by email, requires an explicit select, then proceeds to the role step", async () => {
+    const findEligibleIdentitiesByEmail = vi.fn().mockResolvedValue([eligibleIdentity()]);
+    const adapter = fakeStaffAdapter({ findEligibleIdentitiesByEmail });
     render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
     fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
       target: { value: "omar@acme.example" },
     });
     fireEvent.click(screen.getByTestId("eligible-identity-find"));
-    fireEvent.click(await screen.findByTestId(`eligible-identity-${IDENTITY_B}`));
+    // Even the single result is shown for confirmation — the role step is unavailable until selected.
+    await screen.findByTestId(`eligible-identity-${IDENTITY_B}`);
+    expect(screen.queryByTestId("add-staff-next-role")).toBeNull();
+    fireEvent.click(screen.getByTestId(`eligible-identity-${IDENTITY_B}`));
+    fireEvent.click(await screen.findByTestId("add-staff-next-role"));
+    expect(await screen.findByTestId("add-staff-step-role")).toBeTruthy();
+  });
+
+  it("shows every exact-email match for 2+ results, auto-selects none, and blocks the role step until one is chosen", async () => {
+    // Two accounts share the SAME exact email (primary_email is not globally unique).
+    const first = eligibleIdentity({ identityId: IDENTITY_B, displayName: "Omar Fathy" });
+    const second = eligibleIdentity({ identityId: IDENTITY_A, displayName: "Omar F. (personal)" });
+    const findEligibleIdentitiesByEmail = vi.fn().mockResolvedValue([first, second]);
+    const adapter = fakeStaffAdapter({ findEligibleIdentitiesByEmail });
+    render(<AddStaffFlow adapter={adapter} onCreated={noop} onBack={noop} />);
+    fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
+      target: { value: "omar@acme.example" },
+    });
+    fireEvent.click(screen.getByTestId("eligible-identity-find"));
+    // BOTH exact-email matches are shown; the operator is told to choose explicitly.
+    await screen.findByTestId(`eligible-identity-${IDENTITY_B}`);
+    expect(screen.getByTestId(`eligible-identity-${IDENTITY_A}`)).toBeTruthy();
+    expect(screen.getByTestId("eligible-identity-multiple")).toBeTruthy();
+    // NONE is auto-selected — no "Selected" badge and no way forward yet.
+    expect(screen.queryByTestId(`eligible-identity-selected-${IDENTITY_B}`)).toBeNull();
+    expect(screen.queryByTestId(`eligible-identity-selected-${IDENTITY_A}`)).toBeNull();
+    expect(screen.queryByTestId("add-staff-next-role")).toBeNull();
+    // The manager explicitly chooses the second one; it becomes selected and proceeds correctly.
+    fireEvent.click(screen.getByTestId(`eligible-identity-${IDENTITY_A}`));
+    expect(await screen.findByTestId(`eligible-identity-selected-${IDENTITY_A}`)).toBeTruthy();
     fireEvent.click(screen.getByTestId("add-staff-next-role"));
     expect(await screen.findByTestId("add-staff-step-role")).toBeTruthy();
   });
@@ -126,8 +156,8 @@ describe("AddStaffFlow", () => {
         },
       }),
     );
-    const findEligibleIdentityByEmail = vi.fn().mockResolvedValue(eligibleIdentity());
-    const adapter = fakeStaffAdapter({ findEligibleIdentityByEmail, addStaff });
+    const findEligibleIdentitiesByEmail = vi.fn().mockResolvedValue([eligibleIdentity()]);
+    const adapter = fakeStaffAdapter({ findEligibleIdentitiesByEmail, addStaff });
     const onCreated = vi.fn();
     render(
       <AddStaffFlow
@@ -166,7 +196,7 @@ describe("AddStaffFlow", () => {
       .mockRejectedValue(
         new ApiHttpError("dup", 409, PROVISIONAL_STAFF_ERROR_CODES.membershipExists, null),
       );
-    await advanceToReview(vi.fn().mockResolvedValue(eligibleIdentity()), { addStaff });
+    await advanceToReview(vi.fn().mockResolvedValue([eligibleIdentity()]), { addStaff });
     fireEvent.click(await screen.findByTestId("add-staff-submit"));
     expect(await screen.findByText("Already a member")).toBeTruthy();
     expect(addStaff).toHaveBeenCalledTimes(1);

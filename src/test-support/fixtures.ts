@@ -749,7 +749,7 @@ export function fakeStaffAdapter(overrides: Partial<StaffAdapter> = {}): StaffAd
   return {
     listStaff: async () => page([staffSummary()]),
     getStaff: async () => staffDetail(),
-    findEligibleIdentityByEmail: async () => eligibleIdentity(),
+    findEligibleIdentitiesByEmail: async () => [eligibleIdentity()],
     addStaff: async (input) =>
       staffDetail({
         membershipId: MEMBERSHIP_STAFF_A,

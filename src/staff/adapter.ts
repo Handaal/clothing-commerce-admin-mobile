@@ -37,19 +37,24 @@ export type StaffListPage = CursorPage<StaffSummary>;
  * header; this app never sets headers itself.
  *
  * Names may be refined when the final Admin architecture/SDK is known; the shape is deliberately close
- * to the anticipated staff-projection operations (list / get / find-identity-by-email / add / lifecycle /
- * assign / unassign / list assignable roles / list assignable scopes).
+ * to the anticipated staff-projection operations (list / get / find-identities-by-email / add / lifecycle /
+ * assign / unassign / list assignable roles / list assignable scopes). The final SDK will expose this
+ * discovery as `findEligibleStaffIdentitiesByEmail(email) -> { items: EligibleIdentity[] }`; the local
+ * seam returns the unwrapped `items` list, so integration is a one-line `.items` map, never a rewrite.
  *
  * IDENTITY DISCOVERY IS EXACT-EMAIL LOOKUP (frozen V1 privacy decision): Add-Staff resolves an existing
- * account by an EXACT email, never by browsing/searching the global identity directory. The lookup
- * returns the single eligible account or `null` — a `null` covers every "not eligible" case (no such
- * account, inactive identity, already a staff member) with one neutral, non-enumerating result, so this
- * screen can never be used to probe who exists on the platform.
+ * account by an EXACT email, never by browsing/searching the global identity directory. Because a
+ * platform `primary_email` is NOT globally unique, the exact-email lookup returns 0..N eligible accounts
+ * as a list (`EligibleIdentity[]`). An EMPTY list covers every "not eligible" case (no such account,
+ * inactive identity, already a staff member) with one neutral, non-enumerating result. When two or more
+ * accounts share that exact email, the manager must EXPLICITLY choose which identity to link — the UI
+ * never auto-selects. The result is confined to that one exact email, so the screen can never be used to
+ * probe who exists on the platform.
  */
 export interface StaffAdapter {
   listStaff(query: StaffListQuery): Promise<StaffListPage>;
   getStaff(membershipId: string): Promise<StaffDetail>;
-  findEligibleIdentityByEmail(email: string): Promise<EligibleIdentity | null>;
+  findEligibleIdentitiesByEmail(email: string): Promise<EligibleIdentity[]>;
   addStaff(input: AddStaffInput, idempotencyKey: string): Promise<StaffDetail>;
   updateMembershipStatus(
     membershipId: string,
