@@ -16,10 +16,20 @@
  */
 
 /**
- * Membership lifecycle. `deactivated` is a revoked/terminal state that stays READABLE (history is
- * preserved) — there is no physical delete. `suspended` is a reversible temporary disable.
+ * Membership lifecycle, matching the API `StaffStatus` enum. `deactivated` is a revoked/terminal state
+ * that stays READABLE (history is preserved) — there is no physical delete. `suspended` is a reversible
+ * temporary disable. `invited` is an initial state (the API's `create_staff` links an already-provisioned
+ * identity directly as `active`, so `invited` is rarely surfaced, but the list/detail contract can return
+ * it and it must render as real data, never be coerced away).
  */
-export type MembershipStatus = "active" | "suspended" | "deactivated";
+export type MembershipStatus = "invited" | "active" | "suspended" | "deactivated";
+
+/**
+ * The subset of {@link MembershipStatus} a manager may TRANSITION a membership to (mirrors the API's
+ * `StaffStatusTarget`). `invited` is an initial state, never a transition target — a lifecycle control
+ * always targets one of these.
+ */
+export type MembershipStatusTarget = "active" | "suspended" | "deactivated";
 
 /** The kind of thing an access scope targets. Rendering of the target stays domain-driven, not guessed. */
 export type AccessScopeKind = "tenant" | "brand" | "branch" | "location";

@@ -6,19 +6,18 @@ import { staffCapabilities } from "../../src/staff/capabilities";
 import { StaffListScreen } from "../../src/staff/StaffListScreen";
 
 // Route wrapper: keeps navigation concerns out of the screen (which stays router-agnostic and directly
-// unit-testable). Staff is only reachable from a fully resolved session. The production adapter is
-// `null` until the final Staff SDK is integrated, so this renders the explicit unavailable state; the
+// unit-testable). Staff is only reachable from a fully resolved session. The adapter is SDK-backed; the
 // Add-Staff affordance follows the server's staff management capability, and the API stays authoritative
 // for every read and write.
 export default function StaffRoute() {
   const router = useRouter();
-  const { state } = useSession();
+  const { state, getTenantClient } = useSession();
 
   if (state.phase !== "ready") {
     return <Redirect href="/" />;
   }
 
-  const adapter = resolveStaffAdapter();
+  const adapter = resolveStaffAdapter(getTenantClient(state.tenantId));
   const { canManage } = staffCapabilities(state.context);
 
   return (

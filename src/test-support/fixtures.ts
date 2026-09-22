@@ -24,6 +24,12 @@ import type {
   SupplierReceipt as SdkSupplierReceipt,
   SupplierReceiptsResponse,
   SupplierSummary as SdkSupplierSummary,
+  EligibleIdentitiesResponse as SdkEligibleIdentitiesResponse,
+  EligibleIdentity as SdkEligibleIdentity,
+  StaffAssignment as SdkStaffAssignment,
+  StaffDetail as SdkStaffDetail,
+  StaffListResponse as SdkStaffListResponse,
+  StaffSummary as SdkStaffSummary,
   TransferInventoryResponse,
   UnpublishProductResponse,
 } from "@shifted/clothing-commerce-sdk";
@@ -58,11 +64,11 @@ export interface MeContextOverrides {
   /** `null` omits the suppliers capability entirely (older server / no access at all). */
   suppliers?: NonNullable<MeContextResponse["access"]["suppliers"]> | null;
   /**
-   * Staff capability. The final `/me/context` staff contract is NOT frozen and the vendored SDK does not
-   * yet type `access.staff`, so this is the app's own expected shape, injected structurally. `null` omits
-   * it entirely (older server / no access); default is read+manage so nav + affordances are exercised.
+   * Staff capability. `/me/context` now types `access.staff` as `{ canRead, canManage }` (SDK 0.10.0).
+   * `null` omits it entirely (older server / no access); default is read+manage so nav + affordances are
+   * exercised.
    */
-  staff?: { canRead?: boolean; canManage?: boolean } | null;
+  staff?: NonNullable<MeContextResponse["access"]["staff"]> | null;
 }
 
 export function meContext(tenantId: string, overrides: MeContextOverrides = {}): MeContextResponse {
@@ -81,8 +87,8 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
     ...(overrides.suppliers === null
       ? {}
       : { suppliers: overrides.suppliers ?? { canRead: true, canManage: true } }),
-    // Staff capability injected structurally (see MeContextOverrides.staff). Cast at the return boundary
-    // because the vendored SDK type does not yet include it — this mirrors the app's defensive read.
+    // Staff capability is optional on the real context. Default to read+manage so navigation and
+    // management affordances are exercised; pass `staff: null` to omit it, or a partial to vary it.
     ...(overrides.staff === null
       ? {}
       : { staff: overrides.staff ?? { canRead: true, canManage: true } }),
@@ -90,6 +96,8 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
   return {
     tenant: { id: tenantId, name: "Acme Apparel", status: "active" },
     membership: { id: MEMBERSHIP_A },
+    // Cast at the return boundary because the optional suppliers/staff blocks are built by conditional
+    // spread (present-or-absent), which TypeScript widens; every field value is contract-shaped.
     access: access as MeContextResponse["access"],
   };
 }
@@ -742,8 +750,9 @@ export function eligibleIdentity(overrides: Partial<EligibleIdentity> = {}): Eli
 
 /**
  * Build a fake {@link StaffAdapter} for tests. Each method defaults to a schema-valid success and can be
- * overridden per test (including with rejections). This is the test-only stand-in for the future
- * SDK-backed adapter; production still resolves to `null` (unavailable).
+ * overridden per test (including with rejections). This is a local-model stand-in used to drive the
+ * screens directly; the real SDK-backed adapter (and its DTO mapping) is exercised separately against the
+ * `sdk*` DTO fixtures below.
  */
 export function fakeStaffAdapter(overrides: Partial<StaffAdapter> = {}): StaffAdapter {
   return {
@@ -780,6 +789,90 @@ export function fakeStaffAdapter(overrides: Partial<StaffAdapter> = {}): StaffAd
     listAssignableScopes: async () => [tenantScopeOption(), accessScopeOption()],
     ...overrides,
   };
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Phase 2O Staff — REAL SDK 0.10.0 DTO fixtures. These are the wire shapes the SDK returns; the adapter
+// maps them onto the local model above. Kept separate from the local-model fixtures so adapter tests
+// assert the mapping against the actual contract, never against the app's own vocabulary.
+// ---------------------------------------------------------------------------------------------------
+
+export function sdkStaffAssignment(
+  overrides: Partial<SdkStaffAssignment> = {},
+): SdkStaffAssignment {
+  return {
+    assignmentId: ASSIGNMENT_A,
+    roleId: ROLE_MANAGER,
+    roleName: "Branch Manager",
+    isProtectedRole: false,
+    accessScopeId: SCOPE_BRANCH,
+    scopeName: "Downtown Branch",
+    scopeMode: "explicit",
+    targets: [{ kind: "branch", id: "16161616-1616-4161-8161-161616161616" }],
+    permissionKeys: ["catalog.read", "orders.read"],
+    assignedAt: "2026-09-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function sdkStaffSummary(overrides: Partial<SdkStaffSummary> = {}): SdkStaffSummary {
+  return {
+    membershipId: MEMBERSHIP_STAFF_A,
+    identityId: IDENTITY_A,
+    tenantId: TENANT_A,
+    displayName: "Layla Hassan",
+    email: "layla@acme.example",
+    status: "active",
+    roles: [{ roleId: ROLE_MANAGER, roleName: "Branch Manager", isProtected: false }],
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-09-10T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function sdkStaffDetail(overrides: Partial<SdkStaffDetail> = {}): SdkStaffDetail {
+  return {
+    membershipId: MEMBERSHIP_STAFF_A,
+    identityId: IDENTITY_A,
+    tenantId: TENANT_A,
+    displayName: "Layla Hassan",
+    email: "layla@acme.example",
+    status: "active",
+    roles: [{ roleId: ROLE_MANAGER, roleName: "Branch Manager", isProtected: false }],
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-09-10T09:00:00.000Z",
+    invitedAt: "2026-08-01T09:00:00.000Z",
+    activatedAt: "2026-08-01T09:00:00.000Z",
+    suspendedAt: null,
+    deactivatedAt: null,
+    assignments: [sdkStaffAssignment()],
+    ...overrides,
+  };
+}
+
+export function sdkStaffListResponse(
+  items: SdkStaffSummary[] = [sdkStaffSummary()],
+  pageInfo: Partial<SdkStaffListResponse["pageInfo"]> = {},
+): SdkStaffListResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
+}
+
+export function sdkEligibleIdentity(
+  overrides: Partial<SdkEligibleIdentity> = {},
+): SdkEligibleIdentity {
+  return {
+    identityId: IDENTITY_B,
+    displayName: "Omar Fathy",
+    primaryEmail: "omar@acme.example",
+    status: "active",
+    ...overrides,
+  };
+}
+
+export function sdkEligibleIdentitiesResponse(
+  items: SdkEligibleIdentity[] = [sdkEligibleIdentity()],
+): SdkEligibleIdentitiesResponse {
+  return { items };
 }
 
 export interface RecordedRequest {

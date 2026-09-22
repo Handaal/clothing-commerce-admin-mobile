@@ -45,7 +45,13 @@ export interface StaffListScreenProps {
   onBack: () => void;
 }
 
-const STATUS_FILTERS: StaffStatusFilter[] = ["all", "active", "suspended", "deactivated"];
+const STATUS_FILTERS: StaffStatusFilter[] = [
+  "all",
+  "invited",
+  "active",
+  "suspended",
+  "deactivated",
+];
 
 /**
  * Staff list with server-side search. When no adapter is present (Staff SDK not integrated yet), it

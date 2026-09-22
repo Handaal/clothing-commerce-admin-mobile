@@ -14,7 +14,7 @@ import {
   fakeStaffAdapter,
   staffDetail,
 } from "../test-support/fixtures";
-import { PROVISIONAL_STAFF_ERROR_CODES } from "./write-errors";
+import { STAFF_ERROR_CODES } from "./write-errors";
 import { AddStaffFlow } from "./AddStaffFlow";
 
 afterEach(() => cleanup());
@@ -190,15 +190,13 @@ describe("AddStaffFlow", () => {
     expect(onCreated).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces a membership-already-exists rejection distinctly (never a silent success)", async () => {
+  it("surfaces a membership-conflict rejection distinctly (never a silent success)", async () => {
     const addStaff = vi
       .fn()
-      .mockRejectedValue(
-        new ApiHttpError("dup", 409, PROVISIONAL_STAFF_ERROR_CODES.membershipExists, null),
-      );
+      .mockRejectedValue(new ApiHttpError("dup", 409, STAFF_ERROR_CODES.staffConflict, null));
     await advanceToReview(vi.fn().mockResolvedValue([eligibleIdentity()]), { addStaff });
     fireEvent.click(await screen.findByTestId("add-staff-submit"));
-    expect(await screen.findByText("Already a member")).toBeTruthy();
+    expect(await screen.findByText("Change conflicts")).toBeTruthy();
     expect(addStaff).toHaveBeenCalledTimes(1);
   });
 });

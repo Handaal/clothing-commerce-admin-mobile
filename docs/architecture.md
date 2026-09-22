@@ -4,7 +4,7 @@
 Clerk (auth, owned by Mobile)
   │  getToken callback (token only — never a Clerk object)
   ▼
-@shifted/clothing-commerce-sdk 0.9.0  (packed tarball under vendor/, relative file: path)
+@shifted/clothing-commerce-sdk 0.10.0  (packed tarball under vendor/, relative file: path)
   │  owns Authorization, X-Client-Type/Version, X-Tenant-Id
   ▼
 Commerce API  →  authoritative commerce core
@@ -65,6 +65,21 @@ Receive form takes an **optional** active-supplier selector (`receiveSuppliers`)
 supplier reference; "No supplier" is a legacy receipt (unchanged), inactive suppliers are excluded, and
 supplier loading is best-effort so it never blocks receiving. No unit-cost/cost-basis fields exist
 (deliberately deferred by the API).
+
+## Phase 2O Staff management (SDK 0.10.0)
+
+Staff integrates behind one seam: `resolveStaffAdapter(client)` (`src/staff/adapter.ts`) returns a
+concrete SDK-backed `StaffAdapter` mapping SDK DTOs ⇄ the Admin-owned model (`src/staff/model.ts`). Every
+staff screen depends on the interface, never a concrete client. Capabilities come from the typed
+`/me/context` `access.staff` `{ canRead, canManage }` via `staffCapabilities`. Reads reuse `useAsync` +
+the shared bounded paginator; writes reuse `useMutation` + idempotency keys, re-reading the authoritative
+`StaffDetail` on success, with real-code error mapping in `src/staff/write-errors.ts`. Two contract facts
+shape the design: `createStaff` is **identity-only**, so `addStaff` orchestrates **create → assign** under
+one operator key (derived `${key}-assign`); and there is **no role/scope catalog endpoint**, so assignable
+role/scope options are **derived from existing staff assignments** (list + detail) — the only server-backed
+source. Identity discovery is an **exact-email 0/1/N lookup** (`findEligibleStaffIdentitiesByEmail`), never
+a directory browse. See [phase-2o-foundation.md](phase-2o-foundation.md) and
+[phase-2o-validation.md](phase-2o-validation.md).
 
 ## Dependency direction
 

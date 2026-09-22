@@ -1,16 +1,17 @@
 /**
  * Local, semantic Staff write-error categories and their presentation.
  *
- * The final Staff SDK error codes are NOT frozen (contract still under review), so this app must not
- * invent exact API codes. Instead it defines its OWN semantic categories for the security-sensitive
- * failures the server is expected to enforce, and maps a {@link ClassifiedCommerceError} onto them. The
- * server remains authoritative; these are UI surfaces prepared in advance so that, at integration time,
- * the ONLY change is wiring the final SDK's real error codes into {@link PROVISIONAL_STAFF_ERROR_CODES}.
+ * These map the REAL, frozen Staff API error codes (SDK 0.10.0 / `src/staff/errors.ts`) onto local
+ * semantic categories with a distinct heading, message and recovery each — nothing collapses into one
+ * generic error, and `IDEMPOTENCY_CONFLICT` is never hidden. The server remains authoritative: the UI
+ * never assumes a visible role/scope is actually assignable, and never presents a server refusal as a
+ * silent success.
  *
- * The provisional codes below are placeholders kept in one place — they are the app's guesses at the
- * eventual stable codes and MUST be reconciled with the real SDK errors during integration. Anti-
- * escalation and last-admin protections are distinct, non-actionable surfaces: the UI must never assume
- * a visible role/scope is actually assignable, and never present a server refusal as a silent success.
+ * The API deliberately uses a small, shared code set: `STAFF_PRIVILEGE_ESCALATION` covers BOTH
+ * "grant a permission you do not hold" and "assign a scope outside your authority" (anti-escalation);
+ * `STAFF_CONFLICT` covers a membership/assignment already existing, a revoked membership, and a refused
+ * lifecycle transition. We map each real code to its clearest UI surface rather than inventing finer
+ * codes the server does not emit.
  */
 
 import type { ClassifiedCommerceError } from "../commerce/errors";
@@ -19,26 +20,24 @@ import type { ClassifiedCommerceError } from "../commerce/errors";
  * Distinct staff-write outcomes the UI prepares a recovery for. Each is kept separate — nothing collapses
  * into one generic error:
  *
- * - `cannot-delegate` — you may not grant a role/permission you do not yourself hold (subset-of-own rule).
- * - `last-admin` — you may not remove/deactivate the final staff administrator.
- * - `foreign-scope` — you may not assign a scope outside your own authority.
- * - `protected-assignment` — a protected assignment cannot be mutated.
- * - `membership-exists` — this identity is already a member of the tenant.
- * - `identity-not-found` — the chosen identity could not be linked (it may have changed).
- * - `invalid` — locally-correctable invalid input.
+ * - `cannot-delegate` — anti-escalation (`STAFF_PRIVILEGE_ESCALATION`): you may not grant a role or scope
+ *   carrying authority you do not yourself hold tenant-wide (this one code covers foreign-scope too).
+ * - `last-admin` — you may not remove/suspend/deactivate the final staff administrator (`LAST_STAFF_ADMIN`).
+ * - `staff-conflict` — the membership/assignment is in a conflicting state (`STAFF_CONFLICT`): already a
+ *   member, a duplicate active assignment, a revoked membership, or a refused lifecycle transition.
+ * - `identity-inactive` — the chosen identity is not active and cannot be linked (`IDENTITY_INACTIVE`).
+ * - `invalid` — locally-correctable invalid input (`INVALID_STAFF`).
  * - `session` / `denied` — auth (401) / generic authorization (403) not covered by a specific category.
  * - `conflict` — an idempotency-key conflict (same key, different payload) — start a fresh operation.
- * - `not-found` — the membership/target no longer exists.
+ * - `not-found` — the membership/target no longer exists (`STAFF_NOT_FOUND`).
  * - `ambiguous` — transport/5xx; may or may not have applied, so a retry must reuse the same key.
  * - `unknown` — anything else.
  */
 export type StaffErrorCategory =
   | "cannot-delegate"
   | "last-admin"
-  | "foreign-scope"
-  | "protected-assignment"
-  | "membership-exists"
-  | "identity-not-found"
+  | "staff-conflict"
+  | "identity-inactive"
   | "invalid"
   | "session"
   | "denied"
@@ -48,19 +47,17 @@ export type StaffErrorCategory =
   | "unknown";
 
 /**
- * PROVISIONAL server codes — the app's placeholders for the eventual stable Staff error codes. These
- * are the SINGLE place to reconcile with the final SDK contract at integration time. They are NOT a
- * claimed contract today.
+ * The REAL, frozen Staff API error codes (SDK 0.10.0 / API `src/staff/errors.ts`). This is the single
+ * place the app names them — every screen classifies through {@link categorizeStaffWriteError}.
  */
-export const PROVISIONAL_STAFF_ERROR_CODES = {
-  cannotDelegate: "CANNOT_DELEGATE_UNHELD_PERMISSION",
+export const STAFF_ERROR_CODES = {
+  privilegeEscalation: "STAFF_PRIVILEGE_ESCALATION",
   lastAdmin: "LAST_STAFF_ADMIN",
-  foreignScope: "FOREIGN_SCOPE",
-  protectedAssignment: "PROTECTED_ASSIGNMENT",
-  membershipExists: "MEMBERSHIP_ALREADY_EXISTS",
-  identityNotFound: "IDENTITY_NOT_FOUND",
-  invalid: ["INVALID_STAFF", "VALIDATION_ERROR"],
-  conflict: "IDEMPOTENCY_CONFLICT",
+  staffConflict: "STAFF_CONFLICT",
+  identityInactive: "IDENTITY_INACTIVE",
+  invalid: "INVALID_STAFF",
+  idempotencyConflict: "IDEMPOTENCY_CONFLICT",
+  notFound: "STAFF_NOT_FOUND",
 } as const;
 
 /** How the UI should let the operator recover from a given failure. */
@@ -75,23 +72,22 @@ export interface DescribedStaffWriteError {
 
 /**
  * Classify a failure into a local semantic category. A KNOWN business code is deterministic (retrying
- * won't change it), so it is matched BEFORE the transport/kind fallback — a `409` carrying a business
- * code (e.g. membership-exists) is that business case, not an ambiguous transport failure. Only a
- * failure with no known code falls through to the kind-based buckets (ambiguous / denied / not-found).
+ * won't change it), so it is matched BEFORE the transport/kind fallback — a `409`/`403` carrying a
+ * business code is that business case, not an ambiguous transport failure. Only a failure with no known
+ * code falls through to the kind-based buckets (ambiguous / denied / not-found).
  */
 export function categorizeStaffWriteError(error: ClassifiedCommerceError): StaffErrorCategory {
   if (error.kind === "auth") return "session";
 
   const code = error.code;
-  const codes = PROVISIONAL_STAFF_ERROR_CODES;
-  if (code === codes.cannotDelegate) return "cannot-delegate";
+  const codes = STAFF_ERROR_CODES;
+  if (code === codes.privilegeEscalation) return "cannot-delegate";
   if (code === codes.lastAdmin) return "last-admin";
-  if (code === codes.foreignScope) return "foreign-scope";
-  if (code === codes.protectedAssignment) return "protected-assignment";
-  if (code === codes.membershipExists) return "membership-exists";
-  if (code === codes.identityNotFound) return "identity-not-found";
-  if (code && codes.invalid.includes(code as (typeof codes.invalid)[number])) return "invalid";
-  if (code === codes.conflict) return "conflict";
+  if (code === codes.staffConflict) return "staff-conflict";
+  if (code === codes.identityInactive) return "identity-inactive";
+  if (code === codes.invalid) return "invalid";
+  if (code === codes.idempotencyConflict) return "conflict";
+  if (code === codes.notFound) return "not-found";
 
   if (error.kind === "network" || error.kind === "server" || error.kind === "contract") {
     return "ambiguous";
@@ -120,35 +116,20 @@ export function describeStaffWriteError(error: ClassifiedCommerceError): Describ
           "This is the final staff administrator and cannot be removed or deactivated. Assign another administrator first.",
         recovery: "none",
       };
-    case "foreign-scope":
+    case "staff-conflict":
       return {
         category,
-        heading: "Scope outside your authority",
+        heading: "Change conflicts",
         message:
-          "You cannot assign an access scope outside your own authority. The change was not applied.",
+          "This staff change conflicts with the current state — for example the person is already a member, the assignment already exists, or the membership was already revoked. Refresh and review before trying again.",
         recovery: "none",
       };
-    case "protected-assignment":
+    case "identity-inactive":
       return {
         category,
-        heading: "Protected assignment",
-        message: "This assignment is protected and cannot be changed. The change was not applied.",
-        recovery: "none",
-      };
-    case "membership-exists":
-      return {
-        category,
-        heading: "Already a member",
+        heading: "Account not active",
         message:
-          "This person is already a member of this business. Open their existing staff record instead.",
-        recovery: "none",
-      };
-    case "identity-not-found":
-      return {
-        category,
-        heading: "Person not found",
-        message:
-          "The selected person could not be linked — they may no longer be available. Search and choose again.",
+          "The selected account is not active and cannot be linked as staff. Choose a different account.",
         recovery: "edit",
       };
     case "invalid":

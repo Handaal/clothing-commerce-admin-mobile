@@ -1,14 +1,14 @@
 import { View } from "react-native";
 
 import { Body, ConfirmButton, Eyebrow, PrimaryButton } from "../ui/components";
-import type { MembershipStatus } from "./model";
+import type { MembershipStatus, MembershipStatusTarget } from "./model";
 import { membershipLifecycleActions } from "./status";
 
 export interface MembershipStatusActionsProps {
   status: MembershipStatus;
   /** Disable controls while a lifecycle mutation is in flight. */
   busy?: boolean;
-  onChangeStatus: (next: MembershipStatus) => void;
+  onChangeStatus: (next: MembershipStatusTarget) => void;
 }
 
 /**

@@ -1,11 +1,16 @@
-# Phase 2O — Staff management (foundation)
+# Phase 2O — Staff management
 
-**Status: UI/domain FOUNDATION only — deliberately NOT the real API integration pass.** The Staff
-SDK contract was still being finalized (a parallel API workstream under security review) when this was
-built, so Admin Mobile ships a strong, adapter-isolated foundation that the final Staff SDK will plug
-into through one narrow mapping. **The production Staff adapter is unavailable (`null`) and every Staff
-screen renders an explicit "unavailable" state until the SDK is integrated.** Nothing fabricates staff
-data or a fake success.
+**Status: INTEGRATED against the real Staff API (SDK `0.10.0`).** Admin Mobile shipped a UI/domain
+foundation against a narrow `StaffAdapter` seam while the Staff API was under review; the API core has
+since merged, and this phase wires the foundation to the real SDK through a single mapping in
+`src/staff/adapter.ts`. Every Staff screen still depends only on the adapter interface and the local
+UI-domain model — the integration was a mapping change, not a screen rewrite. Nothing fabricates staff
+data or a fake success: a failure surfaces as a classified error.
+
+- **Vendored SDK:** `@shifted/clothing-commerce-sdk@0.10.0`, tarball
+  `vendor/shifted-clothing-commerce-sdk-0.10.0.tgz`, **SHA-256
+  `74247c03b44ad81f07bf777e78bb7cdf5734c75a482744702ed26a157189cb99`** (verified in
+  `src/sdk-artifact.test.ts`; the `0.9.0` tarball was removed).
 
 This mirrors how Phase 2N (suppliers) was delivered: foundation first, then a mapping-only integration
 once the API froze.
@@ -19,148 +24,168 @@ authorization (role + access-scope assignments). There is deliberately **no Empl
 
 ## Local UI-domain model (`src/staff/model.ts`)
 
-Admin-owned types, independent of any Staff SDK DTO (imports none): `StaffSummary`, `StaffDetail`,
-`StaffIdentity`, `EligibleIdentity`, `RoleSummary`/`RoleOption`, `AccessScopeSummary`/`AccessScopeOption`,
-`StaffAssignment` (Role + AccessScope **coupled per assignment**), `MembershipStatus`
-(`active` / `suspended` / `deactivated`), and the `AddStaffInput` / `RoleScopeAssignmentInput` write
-inputs. These are the app's own vocabulary — not a claimed contract.
+Admin-owned types, independent of the SDK DTOs (the mapping lives in `adapter.ts`): `StaffSummary`,
+`StaffDetail`, `StaffIdentity`, `EligibleIdentity`, `RoleSummary`/`RoleOption`,
+`AccessScopeSummary`/`AccessScopeOption`, `StaffAssignment` (Role + AccessScope **coupled per
+assignment**), `MembershipStatus` (`invited` / `active` / `suspended` / `deactivated`, matching the API
+enum) and `MembershipStatusTarget` (the `active` / `suspended` / `deactivated` subset a manager may
+transition **to** — `invited` is an initial state, never a target), and the `AddStaffInput` /
+`RoleScopeAssignmentInput` write inputs.
 
-## Adapter seam (`src/staff/adapter.ts`)
+## Adapter seam (`src/staff/adapter.ts`) — now SDK-backed
 
 One `StaffAdapter` interface is the whole boundary: `listStaff`, `getStaff`,
 `findEligibleIdentitiesByEmail`, `addStaff`, `updateMembershipStatus`, `assignRoleScope`,
-`unassignRoleScope`, `listAssignableRoles`, `listAssignableScopes`. Screens depend **only** on this
-interface and the local model, never on the SDK. Writes take an app-supplied idempotency key and return
-the fresh authoritative `StaffDetail`. Identity discovery is `findEligibleIdentitiesByEmail(email)`,
-which returns an `EligibleIdentity[]` for that **exact** email. Because a platform `primary_email` is
-**not globally unique**, the result is **0..N** accounts — an **empty list** is the neutral no-result
-state and **2+** entries require the manager to pick one explicitly. It is scoped to the single exact
-email, so the screen still cannot browse or enumerate the global identity directory. The final SDK
-exposes this as `findEligibleStaffIdentitiesByEmail(email) -> { items: EligibleIdentity[] }`; the local
-seam returns the unwrapped `items`, so integration is a one-line `.items` map.
+`unassignRoleScope`, `listAssignableRoles`, `listAssignableScopes`. `resolveStaffAdapter(client)` returns
+a concrete adapter that calls the tenant-scoped SDK client and maps its DTOs onto the local model. The
+SDK owns the transport, the tenant header and the `Idempotency-Key` header — the app hand-writes no HTTP.
+The seam still permits `null` so tests can render the explicit unavailable state, but production always
+resolves a concrete adapter.
 
-`resolveStaffAdapter()` returns **`null`** — production is unavailable by design. It imports no Staff
-SDK types, hand-writes no HTTP, and invents no endpoints/DTOs/error codes. Test adapters are the only
-fakes (`fakeStaffAdapter` in `src/test-support/fixtures.ts`). At integration time the signature becomes
-`resolveStaffAdapter(client)` and a single new mapping file is added — no screen rewrite.
+**DTO → local mapping highlights.** SDK `null` optionals become local `undefined`; a never-empty display
+name falls back name → email → `"(no name)"`. An SDK assignment couples `roleId`/`roleName` (+ joined
+`permissionKeys` as a hint, `isProtectedRole`) with `accessScopeId`/`scopeName`/`scopeMode`; a `tenant`
+scope maps to the tenant-wide kind with no target lines, an `explicit` scope takes the shape of its first
+target and surfaces the distinct target **kinds** as readable lines (the SDK gives target `{ kind, id }`
+with no human name, so we never fabricate a target name from an id).
+
+**Two contract realities shape the mapping:**
+
+1. **`createStaff` takes only `{ identityId }`** — a new membership is created `active` with no
+   assignment. So `addStaff` orchestrates the real two-step flow: `createStaff` → `assignStaffRole`,
+   under one operator idempotency key (the assign step derives a stable `${key}-assign` sub-key). An
+   ambiguous retry replays both steps at-most-once. The authoritative post-assignment `StaffDetail` is
+   returned.
+2. **There is no role/scope catalog endpoint** (V1 assigns existing roles/scopes by id; role/scope
+   authoring is out of scope). The only server-backed source of the role and access-scope ids that exist
+   in a tenant is the assignments already held by existing staff. So `listAssignableRoles` derives its
+   options from the roles on existing staff summaries, and `listAssignableScopes` derives them from the
+   scopes inside existing staff assignments (list + detail), deduped. **A role/scope that has never been
+   assigned to anyone will not appear** — a documented V1 limitation, not fabricated data. See
+   "Remaining after 2O".
 
 ## Capability seam (`src/staff/capabilities.ts`)
 
-The final `/me/context` staff contract is **not frozen**, and the vendored SDK (`0.9.0`) does not yet
-type `access.staff`. So **all** staff-context guessing is isolated in one helper, `staffCapabilities`,
-which reads `access.staff` **structurally** into a stable `{ canRead, canManage }` (deny-by-default when
-absent). When the DTO lands, this is the single place to retype. `canRead` gates the **Manage staff**
-navigation entry; `canManage` gates Add-Staff and every mutation control. The API remains the sole
-authority — a hidden control is never the security boundary, and a real `403` surfaces distinctly.
+`GET /me/context` now exposes a typed `access.staff` block (`{ canRead, canManage }`, optional). The
+`staffCapabilities` helper reads it directly (deny-by-default when absent). `canRead` gates the **Manage
+staff** navigation entry; `canManage` gates Add-Staff and every mutation control. The API remains the
+sole authority — a hidden control is never the security boundary, and a real `403` surfaces distinctly.
 
 ## Screens & components
 
-- **Staff list** (`StaffListScreen.tsx`): loading / error / empty / populated, server-side
-  search + status filter (+ optional role filter when role options are supplied), bounded cursor
-  pagination via the shared paginator. Rows show display name, email, status, and role + scope summary.
-  Query state is explicit (`search.ts`) so SDK integration is narrow; no client-side filtering.
+- **Staff list** (`StaffListScreen.tsx`): loading / error / empty / populated, server-side search +
+  status filter (All / Invited / Active / Suspended / Deactivated) + optional role filter when role
+  options are supplied, bounded fail-closed cursor pagination. Rows show display name, email, status, and
+  role summary. (SDK list summaries carry roles but no scopes, so a row shows role labels and no scope
+  summary.) Query state is explicit (`search.ts`); no client-side filtering.
 - **Staff detail** (`StaffDetailScreen.tsx`): identity, membership status, and assignments rendered as
-  **Role + AccessScope pairs** (`StaffAssignmentList.tsx`) — clear which role applies at which scope. A
-  **deactivated** membership stays fully readable and offers **no delete**. Lifecycle actions
-  (`MembershipStatusActions.tsx`) and an add-assignment panel appear only for a manager.
-- **Add-Staff flow** (`AddStaffFlow.tsx`): four steps — (1) find **existing** account(s) by their **exact
-  email** and explicitly select one (`EligibleIdentityLookup.tsx`), (2) choose a role (`RoleSelector.tsx`),
-  (3) choose an **existing** access scope (`AccessScopeSelector.tsx`), (4) review + create. **Add-Staff
-  links an existing provisioned identity** — no Clerk invite, no email send, no password, and **no
-  raw-UUID entry** as the normal UX. Identity discovery is an **exact-email lookup** returning **0..N**
-  matches (a `primary_email` is not globally unique) — there is no directory browse, no display-name
-  search, and no wildcard. For **2+** matches the identity step is not complete until the manager selects
-  one explicitly.
+  **Role + AccessScope pairs** (`StaffAssignmentList.tsx`). A **deactivated** membership stays fully
+  readable and offers **no delete**. Lifecycle actions (`MembershipStatusActions.tsx`) and an
+  add-assignment panel appear only for a manager; every mutation re-reads the authoritative record.
+- **Add-Staff flow** (`AddStaffFlow.tsx`): find **existing** account(s) by **exact email** and explicitly
+  select one (`EligibleIdentityLookup.tsx`), choose an existing role (`RoleSelector.tsx`), choose an
+  existing access scope (`AccessScopeSelector.tsx`), review, then create. **Add-Staff links an existing
+  provisioned identity** — no Clerk invite, no email send, no password, no raw-UUID entry.
 
   ### Exact-email eligible-account lookup (frozen V1 privacy decision)
 
-  The identity step is an **exact, existing-account email lookup**, not a directory search. The operator
-  types an email → taps **Find account** → the eligible account(s) for that exact email are shown. Because
-  a platform `primary_email` is **not globally unique**, the lookup returns **0, 1, or N** accounts:
+  Discovery is an **exact, existing-account email lookup** (`findEligibleStaffIdentitiesByEmail(email) ->
+{ items: EligibleIdentity[] }`), not a directory search. Because a platform `primary_email` is **not
+  globally unique**, the lookup returns **0, 1, or N** accounts:
 
-  - **0 matches** — one neutral message appears: **"No eligible account was found for this email."** That
-    single message covers every not-eligible case (no such account / inactive identity / already a staff
-    member) — the screen **never distinguishes** them and so cannot be used to probe who exists on the
-    platform.
-  - **1 match** — the single account is shown; the operator **explicitly selects** it to confirm, then
-    proceeds to the role step.
+  - **0 matches** — one neutral message: **"No eligible account was found for this email."** It covers
+    every not-eligible case (no such account / inactive identity / already a staff member) — the screen
+    never distinguishes them, so it cannot probe who exists on the platform.
+  - **1 match** — the single account is shown; the operator **explicitly selects** it, then proceeds.
   - **2+ matches** — **all** accounts sharing that exact email are shown (display name, exact email,
-    identity status only — **no tenant relationships**, no invented identifiers). **None is auto-selected;**
-    the manager must **explicitly choose** which identity to link. The role step stays unavailable until
-    one is selected.
+    identity status only). **None is auto-selected;** the manager must **explicitly choose** which
+    identity to link. The role step stays unavailable until one is selected.
 
-  The email is validated (and trimmed/lowercased for convenience) **before** the adapter is called
-  (`search.ts`: `buildEligibleEmailLookup`); an invalid email is blocked at the UX level and never reaches
-  the adapter. There is **no global identity directory browse, no display-name search, no wildcard, and no
-  raw-UUID workflow**. This is a UX convenience only — the server remains the sole authority for matching
-  and is not assumed to normalize the same way. There is still **no Clerk invitation / email send**.
+  The email is validated (trimmed/lowercased) **before** the adapter is called; an invalid email never
+  reaches it. There is **no directory browse, no display-name search, no wildcard, and no raw-UUID
+  workflow**, and **no Clerk invitation / email send**.
 
-- Routes: `app/staff/index.tsx`, `app/staff/[membershipId].tsx`, `app/staff/new.tsx`; navigation entry
-  in `app/index.tsx`.
-
-## Roles, scopes & assignment presentation
-
-Roles and scopes are **existing** platform objects, always adapter-driven. The UI never authors roles,
-edits permissions, or creates scopes / branch-location targets. Scope target rendering is
-domain-driven (`scopes.ts`): tenant-wide reads as "Tenant-wide"; a narrower scope shows the adapter's
-human-readable target lines (e.g. "Branch: Downtown", "Location: Main Stockroom"). Because the server
-enforces anti-escalation, a visible role/scope is **never assumed assignable** until the API accepts it.
+- Routes: `app/staff/index.tsx`, `app/staff/[membershipId].tsx`, `app/staff/new.tsx` (each resolves the
+  adapter from `getTenantClient(tenantId)`); navigation entry in `app/index.tsx`.
 
 ## Membership lifecycle
 
+`invited` (initial state, rarely surfaced — `create_staff` links an identity directly as `active`),
 `active` (normal access), `suspended` (reversible temporary disable), `deactivated` (revoked/terminal;
-retained + readable, **never a physical delete**). Destructive transitions require a confirmation;
-from `deactivated` the UI offers no lifecycle action (the server owns any reactivation rule).
+retained + readable, **never a physical delete**). Lifecycle controls only ever target
+`active`/`suspended`/`deactivated`. Destructive transitions require a confirmation; from `deactivated`
+the UI offers no lifecycle action (the server owns any reactivation rule — `deactivated → active` is
+refused with `STAFF_CONFLICT`). The server also enforces **last-admin** protection: suspending,
+deactivating, or de-privileging the final tenant-wide `staff.manage` admin is rejected with
+`LAST_STAFF_ADMIN`.
 
 ## Read-only mode
 
 With `staff.read = true`, `staff.manage = false`: list + detail remain available; Add-Staff, role/scope
-mutation, and lifecycle controls are all withheld. Proven even before the final context DTO exists.
+mutation, and lifecycle controls are all withheld. The API re-authorizes regardless.
 
-## Anti-escalation / last-admin error seams (`src/staff/write-errors.ts`)
+## Error mapping (`src/staff/write-errors.ts`)
 
-Distinct **local semantic categories** — `cannot-delegate`, `last-admin`, `foreign-scope`,
-`protected-assignment`, `membership-exists`, `identity-not-found`, plus `invalid` / `session` / `denied`
-/ `conflict` / `not-found` / `ambiguous` — each with its own heading, message and recovery. No exact API
-codes are invented: the provisional codes live in one place (`PROVISIONAL_STAFF_ERROR_CODES`) to be
-reconciled with the final SDK. A known business code is deterministic and matched before the ambiguous
-transport fallback; `IDEMPOTENCY_CONFLICT` is never hidden. Idempotency/retry reuse the shared
-`useMutation` discipline (same key on ambiguous retry → at-most-once).
+Maps the **real, frozen** Staff API codes onto distinct local categories, each with its own heading,
+message and recovery — nothing collapses into one generic error:
 
-## Implemented now vs waiting for final API
+| API code (SDK 0.10.0)        | Category            | Recovery |
+| ---------------------------- | ------------------- | -------- |
+| `STAFF_PRIVILEGE_ESCALATION` | `cannot-delegate`   | none     |
+| `LAST_STAFF_ADMIN`           | `last-admin`        | none     |
+| `STAFF_CONFLICT`             | `staff-conflict`    | none     |
+| `IDENTITY_INACTIVE`          | `identity-inactive` | edit     |
+| `INVALID_STAFF`              | `invalid`           | edit     |
+| `IDEMPOTENCY_CONFLICT`       | `conflict`          | none     |
+| `STAFF_NOT_FOUND`            | `not-found`         | none     |
 
-**Implemented now:** staff management UI foundation; local UI-domain types; the adapter boundary
-(`null` in production); capability seam; list; detail; Add-Staff workflow UX; role/scope assignment UX;
-membership lifecycle UX; read-only behaviour; anti-escalation/last-admin error surfaces.
+`STAFF_PRIVILEGE_ESCALATION` is the single anti-escalation code (it covers both an unheld-permission role
+and a foreign scope); `STAFF_CONFLICT` covers "already a member", a duplicate active assignment, a
+revoked membership, and a refused transition. A known business code is matched **before** the transport
+fallback (`network`/`server`/`contract` → `ambiguous` retry; `forbidden` → `denied`; `auth` → `session`).
+`IDEMPOTENCY_CONFLICT` is never hidden. Idempotency/retry reuse the shared `useMutation` discipline (same
+key on ambiguous retry → at-most-once); changing identity/role/scope/lifecycle intent is a changed intent
+and the server returns `IDEMPOTENCY_CONFLICT` if a key is reused with a different payload.
 
-**Waiting for the final API contract:**
+## Implemented in 2O vs remaining
 
-- the real Staff SDK (`listStaff` / `getStaffMember` / `createStaff` / `updateStaffStatus` /
-  `assignStaffRole` / `unassignStaffRole` or their final names) and a concrete `resolveStaffAdapter`;
-- the exact `/me/context` staff capability shape (retype `capabilities.ts`);
-- the real **eligible-account email-lookup** endpoint behind `findEligibleStaffIdentitiesByEmail(email)`
-  → `{ items: EligibleIdentity[] }` (SDK `0.10.0`): the exact-email lookup **contract is frozen** (0..N
-  results, duplicate-email identities require explicit selection), but the SDK itself is **not integrated
-  yet** — the local seam maps its `items` list on integration;
-- the exact assignable-roles / assignable-scopes endpoints and the assignment/lifecycle endpoints;
-- the exact typed error codes (reconcile `PROVISIONAL_STAFF_ERROR_CODES`).
+**Implemented (integrated):** the real SDK-backed adapter and DTO mapping; typed `access.staff`
+capabilities; server-side list (search / status / role filter, pagination); detail (identity + status +
+role/scope-coupled assignments + timestamps); exact-email 0/1/N eligible lookup; Add-Staff (create →
+assign, orchestrated); role/scope assign + unassign (re-read on success); membership lifecycle incl.
+`invited`; read-only mode; anti-escalation / last-admin / conflict / idempotency error surfaces mapped to
+the real codes.
+
+**Remaining after 2O (product decisions, not blockers to this integration):**
+
+- **No role/scope catalog endpoint in V1.** Assignable role/scope options are derived from the tenant's
+  existing staff assignments (the only server-backed source). A role or scope that has never been
+  assigned to anyone is not discoverable in the pickers, and role/scope **authoring** is out of scope. A
+  future roles/scopes catalog endpoint would let the pickers list all assignable options directly.
+- **Add-Staff creates the membership before assigning** (the API's `createStaff` is identity-only), so a
+  role rejected by anti-escalation leaves a bare active membership. Assigning a permitted role/scope from
+  the detail screen recovers it; a future single-call "create with initial assignment" endpoint would
+  make it atomic.
 
 **Non-goals:** HR / payroll; role creation/editing; permission editing; access-scope or branch/location
 creation; and any Clerk invitation / email / password flow.
 
 ## Verification
 
-Automated unit/component suite (Vitest): domain model, search/query mapping, lifecycle, scope
-presentation, the defensive capability read, the unavailable production adapter, the write-error
-categorisation (incl. anti-escalation/last-admin/foreign-scope/protected/membership-exists), list
-loading/error/empty/populated + pagination + server search, read-only vs manage, detail rendering +
-assignment coupling + lifecycle confirmation + deactivated readability + unassign, and the full
-Add-Staff step flow (exact-email account lookup → explicit select → role → scope → review → create) with
-a blocked invalid email, a neutral **0-result** state, a **1-result** explicit confirm, a **2+ result**
-set that shows every exact-email match, auto-selects none, and keeps the role step unavailable until one
-is chosen, plus no fake success, no directory/display-name search, and no raw-UUID entry. All fakes are
-test-only; production stays unavailable.
+Automated unit/component suite (Vitest): the SDK artifact/version/SHA; the **SDK-backed adapter mapping**
+(list query pass-through + summary mapping; detail with role/scope coupling and target kinds; tenant vs
+explicit scope; exact-email 0..N lookup incl. null-name fallback; create→assign orchestration with
+derived keys; lifecycle/assign/unassign inputs; assignable role/scope **derivation** from existing
+staff); typed capabilities incl. deny-by-default; the write-error categorisation against the real codes;
+list loading/error/empty/populated + pagination + server search; read-only vs manage; detail rendering +
+assignment coupling + lifecycle confirmation + deactivated readability + unassign; and the full Add-Staff
+flow (exact-email lookup → explicit select → role → scope → review → create) with a blocked invalid
+email, a neutral 0-result, a 1-result explicit confirm, a 2+ set that shows every match and auto-selects
+none, no fake success, no directory/display-name search, and no raw-UUID entry.
 
-**No real Staff runtime API acceptance yet** — by design, the SDK is not integrated. Gate suite green:
-`pnpm install --frozen-lockfile`, `expo install --check`, `format:check`, `lint`, `typecheck`, `test`,
-`build` (web export includes `/staff`, `/staff/new`, `/staff/[membershipId]`), and `git diff --check`.
+Gate suite green: `pnpm install --frozen-lockfile`, `expo install --check`, `format:check`, `lint`,
+`typecheck`, `test`, `build` (web export includes `/staff`, `/staff/new`, `/staff/[membershipId]`), and
+`git diff --check`.
+
+**Runtime acceptance (A–L):** see `docs/phase-2o-validation.md` for the disposable-API acceptance
+harness (`acceptance/staff.runtime.tsx`) and results.

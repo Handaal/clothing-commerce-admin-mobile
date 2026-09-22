@@ -9,6 +9,7 @@ import {
 
 describe("membershipStatusLabel", () => {
   it("labels each lifecycle state", () => {
+    expect(membershipStatusLabel("invited")).toBe("Invited");
     expect(membershipStatusLabel("active")).toBe("Active");
     expect(membershipStatusLabel("suspended")).toBe("Suspended");
     expect(membershipStatusLabel("deactivated")).toBe("Deactivated");
@@ -39,6 +40,12 @@ describe("membershipLifecycleActions", () => {
       "active",
       "deactivated",
     ]);
+  });
+
+  it("offers activate + deactivate from invited (never targets invited itself)", () => {
+    const actions = membershipLifecycleActions("invited");
+    expect(actions.map((a) => a.next)).toEqual(["active", "deactivated"]);
+    expect(actions.find((a) => a.next === "deactivated")?.destructive).toBe(true);
   });
 
   it("offers NO lifecycle action from deactivated (terminal; no physical delete)", () => {

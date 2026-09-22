@@ -14,7 +14,7 @@ import {
   staffAssignment,
   staffDetail,
 } from "../test-support/fixtures";
-import { PROVISIONAL_STAFF_ERROR_CODES } from "./write-errors";
+import { STAFF_ERROR_CODES } from "./write-errors";
 import { StaffDetailScreen } from "./StaffDetailScreen";
 
 afterEach(() => cleanup());
@@ -193,9 +193,7 @@ describe("StaffDetailScreen", () => {
   it("assigns a new role+scope and surfaces an anti-escalation refusal distinctly", async () => {
     const assignRoleScope = vi
       .fn()
-      .mockRejectedValue(
-        new ApiHttpError("no", 403, PROVISIONAL_STAFF_ERROR_CODES.cannotDelegate, null),
-      );
+      .mockRejectedValue(new ApiHttpError("no", 403, STAFF_ERROR_CODES.privilegeEscalation, null));
     const adapter = fakeStaffAdapter({
       getStaff: async () => staffDetail({ status: "active", assignments: [] }),
       assignRoleScope,
