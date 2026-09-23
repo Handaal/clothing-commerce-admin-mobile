@@ -1,7 +1,7 @@
 /**
  * Local, semantic Staff write-error categories and their presentation.
  *
- * These map the REAL, frozen Staff API error codes (SDK 0.10.0 / `src/staff/errors.ts`) onto local
+ * These map the REAL, frozen Staff API error codes (SDK 0.11.0 / `src/staff/errors.ts`) onto local
  * semantic categories with a distinct heading, message and recovery each — nothing collapses into one
  * generic error, and `IDEMPOTENCY_CONFLICT` is never hidden. The server remains authoritative: the UI
  * never assumes a visible role/scope is actually assignable, and never presents a server refusal as a
@@ -47,7 +47,7 @@ export type StaffErrorCategory =
   | "unknown";
 
 /**
- * The REAL, frozen Staff API error codes (SDK 0.10.0 / API `src/staff/errors.ts`). This is the single
+ * The REAL, frozen Staff API error codes (SDK 0.11.0 / API `src/staff/errors.ts`). This is the single
  * place the app names them — every screen classifies through {@link categorizeStaffWriteError}.
  */
 export const STAFF_ERROR_CODES = {

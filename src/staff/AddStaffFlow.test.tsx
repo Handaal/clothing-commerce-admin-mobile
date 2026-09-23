@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { ApiHttpError } from "@shifted/clothing-commerce-sdk";
+import { ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ vi.mock("expo-crypto", () => ({ randomUUID: () => "unused-native-uuid" }));
 import {
   IDENTITY_A,
   IDENTITY_B,
+  MEMBERSHIP_STAFF_A,
   ROLE_MANAGER,
   SCOPE_TENANT,
   eligibleIdentity,
@@ -145,9 +146,13 @@ describe("AddStaffFlow", () => {
     expect(await screen.findByTestId("add-staff-step-role")).toBeTruthy();
   });
 
-  it("walks all four steps and creates the membership via the adapter (real response only)", async () => {
-    const addStaff = vi.fn().mockResolvedValue(
+  it("walks all four steps: creates the membership then assigns role+scope (independent keys, real response only)", async () => {
+    const createStaffMembership = vi
+      .fn()
+      .mockResolvedValue(staffDetail({ membershipId: MEMBERSHIP_STAFF_A, assignments: [] }));
+    const assignRoleScope = vi.fn().mockResolvedValue(
       staffDetail({
+        membershipId: MEMBERSHIP_STAFF_A,
         identity: {
           identityId: IDENTITY_B,
           displayName: "Omar Fathy",
@@ -157,14 +162,18 @@ describe("AddStaffFlow", () => {
       }),
     );
     const findEligibleIdentitiesByEmail = vi.fn().mockResolvedValue([eligibleIdentity()]);
-    const adapter = fakeStaffAdapter({ findEligibleIdentitiesByEmail, addStaff });
+    const adapter = fakeStaffAdapter({
+      findEligibleIdentitiesByEmail,
+      createStaffMembership,
+      assignRoleScope,
+    });
     const onCreated = vi.fn();
     render(
       <AddStaffFlow
         adapter={adapter}
         onCreated={onCreated}
         onBack={noop}
-        generateIdempotencyKey={keyFactory("K1")}
+        generateIdempotencyKey={keyFactory("K-create", "K-assign")}
       />,
     );
     fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
@@ -179,24 +188,85 @@ describe("AddStaffFlow", () => {
     fireEvent.click(screen.getByTestId("add-staff-next-review"));
     fireEvent.click(await screen.findByTestId("add-staff-submit"));
 
+    // Step 1 (create) and step 2 (assign) run as two independent operations with independent keys.
+    await waitFor(() => expect(createStaffMembership).toHaveBeenCalledWith(IDENTITY_B, "K-create"));
     await waitFor(() =>
-      expect(addStaff).toHaveBeenCalledWith(
-        { identityId: IDENTITY_B, roleId: ROLE_MANAGER, scopeId: SCOPE_TENANT },
-        "K1",
+      expect(assignRoleScope).toHaveBeenCalledWith(
+        MEMBERSHIP_STAFF_A,
+        { roleId: ROLE_MANAGER, scopeId: SCOPE_TENANT },
+        "K-assign",
       ),
     );
-    // Only the adapter's real response drives success — no fake success path.
+    // Only the adapter's real post-assignment response drives success — no fake success path.
     fireEvent.click(await screen.findByTestId("add-staff-view"));
     expect(onCreated).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces a membership-conflict rejection distinctly (never a silent success)", async () => {
-    const addStaff = vi
+  it("surfaces a membership-conflict on create distinctly (never a silent success, no assign attempted)", async () => {
+    const createStaffMembership = vi
       .fn()
       .mockRejectedValue(new ApiHttpError("dup", 409, STAFF_ERROR_CODES.staffConflict, null));
-    await advanceToReview(vi.fn().mockResolvedValue([eligibleIdentity()]), { addStaff });
+    const assignRoleScope = vi.fn();
+    await advanceToReview(vi.fn().mockResolvedValue([eligibleIdentity()]), {
+      createStaffMembership,
+      assignRoleScope,
+    });
     fireEvent.click(await screen.findByTestId("add-staff-submit"));
     expect(await screen.findByText("Change conflicts")).toBeTruthy();
-    expect(addStaff).toHaveBeenCalledTimes(1);
+    expect(createStaffMembership).toHaveBeenCalledTimes(1);
+    expect(assignRoleScope).not.toHaveBeenCalled();
+  });
+
+  it("PARTIAL SUCCESS: create succeeds but assign fails — reports partial state, retries ONLY the assignment, never re-creates", async () => {
+    const createStaffMembership = vi
+      .fn()
+      .mockResolvedValue(staffDetail({ membershipId: MEMBERSHIP_STAFF_A, assignments: [] }));
+    // The assignment fails ambiguously (transport), then succeeds on retry.
+    const assignRoleScope = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiNetworkError("offline"))
+      .mockResolvedValueOnce(staffDetail({ membershipId: MEMBERSHIP_STAFF_A }));
+    const onCreated = vi.fn();
+    const adapter = fakeStaffAdapter({
+      findEligibleIdentitiesByEmail: vi.fn().mockResolvedValue([eligibleIdentity()]),
+      createStaffMembership,
+      assignRoleScope,
+    });
+    render(
+      <AddStaffFlow
+        adapter={adapter}
+        onCreated={onCreated}
+        onBack={noop}
+        generateIdempotencyKey={keyFactory("K-create", "K-assign")}
+      />,
+    );
+    // Advance to review and submit.
+    fireEvent.change(await screen.findByTestId("eligible-identity-email"), {
+      target: { value: "omar@acme.example" },
+    });
+    fireEvent.click(screen.getByTestId("eligible-identity-find"));
+    fireEvent.click(await screen.findByTestId(`eligible-identity-${IDENTITY_B}`));
+    fireEvent.click(screen.getByTestId("add-staff-next-role"));
+    fireEvent.click(await screen.findByTestId(`staff-role-${ROLE_MANAGER}`));
+    fireEvent.click(screen.getByTestId("add-staff-next-scope"));
+    fireEvent.click(await screen.findByTestId(`staff-scope-${SCOPE_TENANT}`));
+    fireEvent.click(screen.getByTestId("add-staff-next-review"));
+    fireEvent.click(await screen.findByTestId("add-staff-submit"));
+
+    // The partial-completion state is reported honestly (not "nothing happened", not full success).
+    await screen.findByTestId("add-staff-partial-error");
+    expect(screen.getByTestId("add-staff-partial-retry")).toBeTruthy();
+    // Create ran exactly once; the assign failed once so far.
+    expect(createStaffMembership).toHaveBeenCalledTimes(1);
+    expect(assignRoleScope).toHaveBeenCalledTimes(1);
+
+    // Retry ONLY the assignment — it reuses the SAME assignment key and never re-creates the membership.
+    fireEvent.click(screen.getByTestId("add-staff-partial-retry"));
+    fireEvent.click(await screen.findByTestId("add-staff-view"));
+    expect(onCreated).toHaveBeenCalledTimes(1);
+    expect(createStaffMembership).toHaveBeenCalledTimes(1); // NEVER re-created
+    expect(assignRoleScope).toHaveBeenCalledTimes(2);
+    expect(assignRoleScope.mock.calls[0][2]).toBe("K-assign");
+    expect(assignRoleScope.mock.calls[1][2]).toBe("K-assign"); // same key on retry
   });
 });

@@ -24,6 +24,10 @@ import type {
   SupplierReceipt as SdkSupplierReceipt,
   SupplierReceiptsResponse,
   SupplierSummary as SdkSupplierSummary,
+  AssignableStaffRole as SdkAssignableStaffRole,
+  AssignableStaffRolesResponse as SdkAssignableStaffRolesResponse,
+  AssignableStaffScope as SdkAssignableStaffScope,
+  AssignableStaffScopesResponse as SdkAssignableStaffScopesResponse,
   EligibleIdentitiesResponse as SdkEligibleIdentitiesResponse,
   EligibleIdentity as SdkEligibleIdentity,
   StaffAssignment as SdkStaffAssignment,
@@ -759,11 +763,11 @@ export function fakeStaffAdapter(overrides: Partial<StaffAdapter> = {}): StaffAd
     listStaff: async () => page([staffSummary()]),
     getStaff: async () => staffDetail(),
     findEligibleIdentitiesByEmail: async () => [eligibleIdentity()],
-    addStaff: async (input) =>
+    createStaffMembership: async (identityId) =>
       staffDetail({
         membershipId: MEMBERSHIP_STAFF_A,
         identity: {
-          identityId: input.identityId,
+          identityId,
           displayName: "Omar Fathy",
           primaryEmail: "omar@acme.example",
           identityStatus: "active",
@@ -792,7 +796,7 @@ export function fakeStaffAdapter(overrides: Partial<StaffAdapter> = {}): StaffAd
 }
 
 // ---------------------------------------------------------------------------------------------------
-// Phase 2O Staff — REAL SDK 0.10.0 DTO fixtures. These are the wire shapes the SDK returns; the adapter
+// Phase 2O Staff — REAL SDK 0.11.0 DTO fixtures. These are the wire shapes the SDK returns; the adapter
 // maps them onto the local model above. Kept separate from the local-model fixtures so adapter tests
 // assert the mapping against the actual contract, never against the app's own vocabulary.
 // ---------------------------------------------------------------------------------------------------
@@ -873,6 +877,53 @@ export function sdkEligibleIdentitiesResponse(
   items: SdkEligibleIdentity[] = [sdkEligibleIdentity()],
 ): SdkEligibleIdentitiesResponse {
   return { items };
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Phase 2O Staff assignment catalogs — REAL SDK 0.11.0 DTO fixtures. `listAssignableStaffRoles` /
+// `listAssignableStaffScopes` return these canonical, server-backed, paged catalogs; the adapter maps
+// them onto the local RoleOption / AccessScopeOption. Kept separate from derived data on purpose: a
+// catalog entry need never appear on any existing staff member's assignment.
+// ---------------------------------------------------------------------------------------------------
+
+export function sdkAssignableStaffRole(
+  overrides: Partial<SdkAssignableStaffRole> = {},
+): SdkAssignableStaffRole {
+  return {
+    roleId: ROLE_MANAGER,
+    roleName: "Branch Manager",
+    description: "Manage catalog, inventory and orders",
+    isProtected: false,
+    permissionKeys: ["catalog.read", "orders.read"],
+    ...overrides,
+  };
+}
+
+export function sdkAssignableStaffRolesResponse(
+  items: SdkAssignableStaffRole[] = [sdkAssignableStaffRole()],
+  pageInfo: Partial<SdkAssignableStaffRolesResponse["pageInfo"]> = {},
+): SdkAssignableStaffRolesResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
+}
+
+export function sdkAssignableStaffScope(
+  overrides: Partial<SdkAssignableStaffScope> = {},
+): SdkAssignableStaffScope {
+  return {
+    accessScopeId: SCOPE_BRANCH,
+    scopeName: "Downtown Branch",
+    description: null,
+    scopeMode: "explicit",
+    targets: [{ kind: "branch", id: "16161616-1616-4161-8161-161616161616", name: "Downtown" }],
+    ...overrides,
+  };
+}
+
+export function sdkAssignableStaffScopesResponse(
+  items: SdkAssignableStaffScope[] = [sdkAssignableStaffScope()],
+  pageInfo: Partial<SdkAssignableStaffScopesResponse["pageInfo"]> = {},
+): SdkAssignableStaffScopesResponse {
+  return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
 }
 
 export interface RecordedRequest {

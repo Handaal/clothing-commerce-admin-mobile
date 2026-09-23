@@ -1,16 +1,20 @@
 # Phase 2O — Staff management
 
-**Status: INTEGRATED against the real Staff API (SDK `0.10.0`).** Admin Mobile shipped a UI/domain
-foundation against a narrow `StaffAdapter` seam while the Staff API was under review; the API core has
-since merged, and this phase wires the foundation to the real SDK through a single mapping in
+**Status: INTEGRATED against the real Staff API (SDK `0.11.0`, incl. the canonical assignment catalogs).**
+Admin Mobile shipped a UI/domain foundation against a narrow `StaffAdapter` seam while the Staff API was
+under review; the API core merged (SDK `0.10.0`) and then the read-only assignment catalogs merged (SDK
+`0.11.0`). This phase wires the foundation to the real SDK through a single mapping in
 `src/staff/adapter.ts`. Every Staff screen still depends only on the adapter interface and the local
 UI-domain model — the integration was a mapping change, not a screen rewrite. Nothing fabricates staff
 data or a fake success: a failure surfaces as a classified error.
 
-- **Vendored SDK:** `@shifted/clothing-commerce-sdk@0.10.0`, tarball
-  `vendor/shifted-clothing-commerce-sdk-0.10.0.tgz`, **SHA-256
-  `74247c03b44ad81f07bf777e78bb7cdf5734c75a482744702ed26a157189cb99`** (verified in
-  `src/sdk-artifact.test.ts`; the `0.9.0` tarball was removed).
+- **Vendored SDK:** `@shifted/clothing-commerce-sdk@0.11.0`, tarball
+  `vendor/shifted-clothing-commerce-sdk-0.11.0.tgz`, **SHA-256
+  `f549b42544561c8c6b3468292d64a11c3b118f4925e3ad78a2728754a4ad9e80`** (verified in
+  `src/sdk-artifact.test.ts`; the `0.10.0` tarball was removed).
+- **0.11.0 additions consumed:** `listAssignableStaffRoles()` and `listAssignableStaffScopes()` — the
+  canonical, read-only, tenant-scoped, paged catalogs of the `roleId` / `accessScopeId` values
+  `assignStaffRole` accepts. They replace the previous derive-from-existing-assignments workaround.
 
 This mirrors how Phase 2N (suppliers) was delivered: foundation first, then a mapping-only integration
 once the API froze.
@@ -35,7 +39,7 @@ transition **to** — `invited` is an initial state, never a target), and the `A
 ## Adapter seam (`src/staff/adapter.ts`) — now SDK-backed
 
 One `StaffAdapter` interface is the whole boundary: `listStaff`, `getStaff`,
-`findEligibleIdentitiesByEmail`, `addStaff`, `updateMembershipStatus`, `assignRoleScope`,
+`findEligibleIdentitiesByEmail`, `createStaffMembership`, `updateMembershipStatus`, `assignRoleScope`,
 `unassignRoleScope`, `listAssignableRoles`, `listAssignableScopes`. `resolveStaffAdapter(client)` returns
 a concrete adapter that calls the tenant-scoped SDK client and maps its DTOs onto the local model. The
 SDK owns the transport, the tenant header and the `Idempotency-Key` header — the app hand-writes no HTTP.
@@ -52,17 +56,35 @@ with no human name, so we never fabricate a target name from an id).
 **Two contract realities shape the mapping:**
 
 1. **`createStaff` takes only `{ identityId }`** — a new membership is created `active` with no
-   assignment. So `addStaff` orchestrates the real two-step flow: `createStaff` → `assignStaffRole`,
-   under one operator idempotency key (the assign step derives a stable `${key}-assign` sub-key). An
-   ambiguous retry replays both steps at-most-once. The authoritative post-assignment `StaffDetail` is
-   returned.
-2. **There is no role/scope catalog endpoint** (V1 assigns existing roles/scopes by id; role/scope
-   authoring is out of scope). The only server-backed source of the role and access-scope ids that exist
-   in a tenant is the assignments already held by existing staff. So `listAssignableRoles` derives its
-   options from the roles on existing staff summaries, and `listAssignableScopes` derives them from the
-   scopes inside existing staff assignments (list + detail), deduped. **A role/scope that has never been
-   assigned to anyone will not appear** — a documented V1 limitation, not fabricated data. See
-   "Remaining after 2O".
+   assignment. Add-Staff therefore runs the real flow as **two independent operations** so a create
+   success is never lost: `createStaffMembership` (`createStaff`, its own idempotency key) then
+   `assignRoleScope` (`assignStaffRole`, an **independent** key). The `AddStaffFlow` screen orchestrates
+   and recovers between them (see "Create → assign partial-state recovery"). A membership with zero
+   assignments is security-safe (zero effective permissions), so an isolated create is never a leak.
+2. **The role/scope options come from the canonical server catalogs** (SDK `0.11.0`):
+   `listAssignableRoles` reads `listAssignableStaffRoles` and `listAssignableScopes` reads
+   `listAssignableStaffScopes`, each following server cursor pagination to completion (bounded,
+   fail-closed via the shared `collectAllPages`). These are the single source of the role ids /
+   access-scope ids `assignStaffRole` accepts. Options are **never** derived from other members'
+   assignments — that derivation is empty on a fresh tenant and silently drops valid-but-unused
+   roles/scopes. The role catalog carries `permissionKeys` (surfaced as a human hint) and is
+   server-filtered to roles whose permissions the caller already holds; the scope catalog carries each
+   explicit scope's **named** targets (`kind` + canonical `name`, e.g. "Branch: Downtown"). The catalogs
+   are **selection surfaces only** — the write re-runs every authorization check, so a visible option is
+   never assumed assignable.
+
+### Create → assign partial-state recovery (`AddStaffFlow.tsx`)
+
+Because create and assign are two commands, `AddStaffFlow` handles a partial success explicitly. On
+"Add staff member" it runs `createStaffMembership`; on that success it **remembers the created
+membership** and automatically runs the initial `assignRoleScope`. If the assignment fails, the screen
+shows a **"Finish access setup"** state that reports the member was created but access is not yet assigned
+(never "nothing happened", never a fake success). From there the manager can **retry only the
+assignment** — an ambiguous failure reuses the same assignment key (at-most-once), and the create is
+**never** re-run — or **open the staff record** to complete/adjust access there. Only the authoritative
+post-assignment `StaffDetail` drives the final success. The two idempotency domains are independent:
+changing the role/scope is a new assignment intent (a new key), while the create key is retired the
+moment the membership exists.
 
 ## Capability seam (`src/staff/capabilities.ts`)
 
@@ -129,7 +151,7 @@ mutation, and lifecycle controls are all withheld. The API re-authorizes regardl
 Maps the **real, frozen** Staff API codes onto distinct local categories, each with its own heading,
 message and recovery — nothing collapses into one generic error:
 
-| API code (SDK 0.10.0)        | Category            | Recovery |
+| API code (SDK 0.11.0)        | Category            | Recovery |
 | ---------------------------- | ------------------- | -------- |
 | `STAFF_PRIVILEGE_ESCALATION` | `cannot-delegate`   | none     |
 | `LAST_STAFF_ADMIN`           | `last-admin`        | none     |
@@ -151,41 +173,48 @@ and the server returns `IDEMPOTENCY_CONFLICT` if a key is reused with a differen
 
 **Implemented (integrated):** the real SDK-backed adapter and DTO mapping; typed `access.staff`
 capabilities; server-side list (search / status / role filter, pagination); detail (identity + status +
-role/scope-coupled assignments + timestamps); exact-email 0/1/N eligible lookup; Add-Staff (create →
-assign, orchestrated); role/scope assign + unassign (re-read on success); membership lifecycle incl.
-`invited`; read-only mode; anti-escalation / last-admin / conflict / idempotency error surfaces mapped to
-the real codes.
+role/scope-coupled assignments + timestamps); exact-email 0/1/N eligible lookup; **canonical assignable
+role/scope catalogs** (paged, independent of existing assignments); Add-Staff (create → assign as two
+independent operations) with **explicit create→assign partial-state recovery**; role/scope assign +
+unassign (re-read on success); membership lifecycle incl. `invited`; read-only mode; anti-escalation /
+last-admin / conflict / idempotency error surfaces mapped to the real codes.
 
-**Remaining after 2O (product decisions, not blockers to this integration):**
+**Resolved in this closeout (was "remaining"):**
 
-- **No role/scope catalog endpoint in V1.** Assignable role/scope options are derived from the tenant's
-  existing staff assignments (the only server-backed source). A role or scope that has never been
-  assigned to anyone is not discoverable in the pickers, and role/scope **authoring** is out of scope. A
-  future roles/scopes catalog endpoint would let the pickers list all assignable options directly.
-- **Add-Staff creates the membership before assigning** (the API's `createStaff` is identity-only), so a
-  role rejected by anti-escalation leaves a bare active membership. Assigning a permitted role/scope from
-  the detail screen recovers it; a future single-call "create with initial assignment" endpoint would
-  make it atomic.
+- **The derive-from-existing-assignments workaround is removed.** Assignable options now come from the
+  canonical `listAssignableStaffRoles` / `listAssignableStaffScopes` catalogs, so a valid role/scope that
+  no existing member holds — including on a fresh tenant — still appears (regression-tested in
+  `src/staff/adapter.test.ts` and runtime scenario N).
+- **Add-Staff partial success is handled.** A create that succeeds followed by an assign that fails is
+  surfaced honestly and recovered by retrying only the assignment (never re-creating), so at most one
+  membership ever results (runtime scenario M).
+
+**Remaining after 2O (product decisions, not blockers):** role/scope/target **authoring** stays deferred
+(V1 assigns existing roles/scopes by id); and there is no single-call "create with initial assignment"
+endpoint, so Add-Staff remains two commands — handled by the recovery UX above.
 
 **Non-goals:** HR / payroll; role creation/editing; permission editing; access-scope or branch/location
 creation; and any Clerk invitation / email / password flow.
 
 ## Verification
 
-Automated unit/component suite (Vitest): the SDK artifact/version/SHA; the **SDK-backed adapter mapping**
-(list query pass-through + summary mapping; detail with role/scope coupling and target kinds; tenant vs
-explicit scope; exact-email 0..N lookup incl. null-name fallback; create→assign orchestration with
-derived keys; lifecycle/assign/unassign inputs; assignable role/scope **derivation** from existing
-staff); typed capabilities incl. deny-by-default; the write-error categorisation against the real codes;
-list loading/error/empty/populated + pagination + server search; read-only vs manage; detail rendering +
+Automated unit/component suite (Vitest): the SDK artifact/version/SHA (`0.11.0`); the **SDK-backed
+adapter mapping** (list query pass-through + summary mapping; detail with role/scope coupling and target
+kinds; tenant vs explicit scope; exact-email 0..N lookup incl. null-name fallback; `createStaffMembership`
+create-only step; lifecycle/assign/unassign inputs; **canonical role/scope catalog mapping** incl.
+permission-key summary, named scope targets, server pagination, and the fresh-tenant regression that an
+unused role/scope still appears because it comes from the catalog, not derivation); typed capabilities
+incl. deny-by-default; the write-error categorisation against the real codes; list
+loading/error/empty/populated + pagination + server search; read-only vs manage; detail rendering +
 assignment coupling + lifecycle confirmation + deactivated readability + unassign; and the full Add-Staff
-flow (exact-email lookup → explicit select → role → scope → review → create) with a blocked invalid
-email, a neutral 0-result, a 1-result explicit confirm, a 2+ set that shows every match and auto-selects
-none, no fake success, no directory/display-name search, and no raw-UUID entry.
+flow (exact-email lookup → explicit select → role → scope → review → create → assign) with a blocked
+invalid email, a neutral 0-result, a 1-result explicit confirm, a 2+ set that shows every match and
+auto-selects none, the **create→assign partial-success recovery** (retry only the assignment, never
+re-create), no fake success, no directory/display-name search, and no raw-UUID entry.
 
 Gate suite green: `pnpm install --frozen-lockfile`, `expo install --check`, `format:check`, `lint`,
 `typecheck`, `test`, `build` (web export includes `/staff`, `/staff/new`, `/staff/[membershipId]`), and
 `git diff --check`.
 
-**Runtime acceptance (A–L):** see `docs/phase-2o-validation.md` for the disposable-API acceptance
-harness (`acceptance/staff.runtime.tsx`) and results.
+**Runtime acceptance (A–M):** see `docs/phase-2o-validation.md` for the disposable-API acceptance
+harness (`acceptance/staff.runtime.tsx`), its orchestration wrapper, and results.

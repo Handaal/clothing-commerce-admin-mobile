@@ -1,32 +1,37 @@
 /**
- * The narrow Staff integration seam — now backed by the real SDK 0.10.0 Staff surface.
+ * The narrow Staff integration seam — backed by the real SDK 0.11.0 Staff surface.
  *
  * Phase 2O shipped the Admin-Mobile UX/domain foundation against this interface while the Staff API was
- * still under review; the API core has since landed (SDK 0.10.0). {@link resolveStaffAdapter} now returns
- * a concrete adapter that calls the tenant-scoped SDK client and maps its DTOs onto the local UI-domain
- * model ({@link ./model}). Every Staff screen still depends only on this interface and the local model,
- * never on the SDK — so the mapping lives here once and the screens stay transport-agnostic and directly
- * unit-testable. The adapter invents no endpoints and hand-writes no fetch client: the SDK owns the
- * transport, the tenant header and the `Idempotency-Key` header. It fabricates no staff data or fake
- * success — a failure surfaces as a classified error.
+ * still under review; the API core (SDK 0.10.0) and then the assignment catalogs (SDK 0.11.0) have since
+ * landed. {@link resolveStaffAdapter} returns a concrete adapter that calls the tenant-scoped SDK client
+ * and maps its DTOs onto the local UI-domain model ({@link ./model}). Every Staff screen still depends
+ * only on this interface and the local model, never on the SDK — so the mapping lives here once and the
+ * screens stay transport-agnostic and directly unit-testable. The adapter invents no endpoints and
+ * hand-writes no fetch client: the SDK owns the transport, the tenant header and the `Idempotency-Key`
+ * header. It fabricates no staff data or fake success — a failure surfaces as a classified error.
  *
  * TWO CONTRACT REALITIES shape this mapping:
  *
  * 1. `createStaff` takes ONLY `{ identityId }` — a new membership is created `active` with no assignment.
- *    So {@link StaffAdapter.addStaff} orchestrates the real two-step flow (createStaff → assignStaffRole)
- *    under one operator idempotency key (the assign step derives a stable `${key}-assign` sub-key), and
- *    returns the fresh authoritative detail.
+ *    The Add-Staff workflow therefore runs the real two-step flow (createStaff → assignStaffRole) as two
+ *    INDEPENDENT operations so a create success is never lost when the assign step fails: the adapter
+ *    exposes {@link StaffAdapter.createStaffMembership} and {@link StaffAdapter.assignRoleScope}
+ *    separately, each with its own idempotency key, and the screen orchestrates and recovers between them.
  *
- * 2. There is NO role/scope CATALOG endpoint (V1 assigns existing roles/scopes by id; role/scope
- *    authoring is out of scope). The only server-backed source of the role and access-scope ids that
- *    exist in a tenant is the assignments already held by existing staff. So {@link
- *    StaffAdapter.listAssignableRoles}/{@link StaffAdapter.listAssignableScopes} DERIVE their options from
- *    existing staff (list + detail) rather than inventing a catalog. A role/scope that has never been
- *    assigned to anyone will not appear — a documented V1 limitation, not fabricated data.
+ * 2. The role and access-scope options come from the CANONICAL server catalogs
+ *    (`listAssignableStaffRoles` / `listAssignableStaffScopes`, SDK 0.11.0) — the single source of the
+ *    role ids and access-scope ids `assignStaffRole` accepts. {@link StaffAdapter.listAssignableRoles} /
+ *    {@link StaffAdapter.listAssignableScopes} read those catalogs (following server pagination). Options
+ *    are NEVER derived from the assignments other staff already hold: that derivation is empty on a fresh
+ *    tenant, silently drops valid-but-unused roles/scopes, and makes one member's options depend on
+ *    another member's memberships. The catalogs are selection surfaces only — the server re-runs every
+ *    authorization check on the write, so a visible option is never assumed to be assignable.
  */
 
 import { collectAllPages, type CursorPage, DEFAULT_MAX_PAGES } from "../commerce/pagination";
 import type {
+  AssignableStaffRole as SdkAssignableStaffRole,
+  AssignableStaffScope as SdkAssignableStaffScope,
   EligibleIdentity as SdkEligibleIdentity,
   StaffAssignment as SdkStaffAssignment,
   StaffDetail as SdkStaffDetail,
@@ -38,7 +43,6 @@ import type {
   AccessScopeKind,
   AccessScopeOption,
   AccessScopeSummary,
-  AddStaffInput,
   EligibleIdentity,
   MembershipStatusTarget,
   RoleOption,
@@ -68,7 +72,14 @@ export interface StaffAdapter {
   listStaff(query: StaffListQuery): Promise<StaffListPage>;
   getStaff(membershipId: string): Promise<StaffDetail>;
   findEligibleIdentitiesByEmail(email: string): Promise<EligibleIdentity[]>;
-  addStaff(input: AddStaffInput, idempotencyKey: string): Promise<StaffDetail>;
+  /**
+   * Step 1 of Add-Staff: link an existing identity as a membership (no assignment yet — a membership with
+   * zero assignments has zero effective permissions, so this is security-safe on its own). Returned
+   * authoritative detail carries the new `membershipId` the caller then assigns a role+scope to via
+   * {@link assignRoleScope}. Kept SEPARATE from the assign step so a create success is never lost when
+   * the assign step fails and can be recovered without re-creating the membership.
+   */
+  createStaffMembership(identityId: string, idempotencyKey: string): Promise<StaffDetail>;
   updateMembershipStatus(
     membershipId: string,
     status: MembershipStatusTarget,
@@ -103,10 +114,12 @@ function displayNameOf(name: string | null, email: string | null): string {
  * local model's single `kind` is only used to decide "tenant-wide vs narrower" and a fallback label, so a
  * `tenant` mode maps to `tenant` and an explicit scope takes the shape of its first target.
  */
-function scopeKind(assignment: SdkStaffAssignment): AccessScopeKind {
-  if (assignment.scopeMode === "tenant") return "tenant";
-  const first = assignment.targets[0];
-  switch (first?.kind) {
+function resolveScopeKind(
+  scopeMode: "tenant" | "explicit",
+  firstTargetKind: SdkStaffAssignment["targets"][number]["kind"] | undefined,
+): AccessScopeKind {
+  if (scopeMode === "tenant") return "tenant";
+  switch (firstTargetKind) {
     case "brand":
       return "brand";
     case "branch":
@@ -117,6 +130,10 @@ function scopeKind(assignment: SdkStaffAssignment): AccessScopeKind {
     default:
       return "branch";
   }
+}
+
+function scopeKind(assignment: SdkStaffAssignment): AccessScopeKind {
+  return resolveScopeKind(assignment.scopeMode, assignment.targets[0]?.kind);
 }
 
 /** Human label for an SDK target kind — real kinds only, never an invented target name. */
@@ -191,6 +208,41 @@ function mapEligible(dto: SdkEligibleIdentity): EligibleIdentity {
   };
 }
 
+/**
+ * Map a canonical assignable-role catalog entry onto the local {@link RoleOption}. `permissionKeys` is
+ * surfaced as a short human hint of what the role confers before assigning it — never an authorization
+ * decision (the server re-checks the subset rule on the write).
+ */
+function mapRoleOption(role: SdkAssignableStaffRole): RoleOption {
+  return {
+    id: role.roleId,
+    label: role.roleName,
+    ...(role.permissionKeys.length > 0
+      ? { permissionSummary: role.permissionKeys.join(", ") }
+      : {}),
+  };
+}
+
+/**
+ * A human target line for a catalog scope target. Unlike a StaffDetail assignment target (id-only), the
+ * catalog projects the CANONICAL `name` the API read from the referenced brand/branch/warehouse/location,
+ * so the line reads e.g. "Branch: Downtown" — a real name, never one fabricated from an id.
+ */
+function catalogTargetLine(target: SdkAssignableStaffScope["targets"][number]): string {
+  return `${targetKindLabel(target.kind)}: ${target.name}`;
+}
+
+/** Map a canonical assignable-scope catalog entry onto the local {@link AccessScopeOption}. */
+function mapScopeOption(scope: SdkAssignableStaffScope): AccessScopeOption {
+  return {
+    id: scope.accessScopeId,
+    label: scope.scopeName,
+    kind: resolveScopeKind(scope.scopeMode, scope.targets[0]?.kind),
+    // A tenant-mode scope has no targets by construction; an explicit scope lists its named targets.
+    targets: scope.scopeMode === "tenant" ? [] : scope.targets.map(catalogTargetLine),
+  };
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------------------------------
@@ -201,13 +253,6 @@ function mapEligible(dto: SdkEligibleIdentity): EligibleIdentity {
  * explicit unavailable state without touching the screens).
  */
 export function resolveStaffAdapter(client: TenantCommerceClient): StaffAdapter | null {
-  /** Load every staff summary for the tenant (bounded, fail-closed) — the base for option derivation. */
-  const loadAllSummaries = () =>
-    collectAllPages<SdkStaffSummary>(
-      (cursor) => client.listStaff(cursor ? { cursor } : {}),
-      DEFAULT_MAX_PAGES,
-    );
-
   return {
     async listStaff(query) {
       const response = await client.listStaff({
@@ -231,20 +276,12 @@ export function resolveStaffAdapter(client: TenantCommerceClient): StaffAdapter 
       return response.items.map(mapEligible);
     },
 
-    async addStaff(input, idempotencyKey) {
-      // The real API links the identity first (membership only), then assigns the initial role+scope.
-      // Each step keeps its own at-most-once key; on an ambiguous retry the SAME base key replays both.
-      const created = await client.createStaff({
-        identityId: input.identityId,
-        idempotencyKey,
-      });
-      const assigned = await client.assignStaffRole({
-        membershipId: created.membershipId,
-        roleId: input.roleId,
-        accessScopeId: input.scopeId,
-        idempotencyKey: `${idempotencyKey}-assign`,
-      });
-      return mapDetail(assigned);
+    async createStaffMembership(identityId, idempotencyKey) {
+      // Step 1: link the identity as a membership only (no assignment). A membership with zero
+      // assignments has zero effective permissions, so this is security-safe on its own. The screen
+      // then assigns the initial role+scope via `assignRoleScope` under an INDEPENDENT idempotency key,
+      // so a create success is never lost and is never re-created if the assign step fails.
+      return mapDetail(await client.createStaff({ identityId, idempotencyKey }));
     },
 
     async updateMembershipStatus(membershipId, status, idempotencyKey) {
@@ -269,34 +306,26 @@ export function resolveStaffAdapter(client: TenantCommerceClient): StaffAdapter 
     },
 
     async listAssignableRoles() {
-      // Roles that exist in the tenant, derived from the roles already visible on staff summaries. This
-      // is the only server-backed source (no role catalog endpoint in V1). Deduped by role id.
-      const summaries = await loadAllSummaries();
-      const byId = new Map<string, RoleOption>();
-      for (const summary of summaries) {
-        for (const role of summary.roles) {
-          if (!byId.has(role.roleId))
-            byId.set(role.roleId, { id: role.roleId, label: role.roleName });
-        }
-      }
-      return [...byId.values()];
+      // The CANONICAL server-backed catalog of assignable roles (SDK 0.11.0). This is the single source
+      // of the role ids `assignStaffRole` accepts — options are NEVER derived from other staff members'
+      // assignments (that is empty on a fresh tenant and silently hides valid-but-unused roles). Server
+      // pagination is followed to completion (bounded, fail-closed) since the picker needs every option.
+      const roles = await collectAllPages<SdkAssignableStaffRole>(
+        (cursor) => client.listAssignableStaffRoles(cursor ? { cursor } : {}),
+        DEFAULT_MAX_PAGES,
+      );
+      return roles.map(mapRoleOption);
     },
 
     async listAssignableScopes() {
-      // Access scopes only appear inside assignments (StaffDetail), so scope options are derived from the
-      // assignments held by existing staff — the only server-backed source (no scope catalog in V1).
-      const summaries = await loadAllSummaries();
-      const details = await Promise.all(
-        summaries.map((summary) => client.getStaffMember(summary.membershipId)),
+      // The CANONICAL server-backed catalog of assignable access scopes (SDK 0.11.0) — the single source
+      // of the access-scope ids `assignStaffRole` accepts, never derived from existing assignments. Each
+      // explicit scope carries its named targets; server pagination is followed to completion.
+      const scopes = await collectAllPages<SdkAssignableStaffScope>(
+        (cursor) => client.listAssignableStaffScopes(cursor ? { cursor } : {}),
+        DEFAULT_MAX_PAGES,
       );
-      const byId = new Map<string, AccessScopeOption>();
-      for (const detail of details) {
-        for (const assignment of detail.assignments) {
-          if (!byId.has(assignment.accessScopeId))
-            byId.set(assignment.accessScopeId, mapScope(assignment));
-        }
-      }
-      return [...byId.values()];
+      return scopes.map(mapScopeOption);
     },
   };
 }
