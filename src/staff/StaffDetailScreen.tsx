@@ -23,7 +23,7 @@ import type { StaffAdapter } from "./adapter";
 import { MembershipStatusActions } from "./MembershipStatusActions";
 import type {
   AccessScopeOption,
-  MembershipStatus,
+  MembershipStatusTarget,
   RoleOption,
   RoleScopeAssignmentInput,
   StaffDetail,
@@ -94,7 +94,7 @@ function StaffDetailContent({
   // Stable re-read callback for child panels (avoids re-running their success effects each render).
   const reloadDetail = useCallback(() => latestReload.current(), []);
 
-  const lifecycleMutation = useMutation<MembershipStatus, StaffDetail>(
+  const lifecycleMutation = useMutation<MembershipStatusTarget, StaffDetail>(
     (status, key) => adapter.updateMembershipStatus(membershipId, status, key),
     generateKey,
   );

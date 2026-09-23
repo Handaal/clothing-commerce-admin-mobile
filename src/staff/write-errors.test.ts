@@ -5,7 +5,7 @@ import { classifyCommerceError } from "../commerce/errors";
 import {
   categorizeStaffWriteError,
   describeStaffWriteError,
-  PROVISIONAL_STAFF_ERROR_CODES,
+  STAFF_ERROR_CODES,
 } from "./write-errors";
 
 function httpError(status: number, code: string) {
@@ -13,40 +13,44 @@ function httpError(status: number, code: string) {
 }
 
 describe("categorizeStaffWriteError", () => {
-  it("maps the anti-escalation code to a distinct, non-actionable category", () => {
-    const error = httpError(403, PROVISIONAL_STAFF_ERROR_CODES.cannotDelegate);
+  it("maps the anti-escalation code (privilege escalation / foreign scope) to a distinct, non-actionable category", () => {
+    const error = httpError(403, STAFF_ERROR_CODES.privilegeEscalation);
     expect(categorizeStaffWriteError(error)).toBe("cannot-delegate");
     expect(describeStaffWriteError(error).recovery).toBe("none");
   });
 
   it("maps the last-admin code distinctly from a generic 403", () => {
-    expect(categorizeStaffWriteError(httpError(403, PROVISIONAL_STAFF_ERROR_CODES.lastAdmin))).toBe(
+    expect(categorizeStaffWriteError(httpError(409, STAFF_ERROR_CODES.lastAdmin))).toBe(
       "last-admin",
     );
     // A generic 403 with no known code is a plain access denial, not last-admin.
     expect(categorizeStaffWriteError(httpError(403, "FORBIDDEN"))).toBe("denied");
   });
 
-  it("distinguishes foreign-scope, protected-assignment and membership-exists", () => {
-    expect(
-      categorizeStaffWriteError(httpError(403, PROVISIONAL_STAFF_ERROR_CODES.foreignScope)),
-    ).toBe("foreign-scope");
-    expect(
-      categorizeStaffWriteError(httpError(409, PROVISIONAL_STAFF_ERROR_CODES.protectedAssignment)),
-    ).toBe("protected-assignment");
-    expect(
-      categorizeStaffWriteError(httpError(409, PROVISIONAL_STAFF_ERROR_CODES.membershipExists)),
-    ).toBe("membership-exists");
+  it("maps a staff conflict (already a member / revoked / refused transition) distinctly", () => {
+    const error = httpError(409, STAFF_ERROR_CODES.staffConflict);
+    expect(categorizeStaffWriteError(error)).toBe("staff-conflict");
+    expect(describeStaffWriteError(error).recovery).toBe("none");
   });
 
-  it("maps identity-not-found to an editable recovery (choose again)", () => {
-    const error = httpError(404, PROVISIONAL_STAFF_ERROR_CODES.identityNotFound);
-    expect(categorizeStaffWriteError(error)).toBe("identity-not-found");
+  it("maps an inactive identity to an editable recovery (choose again)", () => {
+    const error = httpError(409, STAFF_ERROR_CODES.identityInactive);
+    expect(categorizeStaffWriteError(error)).toBe("identity-inactive");
     expect(describeStaffWriteError(error).recovery).toBe("edit");
   });
 
+  it("maps an invalid request to an editable recovery", () => {
+    const error = httpError(422, STAFF_ERROR_CODES.invalid);
+    expect(categorizeStaffWriteError(error)).toBe("invalid");
+    expect(describeStaffWriteError(error).recovery).toBe("edit");
+  });
+
+  it("maps a missing membership/target to not-found", () => {
+    expect(categorizeStaffWriteError(httpError(404, STAFF_ERROR_CODES.notFound))).toBe("not-found");
+  });
+
   it("never hides an idempotency conflict — it is terminal", () => {
-    const error = httpError(409, PROVISIONAL_STAFF_ERROR_CODES.conflict);
+    const error = httpError(409, STAFF_ERROR_CODES.idempotencyConflict);
     expect(categorizeStaffWriteError(error)).toBe("conflict");
     expect(describeStaffWriteError(error).recovery).toBe("none");
   });
@@ -63,14 +67,16 @@ describe("categorizeStaffWriteError", () => {
     expect(describeStaffWriteError(error).recovery).toBe("none");
   });
 
-  it("keeps each category distinct rather than collapsing to one generic error", () => {
+  it("keeps each real business code distinct rather than collapsing to one generic error", () => {
     const categories = new Set([
-      categorizeStaffWriteError(httpError(403, PROVISIONAL_STAFF_ERROR_CODES.cannotDelegate)),
-      categorizeStaffWriteError(httpError(403, PROVISIONAL_STAFF_ERROR_CODES.lastAdmin)),
-      categorizeStaffWriteError(httpError(403, PROVISIONAL_STAFF_ERROR_CODES.foreignScope)),
-      categorizeStaffWriteError(httpError(409, PROVISIONAL_STAFF_ERROR_CODES.protectedAssignment)),
-      categorizeStaffWriteError(httpError(409, PROVISIONAL_STAFF_ERROR_CODES.membershipExists)),
+      categorizeStaffWriteError(httpError(403, STAFF_ERROR_CODES.privilegeEscalation)),
+      categorizeStaffWriteError(httpError(409, STAFF_ERROR_CODES.lastAdmin)),
+      categorizeStaffWriteError(httpError(409, STAFF_ERROR_CODES.staffConflict)),
+      categorizeStaffWriteError(httpError(409, STAFF_ERROR_CODES.identityInactive)),
+      categorizeStaffWriteError(httpError(422, STAFF_ERROR_CODES.invalid)),
+      categorizeStaffWriteError(httpError(404, STAFF_ERROR_CODES.notFound)),
+      categorizeStaffWriteError(httpError(409, STAFF_ERROR_CODES.idempotencyConflict)),
     ]);
-    expect(categories.size).toBe(5);
+    expect(categories.size).toBe(7);
   });
 });

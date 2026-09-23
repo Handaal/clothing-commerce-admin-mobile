@@ -7,14 +7,14 @@ import { StaffDetailScreen } from "../../src/staff/StaffDetailScreen";
 
 export default function StaffDetailRoute() {
   const router = useRouter();
-  const { state } = useSession();
+  const { state, getTenantClient } = useSession();
   const { membershipId } = useLocalSearchParams<{ membershipId: string }>();
 
   if (state.phase !== "ready") {
     return <Redirect href="/" />;
   }
 
-  const adapter = resolveStaffAdapter();
+  const adapter = resolveStaffAdapter(getTenantClient(state.tenantId));
   const { canManage } = staffCapabilities(state.context);
 
   return (

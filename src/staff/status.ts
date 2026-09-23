@@ -6,11 +6,13 @@
  * helpers only shape the UI and offer confirmed, distinct lifecycle actions.
  */
 
-import type { MembershipStatus } from "./model";
+import type { MembershipStatus, MembershipStatusTarget } from "./model";
 import type { StaffStatusFilter } from "./search";
 
 export function membershipStatusLabel(status: MembershipStatus): string {
   switch (status) {
+    case "invited":
+      return "Invited";
     case "active":
       return "Active";
     case "suspended":
@@ -23,6 +25,8 @@ export function membershipStatusLabel(status: MembershipStatus): string {
 /** A one-line explanation shown next to the status, reinforcing the lifecycle semantics. */
 export function describeMembershipStatus(status: MembershipStatus): string {
   switch (status) {
+    case "invited":
+      return "Invited — an initial membership state that has not been activated yet.";
     case "active":
       return "Active — normal access to the tenant.";
     case "suspended":
@@ -39,7 +43,7 @@ export function describeMembershipStatus(status: MembershipStatus): string {
  * lifecycle action here (the server remains the authority on any reactivation rule).
  */
 export interface MembershipLifecycleAction {
-  next: MembershipStatus;
+  next: MembershipStatusTarget;
   label: string;
   confirmLabel: string;
   destructive: boolean;
@@ -47,6 +51,23 @@ export interface MembershipLifecycleAction {
 
 export function membershipLifecycleActions(status: MembershipStatus): MembershipLifecycleAction[] {
   switch (status) {
+    case "invited":
+      // An initial membership can be activated (grant access) or deactivated (revoke). The server owns
+      // the authoritative rule; these are the sensible transitions the API's status command accepts.
+      return [
+        {
+          next: "active",
+          label: "Activate access",
+          confirmLabel: "Confirm activate",
+          destructive: false,
+        },
+        {
+          next: "deactivated",
+          label: "Deactivate membership",
+          confirmLabel: "Confirm deactivate",
+          destructive: true,
+        },
+      ];
     case "active":
       return [
         {
@@ -87,6 +108,8 @@ export function staffStatusFilterLabel(filter: StaffStatusFilter): string {
   switch (filter) {
     case "all":
       return "All";
+    case "invited":
+      return "Invited";
     case "active":
       return "Active";
     case "suspended":

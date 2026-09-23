@@ -6,13 +6,13 @@ import { AddStaffFlow } from "../../src/staff/AddStaffFlow";
 
 export default function AddStaffRoute() {
   const router = useRouter();
-  const { state } = useSession();
+  const { state, getTenantClient } = useSession();
 
   if (state.phase !== "ready") {
     return <Redirect href="/" />;
   }
 
-  const adapter = resolveStaffAdapter();
+  const adapter = resolveStaffAdapter(getTenantClient(state.tenantId));
 
   return (
     <AddStaffFlow

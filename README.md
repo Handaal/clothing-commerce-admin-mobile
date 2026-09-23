@@ -140,40 +140,52 @@ margin/profit) — the API deliberately deferred cost accounting. Also **not** b
 RFQs, supplier invoices, Accounts Payable, procurement approvals, a supplier portal, supplier payments,
 and **permanent supplier deletion** (inactive is a retained state, not a delete).
 
-## Staff management foundation (Phase 2O)
+## Staff management (Phase 2O)
 
-**UI/domain FOUNDATION only — not the API integration pass.** The Staff SDK contract was still being
-finalized (a parallel API workstream), so Admin Mobile ships an adapter-isolated foundation that the
-final Staff SDK will plug into through one narrow mapping. **The production Staff adapter is
-unavailable (`null`) and every Staff screen renders an explicit "unavailable" state until the SDK is
-integrated** — nothing fabricates staff data or a fake success. See
-[docs/phase-2o-foundation.md](docs/phase-2o-foundation.md) for the full write-up.
+**Integrated against the real Staff API (SDK 0.11.0, incl. the canonical assignment catalogs).** The
+Commerce API's Staff Core and assignment catalogs have merged, and the foundation is wired to the real SDK
+through a single mapping in `src/staff/adapter.ts` — every Staff screen still depends only on the
+`StaffAdapter` interface and the local model, so integration was a mapping change, not a screen rewrite.
+Nothing fabricates staff data or a fake success. See
+[docs/phase-2o-foundation.md](docs/phase-2o-foundation.md) and
+[docs/phase-2o-validation.md](docs/phase-2o-validation.md) for the full write-up.
 
 - **Concept:** staff is operational access management, **not HR**. A Staff record is a projection over
   an existing tenant **Membership** plus identity and authorization (`Role` + `AccessScope` **coupled
-  per assignment**). Local Admin-owned types (`src/staff/model.ts`) import no Staff SDK DTO.
-- **Adapter seam** (`resolveStaffAdapter`, `src/staff/adapter.ts`): one `StaffAdapter` interface
-  (list/get/search-identities/add/lifecycle/assign/unassign/list-roles/list-scopes). Production returns
-  `null`; test adapters are the only fakes. No hand-written HTTP, no invented endpoints/DTOs/codes.
-- **Capability seam** (`src/staff/capabilities.ts`): because the `/me/context` staff DTO is not frozen,
-  **all** guessing is isolated in `staffCapabilities`, which reads `access.staff` structurally into
-  `{ canRead, canManage }` (deny-by-default). `canRead` gates the **Manage staff** entry; `canManage`
-  gates Add-Staff and every mutation. The API stays authoritative; a 403 surfaces distinctly.
+  per assignment**). Local Admin-owned types (`src/staff/model.ts`) stay decoupled from the SDK DTOs.
+- **Adapter seam** (`resolveStaffAdapter(client)`, `src/staff/adapter.ts`): one `StaffAdapter` interface
+  (list/get/find-identities/create-membership/lifecycle/assign/unassign/list-roles/list-scopes),
+  SDK-backed. The SDK owns the transport, tenant header and `Idempotency-Key`. Two contract realities:
+  `createStaff` is identity-only, so Add-Staff runs **create then assign as two independent operations**
+  (`createStaffMembership` + `assignRoleScope`, independent idempotency keys) with explicit
+  create→assign partial-state recovery; and assignable role/scope options come from the **canonical
+  server catalogs** (`listAssignableStaffRoles` / `listAssignableStaffScopes`, paged), **never** derived
+  from other members' assignments — so a valid unused role/scope still appears, even on a fresh tenant.
+- **Capability seam** (`src/staff/capabilities.ts`): reads the typed `access.staff` `{ canRead, canManage }`
+  (deny-by-default). `canRead` gates the **Manage staff** entry; `canManage` gates Add-Staff and every
+  mutation. The API stays authoritative; a 403 surfaces distinctly.
 - **List / detail / Add-Staff** (`StaffListScreen.tsx`, `StaffDetailScreen.tsx`, `AddStaffFlow.tsx`):
-  server-side search + status filter with bounded pagination; assignments shown as role+scope pairs;
-  confirmed lifecycle (active / suspended / **deactivated** = retained, no delete). Add-Staff **links an
-  existing provisioned identity** (search-and-select, **no raw-UUID entry**) — no Clerk invite, email or
-  password. Roles and scopes are existing, adapter-driven; the UI never authors roles/permissions/scopes.
+  server-side search + status filter (incl. `invited`) with bounded pagination; assignments shown as
+  role+scope pairs; confirmed lifecycle (active / suspended / **deactivated** = retained, no delete).
+  Add-Staff **links an existing provisioned identity** by **exact-email 0/1/N lookup** (explicit select,
+  **no raw-UUID entry**) — no Clerk invite, email or password. Roles/scopes come from the canonical
+  catalogs; a create that succeeds before its assignment fails is recovered by retrying **only** the
+  assignment (never re-creating), so at most one membership ever results.
 - **Read-only mode** (`staff.read` without `staff.manage`): list + detail remain; all mutation
   affordances are withheld.
-- **Anti-escalation / last-admin surfaces** (`src/staff/write-errors.ts`): distinct local semantic
-  categories (cannot-delegate · last-admin · foreign-scope · protected-assignment · membership-exists · …)
-  prepared in advance; provisional codes live in one place to reconcile with the final SDK.
+- **Anti-escalation / last-admin surfaces** (`src/staff/write-errors.ts`): the real API codes
+  (`STAFF_PRIVILEGE_ESCALATION` · `LAST_STAFF_ADMIN` · `STAFF_CONFLICT` · `IDENTITY_INACTIVE` ·
+  `INVALID_STAFF` · `IDEMPOTENCY_CONFLICT` · `STAFF_NOT_FOUND`) map to distinct, non-actionable UI states;
+  `IDEMPOTENCY_CONFLICT` is never hidden.
 
-**Waiting for the final API:** the real Staff SDK + concrete adapter, the exact context capability
-shape, the exact eligible-identity discovery DTO, the exact role/scope + assignment/lifecycle endpoints,
-and the exact typed error codes. **Non-goals:** HR/payroll, role/permission authoring, scope/branch/
-location creation, and any Clerk invitation flow.
+- **Runtime acceptance (A–M):** driven against a real disposable HTTP API by `scripts/test-staff.mjs` (API
+  repo) — **9/9 UI scenarios + 117 RLS tests pass**. See
+  [docs/phase-2o-validation.md](docs/phase-2o-validation.md).
+
+**Remaining after 2O (product, not blockers):** role/scope/target **authoring** stays deferred (V1 assigns
+existing roles/scopes by id); a single "create with initial assignment" endpoint would make Add-Staff
+atomic (today it is create + assign with recovery). **Non-goals:** HR/payroll, role/permission authoring,
+scope/branch/location creation, and any Clerk invitation flow.
 
 ## Separate-repo architecture
 
@@ -734,8 +746,9 @@ against the real SDK 0.6.0 types.
 The writes are the catalog operations (Create / Edit / Lifecycle / Variants / Prices / Media /
 Publish), Inventory **Receive / Adjust / Transfer**, and Supplier **create / edit / activate–deactivate**
 plus optional supplier-linked receiving (Phase 2N, integrated on SDK 0.9.0). **Staff management (Phase
-2O) is present as a UI/domain foundation only** — the production adapter is `null` (unavailable) and no
-staff write reaches an API yet. Order and fulfillment mutations, payments, refunds/returns, customer
+2O) is integrated on SDK 0.10.0** — add-staff (link existing identity by exact-email lookup), membership
+lifecycle, and role+scope assign/unassign, with anti-escalation / last-admin surfaces. Order and
+fulfillment mutations, payments, refunds/returns, customer
 management, vouchers, dashboards, reporting/analytics, taxonomy (category/collection) writes, website
 layout editing, POS, storefront checkout, and cart are **out of scope** and not implemented here. Supplier **unit cost / cost-basis**
 accounting and procurement (Purchase Orders, RFQs, invoices, Accounts Payable, approvals, portal,

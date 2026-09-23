@@ -4,7 +4,7 @@
 Clerk (auth, owned by Mobile)
   │  getToken callback (token only — never a Clerk object)
   ▼
-@shifted/clothing-commerce-sdk 0.9.0  (packed tarball under vendor/, relative file: path)
+@shifted/clothing-commerce-sdk 0.11.0  (packed tarball under vendor/, relative file: path)
   │  owns Authorization, X-Client-Type/Version, X-Tenant-Id
   ▼
 Commerce API  →  authoritative commerce core
@@ -65,6 +65,24 @@ Receive form takes an **optional** active-supplier selector (`receiveSuppliers`)
 supplier reference; "No supplier" is a legacy receipt (unchanged), inactive suppliers are excluded, and
 supplier loading is best-effort so it never blocks receiving. No unit-cost/cost-basis fields exist
 (deliberately deferred by the API).
+
+## Phase 2O Staff management (SDK 0.11.0)
+
+Staff integrates behind one seam: `resolveStaffAdapter(client)` (`src/staff/adapter.ts`) returns a
+concrete SDK-backed `StaffAdapter` mapping SDK DTOs ⇄ the Admin-owned model (`src/staff/model.ts`). Every
+staff screen depends on the interface, never a concrete client. Capabilities come from the typed
+`/me/context` `access.staff` `{ canRead, canManage }` via `staffCapabilities`. Reads reuse `useAsync` +
+the shared bounded paginator; writes reuse `useMutation` + idempotency keys, re-reading the authoritative
+`StaffDetail` on success, with real-code error mapping in `src/staff/write-errors.ts`. Two contract facts
+shape the design: `createStaff` is **identity-only**, so Add-Staff runs **create then assign as two
+independent operations** (`createStaffMembership` + `assignRoleScope`, independent keys) with explicit
+create→assign partial-state recovery (retry only the assignment, never re-create); and assignable
+role/scope options come from the **canonical server catalogs** (`listAssignableStaffRoles` /
+`listAssignableStaffScopes`, paged via the shared bounded paginator), **never** derived from other
+members' assignments — so a valid unused role/scope still appears on a fresh tenant. Identity discovery is
+an **exact-email 0/1/N lookup** (`findEligibleStaffIdentitiesByEmail`), never a directory browse. Runtime
+A–M is proven against a real disposable HTTP API by `scripts/test-staff.mjs` (API repo). See
+[phase-2o-foundation.md](phase-2o-foundation.md) and [phase-2o-validation.md](phase-2o-validation.md).
 
 ## Dependency direction
 

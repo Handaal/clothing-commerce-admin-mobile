@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
@@ -24,6 +24,7 @@ import type {
   AddStaffInput,
   EligibleIdentity,
   RoleOption,
+  RoleScopeAssignmentInput,
   StaffDetail,
 } from "./model";
 import { isAddStaffComplete } from "./model";
@@ -110,28 +111,83 @@ function AddStaffContent({
     scopeId: null,
   });
 
-  const mutation = useMutation<AddStaffInput, StaffDetail>(
-    (input, key) => adapter.addStaff(input, key),
+  // Add-Staff is two INDEPENDENT idempotency domains: create the membership, then assign role+scope. The
+  // created membership id and the intended initial assignment are held in refs (set in event handlers /
+  // effects, never during render) so a create success is never lost, the assign step reads the id without
+  // re-subscribing, and the create is never repeated on an assign retry.
+  const createdMembershipId = useRef<string | null>(null);
+  const pendingAssign = useRef<RoleScopeAssignmentInput | null>(null);
+
+  const createMutation = useMutation<string, StaffDetail>(
+    (identityId, key) => adapter.createStaffMembership(identityId, key),
     generateKey,
   );
+  const assignMutation = useMutation<RoleScopeAssignmentInput, StaffDetail>((input, key) => {
+    const membershipId = createdMembershipId.current;
+    if (!membershipId) return Promise.reject(new Error("No membership to assign to"));
+    return adapter.assignRoleScope(membershipId, input, key);
+  }, generateKey);
 
-  if (mutation.state.status === "success") {
-    const created = mutation.state.data;
+  // Keep the latest assign trigger behind a ref (updated in an effect, not during render) so the
+  // create-success effect below can start the initial assignment without depending on the unstable
+  // mutation object.
+  const startAssign = useRef<(input: RoleScopeAssignmentInput) => void>(() => {});
+  useEffect(() => {
+    startAssign.current = (input) => assignMutation.submit(input);
+  });
+
+  // The membership once step 1 succeeds — derived straight from the create result (no extra state). On
+  // that success, kick off the initial assignment EXACTLY once (its own key). A later assign retry never
+  // re-runs this, and the create is never repeated.
+  const createData = createMutation.state.status === "success" ? createMutation.state.data : null;
+  useEffect(() => {
+    if (!createData || !pendingAssign.current) return;
+    createdMembershipId.current = createData.membershipId;
+    startAssign.current(pendingAssign.current);
+  }, [createData]);
+
+  // FINAL success: membership created AND initial role+scope assigned. Render the authoritative detail.
+  if (assignMutation.state.status === "success") {
+    const finalDetail = assignMutation.state.data;
     return (
       <ScrollScreen>
         <PageHeader eyebrow="Staff" title="Staff added" onBack={onBack} />
         <Divider />
         <Body>
-          “{created.identity.displayName}” was added to this business. Their role and access can be
-          adjusted from their staff record.
+          “{finalDetail.identity.displayName}” was added to this business with the chosen role and
+          access. Their role and access can be adjusted from their staff record.
         </Body>
         <PrimaryButton
           testID="add-staff-view"
           label="View staff member"
-          onPress={() => onCreated(created)}
+          onPress={() => onCreated(finalDetail)}
         />
         <TextButton label="Back to staff" onPress={onBack} />
       </ScrollScreen>
+    );
+  }
+
+  // PARTIAL state: the membership exists but the initial assignment has not completed. The create is
+  // done and must NOT be repeated; the person exists with ZERO effective permissions until assigned.
+  const createdDetail = createData;
+  if (createdDetail) {
+    return (
+      <PartialAssignment
+        person={createdDetail.identity.displayName}
+        selectedRoleLabel={
+          (state.status === "success"
+            ? state.data.roles.find((role) => role.id === selection.roleId)?.label
+            : undefined) ?? null
+        }
+        selectedScopeLabel={
+          (state.status === "success"
+            ? state.data.scopes.find((scope) => scope.id === selection.scopeId)?.label
+            : undefined) ?? null
+        }
+        assignMutation={assignMutation}
+        onOpenStaff={() => onCreated(createdDetail)}
+        onBack={onBack}
+      />
     );
   }
 
@@ -166,8 +222,10 @@ function AddStaffContent({
     ...(selection.roleId ? { roleId: selection.roleId } : {}),
     ...(selection.scopeId ? { scopeId: selection.scopeId } : {}),
   };
-  const submitError = mutation.state.status === "error" ? mutation.state.error : null;
-  const submitting = mutation.state.status === "submitting";
+  // The review submit runs step 1 (create membership). Its failure recovers here; the assign step only
+  // begins once the create succeeds (handled above, outside the wizard).
+  const submitError = createMutation.state.status === "error" ? createMutation.state.error : null;
+  const submitting = createMutation.state.status === "submitting";
 
   return (
     <ScrollScreen>
@@ -261,7 +319,10 @@ function AddStaffContent({
           </Body>
 
           {submitError ? (
-            <SubmitError described={describeStaffWriteError(submitError)} mutation={mutation} />
+            <SubmitError
+              described={describeStaffWriteError(submitError)}
+              mutation={createMutation}
+            />
           ) : null}
 
           <View style={{ flexDirection: "row", gap: 12 }}>
@@ -271,7 +332,12 @@ function AddStaffContent({
               testID="add-staff-submit"
               disabled={submitting || !isAddStaffComplete(draft)}
               onPress={() => {
-                if (isAddStaffComplete(draft)) mutation.submit(draft);
+                if (isAddStaffComplete(draft) && selection.identity) {
+                  // Capture the intended initial assignment now (event handler, never render); the
+                  // create-success effect starts it under its own independent idempotency key.
+                  pendingAssign.current = { roleId: draft.roleId, scopeId: draft.scopeId };
+                  createMutation.submit(selection.identity.identityId);
+                }
               }}
             />
           </View>
@@ -292,7 +358,7 @@ function SubmitError({
   mutation,
 }: {
   described: ReturnType<typeof describeStaffWriteError>;
-  mutation: ReturnType<typeof useMutation<AddStaffInput, StaffDetail>>;
+  mutation: ReturnType<typeof useMutation<string, StaffDetail>>;
 }) {
   return (
     <View style={{ gap: 8 }} testID="add-staff-error">
@@ -311,5 +377,74 @@ function SubmitError({
         <TextButton label="Dismiss" onPress={() => mutation.reset()} />
       )}
     </View>
+  );
+}
+
+/**
+ * Partial-completion recovery: the membership was CREATED but the initial role+scope assignment did not
+ * complete. This is a real, security-safe intermediate state — the person exists with ZERO effective
+ * permissions until an assignment lands — so the UI reports it honestly rather than as "nothing happened"
+ * or as full success. The create is DONE and is never repeated. The manager can either retry ONLY the
+ * assignment (an ambiguous failure retries under the SAME assignment key — never a new create) or open the
+ * staff record to complete/adjust access there. While the assignment is in flight this shows progress.
+ */
+function PartialAssignment({
+  person,
+  selectedRoleLabel,
+  selectedScopeLabel,
+  assignMutation,
+  onOpenStaff,
+  onBack,
+}: {
+  person: string;
+  selectedRoleLabel: string | null;
+  selectedScopeLabel: string | null;
+  assignMutation: ReturnType<typeof useMutation<RoleScopeAssignmentInput, StaffDetail>>;
+  onOpenStaff: () => void;
+  onBack: () => void;
+}) {
+  const assigning = assignMutation.state.status === "submitting";
+  const described =
+    assignMutation.state.status === "error"
+      ? describeStaffWriteError(assignMutation.state.error)
+      : null;
+  return (
+    <ScrollScreen>
+      <PageHeader eyebrow="Staff" title="Finish access setup" onBack={onBack} />
+      <Divider />
+      <Body>
+        “{person}” was created and is now a member of this business, but their role and access have
+        not been assigned yet. Until access is assigned they can do nothing. The member was not
+        created again — only the access assignment still needs to complete.
+      </Body>
+      {selectedRoleLabel ? <InfoRow label="Role" value={selectedRoleLabel} /> : null}
+      {selectedScopeLabel ? <InfoRow label="Scope" value={selectedScopeLabel} /> : null}
+
+      {assigning ? <LoadingBlock label="Assigning role and access…" /> : null}
+
+      {described ? (
+        <View style={{ gap: 8 }} testID="add-staff-partial-error">
+          <Title>{described.heading}</Title>
+          <Body>{described.message}</Body>
+        </View>
+      ) : null}
+
+      {!assigning ? (
+        <View style={{ gap: 12 }}>
+          {/* Retry ONLY the assignment. An ambiguous failure reuses the SAME assignment key; a fresh
+              intent (different role/scope) is chosen from the staff record instead. Create never re-runs. */}
+          <PrimaryButton
+            label="Retry access assignment"
+            testID="add-staff-partial-retry"
+            onPress={() => assignMutation.retry()}
+          />
+          <PrimaryButton
+            label="Open staff record to finish"
+            testID="add-staff-partial-open"
+            onPress={onOpenStaff}
+          />
+        </View>
+      ) : null}
+    </ScrollScreen>
   );
 }
