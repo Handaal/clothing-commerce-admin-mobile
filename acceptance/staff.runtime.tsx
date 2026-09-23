@@ -1,4 +1,8 @@
-import { ApiNetworkError, createCommerceClient } from "@shifted/clothing-commerce-sdk";
+import {
+  ApiNetworkError,
+  createCommerceClient,
+  type TenantCommerceClient,
+} from "@shifted/clothing-commerce-sdk";
 import {
   cleanup,
   configure,
@@ -11,8 +15,10 @@ import {
 import { useState } from "react";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
 
+import { classifyCommerceError } from "../src/commerce/errors";
 import { SessionProvider, useSession } from "../src/session/SessionProvider";
 import { resolveStaffAdapter, type StaffAdapter } from "../src/staff/adapter";
+import { describeStaffWriteError } from "../src/staff/write-errors";
 import { staffCapabilities } from "../src/staff/capabilities";
 import { AddStaffFlow } from "../src/staff/AddStaffFlow";
 import { StaffDetailScreen } from "../src/staff/StaffDetailScreen";
@@ -39,9 +45,15 @@ import { createMemoryTenantStorage } from "../src/tenant/storage";
 //              assign-fails recovery proof (the assignment failure is injected in-suite; the create is
 //              real and must never be repeated).
 //   K        — STAFF_TEST_READONLY_TOKEN is a `staff.read`-only membership token (optional).
-//   H/J      — foreign-scope isolation / last-admin lockout are SERVER-enforced and proven by the API's
-//              own suite (`test:staff:persistence`, `test:staff:rls`, `tests/staff/contract-service`),
-//              which seeds the foreign scope / second admin that the Admin UI cannot create.
+//   H        — foreign-scope isolation, proven ADMIN-SIDE: the foreign-tenant scope (seeded on tenant
+//              …-002) is absent from the canonical scope selector, and a direct assignment of its id via
+//              the real adapter seam is refused by the real API with NO mutation. The Admin UI itself
+//              never offers the foreign scope, so no production feature is added to force the request.
+//   J        — last-admin lockout, proven ADMIN-SIDE: with exactly one tenant-wide staff.manage admin
+//              (the base actor) the real UI's removal of its qualifying assignment is refused
+//              (LAST_STAFF_ADMIN → the dedicated "Last administrator" error, no mutation); once a SECOND
+//              tenant-wide admin is provisioned (STAFF_TEST_SECOND_ADMIN_TOKEN), the same removal succeeds
+//              and is proven authoritatively via the second admin's own session.
 // `expo-crypto` is a device CSPRNG primitive that needs the native Expo runtime global; under jsdom it
 // cannot load. Substitute it with the platform Web Crypto (a device-adapter substitution, exactly like
 // the auth/storage mocks below) so idempotency keys are still real, unique v4 UUIDs.
@@ -67,13 +79,18 @@ let eligibleEmail: string;
 // The token the mocked Clerk adapter hands the SDK. Swapped to the read-only token for scenario K.
 let activeToken: string;
 
-/** A tenant-scoped SDK client for out-of-suite fixture verification (never the application under test). */
-function fixtureClient() {
+/** A tenant-scoped SDK client for a specific session token (never the application under test). */
+function clientForToken(token: string): TenantCommerceClient {
   return createCommerceClient({
     baseUrl,
     client: { type: "admin-mobile", version: "0.1.0" },
-    getToken: () => managerToken,
+    getToken: () => token,
   }).withTenant(tenantId);
+}
+
+/** A tenant-scoped SDK client for out-of-suite fixture verification (never the application under test). */
+function fixtureClient(): TenantCommerceClient {
+  return clientForToken(managerToken);
 }
 
 beforeAll(() => {
@@ -108,6 +125,17 @@ type View = { name: "list" } | { name: "detail"; membershipId: string } | { name
 // (I+L) scenarios each operate on their OWN member — never the last admin, and independent of ordering.
 const IDENTITY_ASSIGN = "2a000030-0000-4000-8000-000000000006"; // Frankie Fixture — scenario F
 const IDENTITY_LIFECYCLE = "2a000030-0000-4000-8000-000000000007"; // Ingrid Fixture — scenario I+L
+const IDENTITY_FOREIGN = "2a000030-0000-4000-8000-000000000008"; // Harold Foreign — scenario H
+
+// Fixed fixture ids for the foreign-scope isolation (H) and last-admin (J) proofs. These are deterministic
+// rows seeded by phase_2h_pos_sale.setup.sql / phase_2o_staff.setup.sql, referenced by id only.
+const ADMIN_MEMBERSHIP = "2a000012-0000-4000-8000-000000000001"; // base actor, sole tenant-wide admin
+const ADMIN_ROLE = "2a000013-0000-4000-8000-000000000001"; // "POS Full" — carries staff.read+staff.manage
+const TENANT_SCOPE = "2a000014-0000-4000-8000-000000000001"; // "POS Tenant" — tenant-wide access scope
+const TENANT_SCOPE_NAME = "POS Tenant"; // a current-tenant scope that MUST appear in the catalog
+const FOREIGN_SCOPE = "2a000014-0000-4000-8000-0000000000f1"; // scope owned by the FOREIGN tenant (…-002)
+const FOREIGN_SCOPE_NAME = "Foreign Scope"; // must NEVER appear in this tenant's catalog
+const IDENTITY_SECOND_ADMIN = "2a000010-0000-4000-8000-000000000005"; // Blair Backup — scenario J (admin B)
 
 /** Provision a bare membership (no assignment) for an identity via the API, returning its id. */
 async function provisionMember(identityId: string): Promise<string> {
@@ -448,6 +476,90 @@ it("M: create succeeds, assignment fails then retries — one membership, no dup
   expect(finalDetail.assignments.length).toBeGreaterThanOrEqual(1);
 });
 
+// SCENARIO H — FOREIGN-SCOPE ISOLATION (Admin-side). A scope owned by a DIFFERENT tenant (…-002) must be
+// invisible to this tenant's manager: (A) a current-tenant scope appears in the canonical selector; (B) the
+// foreign scope does NOT; (C) because it is never offered, the normal UI cannot assign it. We then use the
+// real adapter seam (NOT a mock, NOT added production UI) to attempt a direct foreign-scope assignment and
+// prove the REAL API refuses it, the Admin maps that refusal to a distinct non-silent error, and NO
+// assignment is created.
+it("H: the foreign-tenant scope is isolated — absent from the selector, and a direct assign is refused with no mutation", async () => {
+  const membershipId = await provisionMember(IDENTITY_FOREIGN);
+
+  // A + B — drive the REAL detail add-assignment picker (fed by the canonical scope catalog).
+  mount({ name: "detail", membershipId });
+  const scopeSelector = await screen.findByTestId("staff-add-scope-selector");
+  // A: a legitimate current-tenant scope is offered.
+  expect(within(scopeSelector).getByText(new RegExp(TENANT_SCOPE_NAME))).toBeTruthy();
+  // B: the foreign-tenant scope is NOT offered anywhere in the selector.
+  expect(within(scopeSelector).queryByText(new RegExp(FOREIGN_SCOPE_NAME))).toBeNull();
+  cleanup();
+
+  // C — the foreign scope cannot be selected through the UI (it is not present). Prove the SERVER-side
+  // isolation directly via the real adapter, pairing the foreign scope with a KNOWN-delegable role so the
+  // only reason for refusal is the foreign scope itself.
+  const client = fixtureClient();
+  const adapter = resolveStaffAdapter(client);
+  if (!adapter) throw new Error("adapter unexpectedly unavailable");
+  const roles = await adapter.listAssignableRoles();
+  expect(roles.length).toBeGreaterThan(0);
+  const delegableRole = roles[0].id;
+
+  let raised = false;
+  let described: ReturnType<typeof describeStaffWriteError> | null = null;
+  let classifiedStatus: number | undefined;
+  try {
+    await adapter.assignRoleScope(
+      membershipId,
+      { roleId: delegableRole, scopeId: FOREIGN_SCOPE },
+      `rt-foreign-scope-${membershipId}`,
+    );
+  } catch (error) {
+    raised = true;
+    const classified = classifyCommerceError(error);
+    classifiedStatus = classified.status;
+    described = describeStaffWriteError(classified);
+  }
+  // The real API rejected it (a definitive server refusal, never a network ambiguity or silent success).
+  expect(raised).toBe(true);
+  expect(classifiedStatus === 404 || classifiedStatus === 403).toBe(true);
+  expect(described).not.toBeNull();
+  // The Admin maps it to a distinct, non-retriable, non-silent error — never a fake success.
+  expect(["not-found", "cannot-delegate", "denied"]).toContain(described!.category);
+  expect(described!.recovery).toBe("none");
+
+  // No mutation occurred: the member still has ZERO assignments.
+  const after = await client.getStaffMember(membershipId);
+  expect(after.assignments).toHaveLength(0);
+});
+
+// SCENARIO J (single admin) — LAST-ADMIN LOCKOUT (Admin-side). The base actor is the tenant's ONLY
+// tenant-wide staff.manage administrator. Removing its qualifying Role+Scope assignment through the REAL
+// UI must be refused with the dedicated last-admin error, and must NOT mutate the authoritative record.
+it("J (single admin): removing the last tenant-wide admin's qualifying assignment is refused, unchanged", async () => {
+  mount({ name: "detail", membershipId: ADMIN_MEMBERSHIP });
+  await screen.findByTestId("staff-detail-status");
+  // The base actor has exactly one (non-protected) assignment: POS Full @ POS Tenant (tenant-wide).
+  const before = await fixtureClient().getStaffMember(ADMIN_MEMBERSHIP);
+  expect(before.assignments.length).toBeGreaterThanOrEqual(1);
+
+  const [unassign] = await screen.findAllByTestId(/^staff-assignment-unassign-/);
+  fireEvent.click(unassign);
+  fireEvent.click(unassign); // confirm
+
+  // The dedicated last-admin error is surfaced (distinct heading + message, recovery "none").
+  const error = await screen.findByTestId("staff-unassign-error");
+  expect(within(error).getByText("Last administrator")).toBeTruthy();
+  expect(
+    within(error).getByText(
+      /final staff administrator and cannot be removed or deactivated\. Assign another administrator first\./,
+    ),
+  ).toBeTruthy();
+
+  // No mutation: the authoritative record still carries the qualifying assignment(s).
+  const after = await fixtureClient().getStaffMember(ADMIN_MEMBERSHIP);
+  expect(after.assignments.length).toBe(before.assignments.length);
+});
+
 /** Every membership in the tenant whose identity carries the given exact email (follows pagination). */
 async function membershipsByEmail(email: string): Promise<Array<{ membershipId: string }>> {
   const client = fixtureClient();
@@ -516,3 +628,53 @@ function StaffAppFlaky() {
     />
   );
 }
+
+// SCENARIO J (two admins) — the counterpart to the single-admin lockout. Once a SECOND tenant-wide
+// staff.manage admin exists, the SAME removal that was refused above must SUCCEED, while the tenant still
+// retains a qualifying admin. This MUST be the final scenario in the file: it permanently removes the base
+// actor's own tenant-wide authority (the session that drives every other scenario), so its authoritative
+// verification is done through the SECOND admin's independent session, not the now-powerless base session.
+it("J (two admins): with a second tenant-wide admin, the previously-blocked removal now succeeds and one admin remains", async () => {
+  const secondAdminToken = process.env.STAFF_TEST_SECOND_ADMIN_TOKEN;
+  if (!secondAdminToken) return; // second-admin session fixture not provisioned.
+
+  // Provision admin B: link the second admin identity and grant it the SAME tenant-wide staff.manage
+  // role+scope the base actor holds (an equal permission set is a subset, so the actor may delegate it).
+  const created = await fixtureClient().createStaff({
+    identityId: IDENTITY_SECOND_ADMIN,
+    idempotencyKey: `rt-admin-b-${IDENTITY_SECOND_ADMIN}`,
+  });
+  const adminB = created.membershipId;
+  await fixtureClient().assignStaffRole({
+    membershipId: adminB,
+    roleId: ADMIN_ROLE,
+    accessScopeId: TENANT_SCOPE,
+    idempotencyKey: `rt-admin-b-assign-${adminB}`,
+  });
+  // Admin B is authoritatively a tenant-wide admin now (its own session can read staff).
+  const asB = clientForToken(secondAdminToken);
+  const bBefore = await asB.getStaffMember(adminB);
+  expect(bBefore.assignments.length).toBeGreaterThanOrEqual(1);
+
+  // Repeat the previously-blocked operation against admin A (the base actor) through the REAL UI.
+  mount({ name: "detail", membershipId: ADMIN_MEMBERSHIP });
+  await screen.findByTestId("staff-detail-status");
+  const [unassign] = await screen.findAllByTestId(/^staff-assignment-unassign-/);
+  fireEvent.click(unassign);
+  fireEvent.click(unassign); // confirm
+
+  // It SUCCEEDS now. Prove it AUTHORITATIVELY via admin B's session (the base actor just removed its own
+  // staff.read, so it can no longer read): admin A ends with zero active assignments.
+  await waitFor(
+    async () => {
+      const aAfter = await asB.getStaffMember(ADMIN_MEMBERSHIP);
+      expect(aAfter.assignments).toHaveLength(0);
+    },
+    { timeout: 15000 },
+  );
+  // Admin B remains effective, and the tenant still has a qualifying tenant-wide staff.manage admin.
+  const bAfter = await asB.getStaffMember(adminB);
+  expect(bAfter.assignments.length).toBeGreaterThanOrEqual(1);
+  const stillListed = await asB.listStaff({ roleId: ADMIN_ROLE });
+  expect(stillListed.items.some((row) => row.membershipId === adminB)).toBe(true);
+});
