@@ -4,20 +4,20 @@ Expo / React Native management-channel app for a clothing business's **authorize
 managers**. It is not a Shifted/platform super-admin app, not a POS/cashier app, not a
 customer-shopping app, and not a website layout builder.
 
-## Current scope — Phase 2K (catalog management)
+## Current scope — Phase 2P (Promotion management)
 
-Phase 2F-B established the real authentication + data boundary and a **read-only** management slice
-(Products · Inventory · Orders). Phase 2G added the first write surface (inventory Receive · Adjust ·
-Transfer). **Phase 2K turns the read-only Products area into a full catalog management workflow** on the
-same boundary: create/edit products, lifecycle, variants, selling prices, media upload, and Storefront
-publication.
+Phase 2P adds complete V1 Promotion management to the established owner/manager app: list/detail,
+create/edit, activate/deactivate, Product/Variant targeting, and Promotion Code/voucher management.
+All pricing, eligibility, authorization, redemption counts, and post-redemption locks remain
+server-authoritative.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.8.0)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.12.1)
   → GET /me/tenants → tenant selection → GET /me/context
   → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
   → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
   → Orders    (read-only)  +  Returns / refunds visibility                                (read-only)
+  → Promotions read + create · edit · lifecycle · codes                                   (authorized writes)
 ```
 
 **Auth / session**
@@ -33,10 +33,12 @@ Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.8.0)
 - Inventory (complete, bounded cursor pagination; location names resolved from context) **plus the
   Receive / Adjust / Transfer write operations** (see [Inventory operations](#inventory-operations-phase-2g))
 - Orders list, Order Detail, and read-only fulfillment progress
+- Promotions list/detail, create/edit, active/inactive lifecycle, and Promotion Codes
 
 ### Scope guarantee
 
-The mutations in this app are the catalog operations (below) and the three inventory operations. It
+The mutations in this app are catalog operations, three inventory operations, Supplier/Staff
+management, and the bounded Promotion V1 operations documented below. It
 **does not** implement order or fulfillment mutations (pick/pack/ship/fulfil), payments, POS,
 taxonomy (category/collection) writes, website layout editing, or storefront checkout. Returns and
 refunds are **read-only visibility** only (Phase 2M below): the app renders returns, refund state and
@@ -187,6 +189,32 @@ existing roles/scopes by id); a single "create with initial assignment" endpoint
 atomic (today it is create + assign with recovery). **Non-goals:** HR/payroll, role/permission authoring,
 scope/branch/location creation, and any Clerk invitation flow.
 
+## Promotion management (Phase 2P)
+
+**Integrated against the canonical Promotion API with SDK 0.12.1.** `/me/context` supplies optional,
+independent `access.promotions { canRead, canManage }` guidance. `canRead` alone controls navigation and
+read surfaces; `canManage` never implies read. Read-only users keep list/detail access while every
+create/edit/lifecycle/code affordance is withheld. The API independently authorizes every request.
+
+- **List/detail:** compact activation, benefit type/value where supplied, target, channel, persisted or
+  derived effective state, schedule, restrictions, redemption usage/remaining, and codes.
+- **Create/edit:** one scrolling form with Basics, Benefit, Eligibility, Usage, Schedule, and Review.
+  It submits only SDK V1 fields. Product/Variant targets come from canonical Catalog reads and are
+  selected by name—operators never type UUIDs. Target/activation/global-limit fields remain create-only
+  because the SDK exposes no edit contract for them.
+- **Lifecycle:** persisted state is only `active` / `inactive`; `scheduled`, `expired`, and `exhausted`
+  are display-only effective states. Activate/deactivate use idempotent SDK writes.
+- **Codes/vouchers:** reusable codes, capped codes, and single-use vouchers (`maxRedemptions = 1`) are
+  one Promotion Code domain. Active codes can be disabled; there is no separate Voucher model.
+- **After redemption:** economics are shown as locked. If a race still returns
+  `PROMOTION_ECONOMICS_LOCKED`, the operator is told to deactivate the used Promotion and create a new
+  one; the app never bypasses the server lock.
+- **V1 limits:** no stacking configuration, customer-specific/first-order Promotions, per-customer
+  limits, bulk vouchers, gift cards, BOGO, quantity tiers, cashier discounts, analytics, exports, or
+  generic rule builder.
+
+See [Phase 2P validation](docs/phase-2p-validation.md).
+
 ## Separate-repo architecture
 
 This repository is fully standalone. It talks to the Commerce API **only** through a versioned,
@@ -206,18 +234,18 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.8.0**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.8.0.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.8.0.tgz`
-- SHA-256: `3bc355f638426993a7d7bd69c818855b1776540630d9701f03c770aa3fae3056`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.12.1**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.12.1.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.12.1.tgz`
+- SHA-256: `4fcd8076052cac6b4717b6eaa030a91f054398578cbbde9ceb69e7cfc819c7a0`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.8.0.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.12.1.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.8.0.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.12.1.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
@@ -225,8 +253,8 @@ relative `file:` spec, and byte-for-byte SHA-256).
 
 ### Update the SDK artifact
 
-1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.8.0.tgz`).
-2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.8.0.tgz"`.
+1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.12.1.tgz`).
+2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.12.1.tgz"`.
 3. `pnpm install` to update `pnpm-lock.yaml`.
 4. Update the SHA-256 above and in `src/sdk-artifact.test.ts` expectations, then remove the old
    tarball once nothing references it.
@@ -287,6 +315,13 @@ Tenant methods actually used by this phase (all via the tenant-scoped client):
 | `transferInventory()`              | `POST /inventory/transfers`              | Transfer stock                   |
 | `listOrders()`                     | `GET /orders`                            | Orders list                      |
 | `getOrder(orderId)`                | `GET /orders/{id}`                       | Order Detail                     |
+| `listPromotions()`                 | `GET /promotions`                        | Promotions list                  |
+| `getPromotion()`                   | `GET /promotions/{id}`                   | Promotion detail/edit load       |
+| `createPromotion()`                | `POST /promotions`                       | Create Promotion                 |
+| `updatePromotion()`                | `PATCH /promotions/{id}`                 | Edit permitted fields            |
+| `setPromotionStatus()`             | `POST /promotions/{id}/status`           | Activate/deactivate              |
+| `createPromotionCode()`            | `POST /promotions/{id}/codes`            | Create code/voucher              |
+| `setPromotionCodeStatus()`         | `POST /promotions/codes/{id}/status`     | Disable code                     |
 
 The public Storefront reads (`listPublishedProducts` / `getPublishedProduct`) are on the **root**
 client (unauthenticated, tenant supplied as a query parameter), not the tenant-scoped client.
@@ -728,8 +763,6 @@ against the real SDK 0.6.0 types.
   substitute mock data.
 - **`integration:check` fails with `ECONNREFUSED`** — expected unless a Commerce API is actually
   running at `EXPO_PUBLIC_COMMERCE_API_URL`.
-- **`expo install --check` lists Expo core packages** — a pre-existing patch-version drift in the
-  foundation, unrelated to the SDK/Clerk work.
 - **Local `typecheck` reports impossible route errors after adding/renaming routes** — the typed
   routes file `.expo/types/router.d.ts` is generated by the Expo dev server and is gitignored; a
   stale/interrupted dev server can leave a malformed copy. Fix it locally by:
@@ -749,7 +782,7 @@ plus optional supplier-linked receiving (Phase 2N, integrated on SDK 0.9.0). **S
 2O) is integrated on SDK 0.10.0** — add-staff (link existing identity by exact-email lookup), membership
 lifecycle, and role+scope assign/unassign, with anti-escalation / last-admin surfaces. Order and
 fulfillment mutations, payments, refunds/returns, customer
-management, vouchers, dashboards, reporting/analytics, taxonomy (category/collection) writes, website
+management, dashboards, reporting/analytics, taxonomy (category/collection) writes, website
 layout editing, POS, storefront checkout, and cart are **out of scope** and not implemented here. Supplier **unit cost / cost-basis**
 accounting and procurement (Purchase Orders, RFQs, invoices, Accounts Payable, approvals, portal,
 payments) plus permanent supplier deletion are explicit **non-goals**. The catalog UX is left extensible

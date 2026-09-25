@@ -12,6 +12,8 @@ import type {
   ProductDetailResponse,
   ProductListResponse,
   ProductWriteResponse,
+  PromotionDetail,
+  PromotionSummary,
   PublicProductDetailResponse,
   PublishProductResponse,
   ReceiveInventoryResponse,
@@ -73,6 +75,8 @@ export interface MeContextOverrides {
    * exercised.
    */
   staff?: NonNullable<MeContextResponse["access"]["staff"]> | null;
+  /** `null` omits optional Promotion guidance; default is read+manage for feature tests. */
+  promotions?: NonNullable<MeContextResponse["access"]["promotions"]> | null;
 }
 
 export function meContext(tenantId: string, overrides: MeContextOverrides = {}): MeContextResponse {
@@ -96,6 +100,9 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
     ...(overrides.staff === null
       ? {}
       : { staff: overrides.staff ?? { canRead: true, canManage: true } }),
+    ...(overrides.promotions === null
+      ? {}
+      : { promotions: overrides.promotions ?? { canRead: true, canManage: true } }),
   };
   return {
     tenant: { id: tenantId, name: "Acme Apparel", status: "active" },
@@ -109,6 +116,45 @@ export function meContext(tenantId: string, overrides: MeContextOverrides = {}):
 export const BRAND_A = "55555555-5555-4555-8555-555555555555";
 export const PRODUCT_A = "66666666-6666-4666-8666-666666666666";
 export const VARIANT_A = "77777777-7777-4777-8777-777777777777";
+export const PROMOTION_A = "18181818-1818-4818-8818-181818181818";
+export const PROMOTION_CODE_A = "19191919-1919-4919-8919-191919191919";
+
+export function promotionSummary(overrides: Partial<PromotionSummary> = {}): PromotionSummary {
+  return {
+    id: PROMOTION_A,
+    name: "Autumn offer",
+    status: "active",
+    benefitType: "percentage",
+    targetType: "order",
+    activationType: "automatic",
+    channel: null,
+    redemptionCount: 2,
+    globalRedemptionLimit: 10,
+    economicsLocked: true,
+    createdAt: "2026-09-25T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function promotionDetail(overrides: Partial<PromotionDetail> = {}): PromotionDetail {
+  return {
+    ...promotionSummary(),
+    description: "Seasonal discount",
+    benefitPercentBp: 1000,
+    benefitAmountMinor: null,
+    benefitCurrency: null,
+    minSubtotalMinor: 5000,
+    maxDiscountMinor: 2500,
+    startsAt: null,
+    endsAt: null,
+    brandId: null,
+    branchId: null,
+    remainingRedemptions: 8,
+    targets: [],
+    codes: [],
+    ...overrides,
+  };
+}
 
 export function productListItem(
   id: string,
