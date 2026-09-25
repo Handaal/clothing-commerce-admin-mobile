@@ -4,7 +4,7 @@
 Clerk (auth, owned by Mobile)
   │  getToken callback (token only — never a Clerk object)
   ▼
-@shifted/clothing-commerce-sdk 0.11.0  (packed tarball under vendor/, relative file: path)
+@shifted/clothing-commerce-sdk 0.12.1  (packed tarball under vendor/, relative file: path)
   │  owns Authorization, X-Client-Type/Version, X-Tenant-Id
   ▼
 Commerce API  →  authoritative commerce core
@@ -84,10 +84,25 @@ an **exact-email 0/1/N lookup** (`findEligibleStaffIdentitiesByEmail`), never a 
 A–M is proven against a real disposable HTTP API by `scripts/test-staff.mjs` (API repo). See
 [phase-2o-foundation.md](phase-2o-foundation.md) and [phase-2o-validation.md](phase-2o-validation.md).
 
+## Phase 2P Promotion management (SDK 0.12.1)
+
+Promotion screens consume the SDK DTOs directly through the narrow `PromotionClient` method pick—no
+API-source import and no duplicated wire model. Optional `/me/context` Promotion guidance is normalized
+by `promotionCapabilities`; `canRead` and `canManage` stay independent. Reads use `useAsync`; every
+mutation uses `useMutation` with a secure per-operation idempotency key and same-key ambiguous retry.
+
+The list follows the SDK's offset/total contract to completion with a finite fail-closed bound. Create
+maps UI input to `CreatePromotionRequest`; edit maps only to `UpdatePromotionRequest`, so create-only
+target, activation, currency, and global-limit fields are never fabricated as editable. Product/Variant
+targets are selected from canonical `listProducts`/`getProduct` data, never raw UUID input. Persisted
+lifecycle remains active/inactive; scheduled/expired/exhausted are derived display states. Codes and
+single-use vouchers share the canonical Promotion Code operations. The
+`PROMOTION_ECONOMICS_LOCKED` recovery explicitly directs deactivate-and-replace.
+
 ## Dependency direction
 
 ```text
-screens (app/**, src/products, src/catalog, src/inventory, src/orders)
+screens (app/**, src/products, src/catalog, src/inventory, src/orders, src/promotions)
   → session tenant client (useSession().getTenantClient(tenantId))
     → packed Commerce SDK (@shifted/clothing-commerce-sdk)
       → Commerce API
@@ -122,10 +137,13 @@ no tokens, build no headers, and issue no direct `fetch`.
 | Shared UI primitives                  | `src/ui/components.tsx`, `src/ui/SignInScreen.tsx`                                                             |
 | Routes: suppliers (2N)                | `app/suppliers/{index,new,[supplierId]}.tsx`, `app/suppliers/edit/[supplierId].tsx`                            |
 | Supplier management (2N)              | `src/suppliers/{model,search,status,adapter,load,capabilities,write-errors}.ts`, `src/suppliers/Supplier*.tsx` |
+| Routes: Promotions (2P)               | `app/promotions/{index,new,[promotionId]}.tsx`, `app/promotions/edit/[promotionId].tsx`                        |
+| Promotion management (2P)             | `src/promotions/*`                                                                                             |
 
 ## Server-authoritative authorization
 
-`/me/context` returns per-surface access flags (`catalog`, `inventory`, `orders`). Screens use them
+`/me/context` returns per-surface access flags, including optional Supplier, Staff, and Promotion
+guidance. Screens use them
 only to show/hide navigation and render friendly no-access states. They are never authorization: the
 API enforces every read, and a real `403` surfaces as an explicit forbidden state — never an empty
 success. The client never reconstructs organization → brand → branch → location rules; it renders
@@ -194,3 +212,8 @@ and any path param.
 16. Catalog authoring honours the single/multi-brand invariant (`src/catalog/brands.ts`): a single
     accessible brand is used directly, multiple require explicit selection, and none disables authoring
     (no guessed brand id). Taxonomy writes are out of scope and never invented.
+17. Promotion `canRead` and `canManage` guidance is independent: manage never implies read. It controls
+    affordances only; every endpoint remains server-authorized.
+18. Promotion economics, redemption counts, and code state are server truth. The client never evaluates
+    or stacks discounts. Post-redemption economics are not bypassed; used Promotions are deactivated and
+    replaced when economics must change.

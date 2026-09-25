@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
 import { classifyCommerceError } from "../src/commerce/errors";
+import { promotionCapabilities } from "../src/promotions/capabilities";
 import { useSession } from "../src/session/SessionProvider";
 import { staffCapabilities } from "../src/staff/capabilities";
 import {
@@ -113,6 +114,7 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
   const { access } = context;
   const router = useRouter();
   const staff = staffCapabilities(context);
+  const promotions = promotionCapabilities(context);
   return (
     <Frame>
       <Title>{context.tenant.name}</Title>
@@ -164,6 +166,12 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
         label="Staff"
         value={staff.canRead ? (staff.canManage ? "Read · manage" : "Read") : "No read access"}
       />
+      <InfoRow
+        label="Promotions"
+        value={
+          promotions.canRead ? (promotions.canManage ? "Read · manage" : "Read") : "No read access"
+        }
+      />
       <Divider />
       {access.catalog.canRead ? (
         <PrimaryButton
@@ -204,6 +212,15 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           testID="open-staff"
           label="Manage staff"
           onPress={() => router.push("/staff")}
+        />
+      ) : null}
+      {/* Promotion guidance is independent: canManage never implies canRead. Navigation follows only
+          canRead; the API remains authoritative for every list/detail/write request. */}
+      {promotions.canRead ? (
+        <PrimaryButton
+          testID="open-promotions"
+          label="Manage Promotions"
+          onPress={() => router.push("/promotions")}
         />
       ) : null}
       <SignOutButton />
