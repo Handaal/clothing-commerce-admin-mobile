@@ -99,6 +99,21 @@ lifecycle remains active/inactive; scheduled/expired/exhausted are derived displ
 single-use vouchers share the canonical Promotion Code operations. The
 `PROMOTION_ECONOMICS_LOCKED` recovery explicitly directs deactivate-and-replace.
 
+## Phase 2Q-B reporting preparation (SDK 0.13.0 pending)
+
+Reporting presentation depends only on the Admin-owned `ReportingAdapter` and normalized view-models in
+`src/reporting`. `resolveReportingAdapter` deliberately returns `null` while SDK 0.12.1 is pinned: no
+endpoint, DTO, authorization rule, timezone conversion, aggregation, or export transport is guessed.
+Every production Reporting route therefore fails closed (missing `access.reports?.canRead`) or shows the
+explicit pending-transport state. **Transport binding pending SDK 0.13.0.** Once the canonical artifact
+arrives, SDK DTO mapping belongs only in this adapter.
+
+The UI treats date presets as tenant-local reporting intent; custom inputs are validated only as ordered
+calendar dates. The service must supply timezone, inclusive/exclusive range boundaries, and trend bucket
+boundaries. Monetary view-models carry a currency on every group/row and are rendered separately, never
+summed across currencies. Cursor page controls request one bounded page at a time and retain only a short
+back-navigation cursor stack; they do not download or aggregate history.
+
 ## Dependency direction
 
 ```text
@@ -139,6 +154,8 @@ no tokens, build no headers, and issue no direct `fetch`.
 | Supplier management (2N)              | `src/suppliers/{model,search,status,adapter,load,capabilities,write-errors}.ts`, `src/suppliers/Supplier*.tsx` |
 | Routes: Promotions (2P)               | `app/promotions/{index,new,[promotionId]}.tsx`, `app/promotions/edit/[promotionId].tsx`                        |
 | Promotion management (2P)             | `src/promotions/*`                                                                                             |
+| Routes: Reporting preparation (2Q-B)  | `app/reports/{index,sales,products,inventory,returns,promotions,suppliers}.tsx`                                |
+| Reporting shell + adapter seam (2Q-B) | `src/reporting/*`                                                                                              |
 
 ## Server-authoritative authorization
 
@@ -217,3 +234,6 @@ and any path param.
 18. Promotion economics, redemption counts, and code state are server truth. The client never evaluates
     or stacks discounts. Post-redemption economics are not bypassed; used Promotions are deactivated and
     replaced when economics must change.
+19. Reporting transport remains unbound until the canonical SDK 0.13.0 artifact is vendored. Components
+    consume only normalized Admin view-models; currency groups remain separate and time boundaries are
+    displayed exactly as supplied, never converted into client-derived business days.

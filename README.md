@@ -4,7 +4,20 @@ Expo / React Native management-channel app for a clothing business's **authorize
 managers**. It is not a Shifted/platform super-admin app, not a POS/cashier app, not a
 customer-shopping app, and not a website layout builder.
 
-## Current scope — Phase 2P (Promotion management)
+## Current scope — Phase 2Q-B preparation (Admin reporting UI)
+
+Phase 2Q-B prepares the complete Admin-owned reporting shell while the canonical API contract and SDK
+0.13.0 are being finalized. It adds deny-by-default Reporting navigation, seven Expo Router routes,
+normalized presentation view-models, date/currency controls, loading/empty/error/access-denied/refresh
+states, bounded page controls, and the V1 dashboard/domain presentations. **Transport binding pending
+SDK 0.13.0:** production resolves no reporting adapter and never guesses an endpoint or response shape.
+See [the Phase 2Q-B preparation notes](docs/phase-2q-b-preparation.md).
+
+Reporting is online-only and management-only. Currency groups are never added together, tenant-local
+dates and timezone boundaries remain server-supplied, and disabled CSV affordances are reserved only
+for Product/Variant sales, Inventory movements, Returns/refunds, and Supplier receipt history.
+
+## Phase 2P (Promotion management)
 
 Phase 2P adds complete V1 Promotion management to the established owner/manager app: list/detail,
 create/edit, activate/deactivate, Product/Variant targeting, and Promotion Code/voucher management.
@@ -782,7 +795,7 @@ plus optional supplier-linked receiving (Phase 2N, integrated on SDK 0.9.0). **S
 2O) is integrated on SDK 0.10.0** — add-staff (link existing identity by exact-email lookup), membership
 lifecycle, and role+scope assign/unassign, with anti-escalation / last-admin surfaces. Order and
 fulfillment mutations, payments, refunds/returns, customer
-management, dashboards, reporting/analytics, taxonomy (category/collection) writes, website
+management, live reporting transport/analytics aggregation, taxonomy (category/collection) writes, website
 layout editing, POS, storefront checkout, and cart are **out of scope** and not implemented here. Supplier **unit cost / cost-basis**
 accounting and procurement (Purchase Orders, RFQs, invoices, Accounts Payable, approvals, portal,
 payments) plus permanent supplier deletion are explicit **non-goals**. The catalog UX is left extensible

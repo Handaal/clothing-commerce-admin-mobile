@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 
 import { classifyCommerceError } from "../src/commerce/errors";
 import { promotionCapabilities } from "../src/promotions/capabilities";
+import { reportingCapabilities } from "../src/reporting/capabilities";
 import { useSession } from "../src/session/SessionProvider";
 import { staffCapabilities } from "../src/staff/capabilities";
 import {
@@ -115,6 +116,7 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
   const router = useRouter();
   const staff = staffCapabilities(context);
   const promotions = promotionCapabilities(context);
+  const reports = reportingCapabilities(context);
   return (
     <Frame>
       <Title>{context.tenant.name}</Title>
@@ -172,6 +174,7 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           promotions.canRead ? (promotions.canManage ? "Read · manage" : "Read") : "No read access"
         }
       />
+      <InfoRow label="Reporting" value={reports.canRead ? "Read" : "No read access"} />
       <Divider />
       {access.catalog.canRead ? (
         <PrimaryButton
@@ -221,6 +224,15 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           testID="open-promotions"
           label="Manage Promotions"
           onPress={() => router.push("/promotions")}
+        />
+      ) : null}
+      {/* Reporting capability is isolated until SDK 0.13.0 types it. Missing guidance denies access;
+          the eventual API still authorizes every reporting request. */}
+      {reports.canRead ? (
+        <PrimaryButton
+          testID="open-reports"
+          label="View reports"
+          onPress={() => router.push("/reports")}
         />
       ) : null}
       <SignOutButton />
