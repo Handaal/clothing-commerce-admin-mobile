@@ -1,17 +1,17 @@
-# Phase 2Q-B — Admin reporting UI preparation
+# Phase 2Q-B — Admin reporting JSON integration
 
 ## Status and boundary
 
-The Admin-owned reporting experience is prepared and testable, but it does not call a reporting API.
-The repository remains pinned to `@shifted/clothing-commerce-sdk@0.12.1`, which has no reporting types or
-methods. **Transport binding pending SDK 0.13.0.** `resolveReportingAdapter` returns `null`; there is no
-direct HTTP, guessed endpoint, copied API type, API-source import, fake production data, or CSV transport.
+The Admin-owned reporting experience is connected to the canonical JSON reporting API through
+`@shifted/clothing-commerce-sdk@0.13.0`. `resolveReportingAdapter` maps the seven SDK methods into
+Admin-owned view models. There is no direct HTTP, guessed endpoint, copied API type, API-source import,
+fake production data, or CSV transport.
 
-The app is still the owner/manager management channel. This work adds no cashier/POS reporting app and no
+The app remains the owner/manager management channel. This adds no cashier/POS reporting app and no
 Storefront reporting surface. References to POS in Sales are read-only channel breakdowns, with branch
 data labelled **POS sales by branch** so online sales are never implied to belong to a branch.
 
-## Prepared routes and access
+## Routes and access
 
 - `/reports`
 - `/reports/sales`
@@ -21,61 +21,53 @@ data labelled **POS sales by branch** so online sales are never implied to belon
 - `/reports/promotions`
 - `/reports/suppliers`
 
-`reportingCapabilities` isolates the future optional `access.reports?.canRead` field. Only literal `true`
-shows navigation; missing or malformed guidance denies by default. This is UX guidance only. SDK/API
-authorization remains authoritative once transport is connected.
+`reportingCapabilities` reads the SDK-typed optional `access.reports?.canRead` field. Only literal `true`
+shows navigation; missing guidance denies by default. This is UX guidance only. The API authorizes every
+report request.
 
-## Presentation model
+## Canonical SDK mapping
 
-`src/reporting/model.ts` contains normalized Admin view-models rather than wire DTOs. The dashboard
-prepares Gross, Discounts, Net, Orders, AOV, separately presented Returns/refunds, one accessible sales
-trend bucket table, POS/Online and Brand breakdowns, top Products, and current inventory exceptions.
+`src/reporting/model.ts` contains normalized Admin view-models rather than wire DTOs. The single adapter
+binds `getReportSummary`, `getSalesReport`, `getProductsReport`, `getInventoryReport`,
+`getReturnsReport`, `getPromotionsReport`, and `getSuppliersReport`.
 
-The detailed screens prepare:
-
+- Dashboard: Gross, Discounts, Net, Orders, nullable AOV, separately presented Returns/refunds, current
+  stock summary, trend, POS/Online, Brand, top Products, and no-sales-with-current-stock rows.
 - Sales: trend, channel, Brand, POS Branch, POS Register, and POS Operator.
-- Products: Product/Variant ranking, units, gross/discount/net, and “No sales in period with current
-  stock.”
-- Inventory: current balances plus paged movements, receipts, transfers, and adjustments using explicit
-  `InventoryLocation` terminology.
-- Returns: accepted returned value, succeeded refunded value, pending refunds, count, disposition, and
-  paged returned Product/Variant ranking. No return-rate KPI exists.
-- Promotions: Promotion, redemptions, discount, associated Orders, gross and net per currency. No ROI or
-  profitability exists.
-- Suppliers: receipt count, units received, and last receipt only. No supplier spend/value exists.
+- Products: Product/Variant sales and `no_sales_with_current_stock`; no low-stock threshold or
+  slow-moving score is invented.
+- Inventory: current balances plus movements, receipts, transfers, and adjustments. Aggregate operation
+  views render only their canonical operation fields and do not fabricate a Product or location.
+- Returns: accepted return value, succeeded/pending refunds, count, summary-level disposition, and paged
+  Product/Variant results. No return-rate KPI exists.
+- Promotions: redemption count, discount, associated/cancelled Orders, gross and net per currency. No ROI
+  or profitability exists.
+- Suppliers: canonical current/snapshot label, receipt count, units received, and last receipt only. No
+  spend/value exists.
 
-## Currency, time, states, and paging
+## Currency, time, errors, and paging
 
-Every monetary group/row carries its currency. Multiple currencies render as separate groups; the selector
-appears only with multiple currencies and defaults to “All currencies (shown separately),” never silently
-choosing one. No cross-currency total is calculated.
+Every monetary group/row retains its server currency. Multiple currencies render as separate groups and
+are never added together.
 
-Date presets are Today, 7 days, 30 days, and Custom. Custom values are validated as ordered `YYYY-MM-DD`
-tenant-local calendar dates. The client performs no timezone/business-day conversion. Each result displays
-the server-supplied timezone, `fromInclusive`, and `toExclusive`; trend rows display supplied bucket
-boundaries.
+Date presets resolve to `startDate`/`endDate` calendar strings; Custom accepts ordered `YYYY-MM-DD`
+values. The client performs no UTC conversion. Results display server-supplied `timezone`,
+`fromInclusive`, `toExclusive`, `inventoryAsOf`, and trend `bucketStart` fields exactly where the SDK
+exposes them.
 
-Every screen has loading, empty, classified concise error, access-denied, explicit refresh, and pending
-transport behavior. Product ranking, returned Products, Promotions, Suppliers, and Inventory movements use
-one-page-at-a-time cursor controls; no client downloads and aggregates all history.
+Forbidden, authentication, network, contract, server, and validation/cursor errors map to concise Admin
+states without rendering raw backend codes. Product, Inventory, Returns, and Supplier controls pass only
+the current opaque SDK cursor and never download all pages. Promotions are not paged in SDK 0.13.0 and
+therefore expose no invented page control.
 
-Disabled CSV affordances are reserved only for Product/Variant sales, Inventory movements,
-Returns/refunds, and Supplier receipt history. There is no dashboard, Promotion, PDF, or XLSX export.
+## SDK and remaining export boundary
 
-## Validation evidence
+The vendored 0.13.0 artifact SHA-256 is
+`a141fb881752b64625bc1519b92fcf4f7aafd6c83eb81f0eb9b737fec2fb5e90` and is guarded by a test.
 
-The clean `origin/main` baseline passed with 66 test files / 464 tests and a 21-route web export.
-After this preparation work, the reporting-focused suite passes 18 tests and the repository-wide suite
-passes 71 test files / 482 tests. Expo dependency compatibility, Prettier check, ESLint, strict
-TypeScript, and the Expo web export all pass; the export includes all 28 routes (the original 21 plus
-the seven Reporting routes).
+The completed integration passes Expo dependency compatibility, Prettier, ESLint, strict TypeScript,
+the full unit/component suite, and the 28-route Expo web export.
 
-## Integration checklist for SDK 0.13.0
-
-1. Vendor and verify the canonical packed artifact; update the SDK artifact guard.
-2. Replace only `resolveReportingAdapter` with SDK-backed DTO-to-view-model mappings.
-3. Replace the narrow capability seam cast with the SDK's typed `access.reports` field.
-4. Confirm each SDK operation preserves service-supplied currency/time/page semantics and maps 403 to the
-   existing access-denied state.
-5. Add adapter contract tests against real SDK 0.13.0 DTO fixtures and live API acceptance.
-6. Enable only exports present in the canonical contract; keep all others absent.
+CSV controls remain disabled for Product/Variant sales, Inventory movements, Returns/refunds, and
+Supplier receipt history. The only remaining Phase 2Q-B work is to vendor SDK 0.13.1 and bind its
+canonical export methods without inventing URLs, filenames, response types, or download behavior.

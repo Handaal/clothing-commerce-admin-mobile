@@ -19,14 +19,14 @@ describe("reporting domain screens", () => {
   it("offers every sales view and uses POS-only branch wording", async () => {
     render(<SalesReportScreen adapter={fakeReportingAdapter()} canRead onBack={back} />);
     await screen.findByText("Sales trend");
-    fireEvent.click(screen.getByTestId("sales-view-pos-branch"));
-    expect(screen.getByText("POS sales by branch")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("sales-view-pos_branch"));
+    expect(await screen.findByText("POS sales by branch")).toBeTruthy();
     expect(screen.getByText("Online sales are not assigned to a Branch.")).toBeTruthy();
     expect(screen.queryByText("Sales by branch")).toBeNull();
     expect(screen.getByTestId("sales-view-channel")).toBeTruthy();
     expect(screen.getByTestId("sales-view-brand")).toBeTruthy();
-    expect(screen.getByTestId("sales-view-pos-register")).toBeTruthy();
-    expect(screen.getByTestId("sales-view-pos-operator")).toBeTruthy();
+    expect(screen.getByTestId("sales-view-pos_register")).toBeTruthy();
+    expect(screen.getByTestId("sales-view-pos_operator")).toBeTruthy();
   });
 
   it("presents Product and Variant rankings, no-sales-with-stock, export reservation and bounded paging", async () => {
@@ -38,9 +38,11 @@ describe("reporting domain screens", () => {
         onBack={back}
       />,
     );
-    expect(await screen.findByText("No sales in period with current stock")).toBeTruthy();
+    await screen.findByText("Linen Shirt");
     expect(screen.getAllByText("Product ranking").length).toBeGreaterThan(0);
     expect(screen.getByTestId("report-export-reserved").hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByTestId("product-view-no_sales_with_current_stock"));
+    expect(await screen.findByText("No sales in period with current stock")).toBeTruthy();
     fireEvent.click(screen.getByTestId("product-ranking-variant"));
     expect(await screen.findByText("Variant ranking")).toBeTruthy();
     fireEvent.click(screen.getByText("Next page"));
@@ -48,6 +50,7 @@ describe("reporting domain screens", () => {
       expect(getProductSales).toHaveBeenLastCalledWith(
         { range: { preset: "today" }, cursor: "page-2" },
         "variant",
+        "no_sales_with_current_stock",
       ),
     );
     expect(screen.getByTestId("report-pagination")).toBeTruthy();
@@ -57,12 +60,12 @@ describe("reporting domain screens", () => {
     render(<InventoryReportScreen adapter={fakeReportingAdapter()} canRead onBack={back} />);
     expect(await screen.findByText(/InventoryLocation is the stock-holding identity/)).toBeTruthy();
     expect(screen.getAllByText("InventoryLocation").length).toBeGreaterThan(0);
-    for (const view of ["receipt", "transfer", "adjustment"] as const) {
+    for (const view of ["receipts", "transfers", "adjustments"] as const) {
       fireEvent.click(screen.getByTestId(`inventory-view-${view}`));
       expect(
         (
           await screen.findAllByText(
-            view === "receipt" ? "Receipts" : view === "transfer" ? "Transfers" : "Adjustments",
+            view === "receipts" ? "Receipts" : view === "transfers" ? "Transfers" : "Adjustments",
           )
         ).length,
       ).toBeGreaterThan(0);
@@ -89,6 +92,7 @@ describe("reporting domain screens", () => {
     expect(screen.getByText("Associated Orders")).toBeTruthy();
     expect(screen.getByText("Gross sales")).toBeTruthy();
     expect(screen.getByText("Net sales")).toBeTruthy();
+    expect(screen.getByText("Cancelled Orders")).toBeTruthy();
     expect(screen.queryByText(/ROI|profitability/i)).toBeNull();
     expect(screen.queryByTestId("report-export-reserved")).toBeNull();
   });

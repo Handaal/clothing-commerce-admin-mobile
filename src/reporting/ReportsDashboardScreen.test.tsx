@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { ApiHttpError } from "@shifted/clothing-commerce-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReportsDashboardScreen } from "./ReportsDashboardScreen";
@@ -24,7 +25,8 @@ describe("ReportsDashboardScreen", () => {
     expect(screen.getAllByText("POS vs Online").length).toBe(2);
     expect(screen.getAllByText("Brand breakdown").length).toBe(2);
     expect(screen.getAllByText("Linen Shirt").length).toBe(2);
-    expect(screen.getByText("Current inventory exceptions")).toBeTruthy();
+    expect(screen.getByText("Current stock summary")).toBeTruthy();
+    expect(screen.getByText("No sales in period with current stock")).toBeTruthy();
   });
 
   it("keeps multiple currencies separate and requires an explicit selector choice", async () => {
@@ -74,7 +76,7 @@ describe("ReportsDashboardScreen", () => {
             ...dashboardReport(),
             currencies: [],
             topProducts: [],
-            inventoryExceptions: [],
+            noSalesWithCurrentStock: [],
           }),
         })}
         canRead
@@ -115,6 +117,42 @@ describe("ReportsDashboardScreen", () => {
       />,
     );
     expect(screen.getByTestId("reporting-transport-pending")).toBeTruthy();
+  });
+
+  it("maps server forbidden and validation failures without exposing backend codes", async () => {
+    const { rerender } = render(
+      <ReportsDashboardScreen
+        adapter={fakeReportingAdapter({
+          getDashboard: async () => {
+            throw new ApiHttpError("raw forbidden", 403, "FORBIDDEN", null);
+          },
+        })}
+        canRead
+        onOpen={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(screen.getByText("You do not have access to this report.")).toBeTruthy();
+    expect(screen.queryByText(/raw forbidden|FORBIDDEN/)).toBeNull();
+
+    rerender(
+      <ReportsDashboardScreen
+        adapter={fakeReportingAdapter({
+          getDashboard: async () => {
+            throw new ApiHttpError("raw cursor", 422, "INVALID_REPORT_QUERY", null);
+          },
+        })}
+        canRead
+        onOpen={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+    expect(await screen.findByText("Invalid request")).toBeTruthy();
+    expect(
+      screen.getByText("Check the date range or page selection, then try again."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/raw cursor|INVALID_REPORT_QUERY/)).toBeNull();
   });
 
   it("navigates to all six detail reports and has no dashboard export", async () => {

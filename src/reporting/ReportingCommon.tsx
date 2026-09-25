@@ -38,10 +38,10 @@ export function ReportingUnavailable({
   return (
     <ScrollScreen>
       <PageHeader eyebrow="Reporting" title={title} onBack={onBack} />
-      <Title>{canRead ? "Reporting is not connected yet" : "Access denied"}</Title>
+      <Title>{canRead ? "Reporting is unavailable" : "Access denied"}</Title>
       <Body testID={canRead ? "reporting-transport-pending" : "reporting-access-denied"}>
         {canRead
-          ? "Transport binding pending SDK 0.13.0. No reporting data has been requested."
+          ? "Reporting could not be initialized. No reporting data has been requested."
           : "Your current business access does not include reporting."}
       </Body>
     </ScrollScreen>
@@ -193,6 +193,8 @@ function reportErrorMessage(kind: CommerceErrorKind): string {
       return "You do not have access to this report.";
     case "network":
       return "Check your connection and try again. Reporting is online-only.";
+    case "validation":
+      return "Check the date range or page selection, then try again.";
     case "contract":
     case "server":
     case "unknown":

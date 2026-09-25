@@ -57,7 +57,11 @@ function DashboardContent({
       <ReportAsyncState
         state={state}
         reload={reload}
-        isEmpty={(data) => data.currencies.length === 0 && data.inventoryExceptions.length === 0}
+        isEmpty={(data) =>
+          data.currencies.length === 0 &&
+          data.topProducts.length === 0 &&
+          data.noSalesWithCurrentStock.length === 0
+        }
         emptyMessage="No reporting activity exists for this period."
       >
         {(data) => (
@@ -107,23 +111,30 @@ function DashboardData({
       {products.length === 0 ? <Body>No Product sales in this period.</Body> : null}
       {products.map((product) => (
         <SurfaceRow key={`${product.currency}-${product.id}`}>
-          <Eyebrow>{product.currency}</Eyebrow>
+          {product.currency ? <Eyebrow>{product.currency}</Eyebrow> : null}
           <Title>{product.productName}</Title>
-          <InfoRow label="Units sold" value={String(product.unitsSold)} />
-          <InfoRow label="Net" value={formatMoneyMinor(product.netMinor, product.currency)} />
+          <InfoRow label="Units sold" value={String(product.unitsSold ?? 0)} />
+          {product.currency !== undefined && product.netMinor !== undefined ? (
+            <InfoRow label="Net" value={formatMoneyMinor(product.netMinor, product.currency)} />
+          ) : null}
         </SurfaceRow>
       ))}
 
       <Divider />
-      <Title>Current inventory exceptions</Title>
-      {data.inventoryExceptions.length === 0 ? <Body>No current inventory exceptions.</Body> : null}
-      {data.inventoryExceptions.map((item) => (
+      <Title>Current stock summary</Title>
+      <InfoRow label="On hand" value={String(data.stock.totalOnHand)} />
+      <InfoRow label="Variants" value={String(data.stock.variantCount)} />
+      <InfoRow label="InventoryLocations" value={String(data.stock.locationCount)} />
+      <InfoRow label="Inventory as of" value={data.stock.asOf} />
+
+      <Divider />
+      <Title>No sales in period with current stock</Title>
+      {data.noSalesWithCurrentStock.length === 0 ? <Body>No matching Products.</Body> : null}
+      {data.noSalesWithCurrentStock.map((item) => (
         <SurfaceRow key={item.id}>
           <Title>{item.productName}</Title>
-          <Body>{item.variantName}</Body>
-          <InfoRow label="InventoryLocation" value={item.inventoryLocationName} />
-          <InfoRow label="On hand" value={String(item.onHand)} />
-          <Body>{item.label}</Body>
+          {item.sku ? <InfoRow label="Variant SKU" value={item.sku} /> : null}
+          <InfoRow label="Current on hand" value={String(item.currentOnHand ?? 0)} />
         </SurfaceRow>
       ))}
 
@@ -157,7 +168,11 @@ function CurrencyDashboard({ group }: { group: CurrencySalesGroup }) {
         <InfoRow label="Orders" value={String(group.sales.orders)} />
         <InfoRow
           label="AOV"
-          value={formatMoneyMinor(group.sales.averageOrderValueMinor, group.currency)}
+          value={
+            group.sales.averageOrderValueMinor === null
+              ? "Not available"
+              : formatMoneyMinor(group.sales.averageOrderValueMinor, group.currency)
+          }
         />
       </View>
 
@@ -184,7 +199,6 @@ function CurrencyDashboard({ group }: { group: CurrencySalesGroup }) {
         <SurfaceRow key={`${group.currency}-${point.fromInclusive}`}>
           <Title>{point.label}</Title>
           <InfoRow label="Bucket starts" value={point.fromInclusive} />
-          <InfoRow label="Bucket ends" value={point.toExclusive} />
           <InfoRow label="Net" value={formatMoneyMinor(point.netMinor, group.currency)} />
           <InfoRow label="Orders" value={String(point.orders)} />
         </SurfaceRow>

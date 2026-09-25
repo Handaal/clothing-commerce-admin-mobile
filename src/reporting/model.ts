@@ -1,4 +1,4 @@
-/** Admin-owned reporting view models. These are presentation shapes, not API/SDK wire DTOs. */
+/** Admin-owned reporting view models. SDK wire types stay in adapter.ts. */
 
 export type DatePreset = "today" | "7-days" | "30-days" | "custom";
 
@@ -35,7 +35,7 @@ export interface SalesMetrics {
   discountMinor: number;
   netMinor: number;
   orders: number;
-  averageOrderValueMinor: number;
+  averageOrderValueMinor: number | null;
 }
 
 export interface ReturnsMetrics {
@@ -47,8 +47,8 @@ export interface ReturnsMetrics {
 
 export interface TrendPoint {
   label: string;
+  /** Canonical bucket start returned by the service. */
   fromInclusive: string;
-  toExclusive: string;
   netMinor: number;
   orders: number;
 }
@@ -69,82 +69,96 @@ export interface CurrencySalesGroup {
   trend: TrendPoint[];
   channels: NamedSalesBreakdown[];
   brands: NamedSalesBreakdown[];
-  posBranches: NamedSalesBreakdown[];
-  posRegisters: NamedSalesBreakdown[];
-  posOperators: NamedSalesBreakdown[];
 }
 
 export interface ProductRankingRow {
   id: string;
   productName: string;
-  variantName?: string;
+  variantId?: string;
   sku?: string;
-  currency: string;
-  unitsSold: number;
-  grossMinor: number;
-  discountMinor: number;
-  netMinor: number;
-  noSalesWithCurrentStock?: boolean;
+  currency?: string;
+  unitsSold?: number;
+  grossMinor?: number;
+  discountMinor?: number;
+  netMinor?: number;
+  currentOnHand?: number;
 }
 
-export interface InventoryException {
-  id: string;
-  productName: string;
-  variantName: string;
-  inventoryLocationName: string;
-  onHand: number;
-  label: string;
+export interface StockSummary {
+  totalOnHand: number;
+  variantCount: number;
+  locationCount: number;
+  asOf: string;
 }
 
 export interface DashboardReport {
   meta: ReportMeta;
   currencies: CurrencySalesGroup[];
+  stock: StockSummary;
   topProducts: ProductRankingRow[];
-  inventoryExceptions: InventoryException[];
+  noSalesWithCurrentStock: ProductRankingRow[];
+}
+
+export type SalesReportView =
+  "trend" | "channel" | "brand" | "pos_branch" | "pos_register" | "pos_operator";
+
+export interface SalesReportCurrencyGroup {
+  currency: string;
+  trend: TrendPoint[];
+  rows: NamedSalesBreakdown[];
 }
 
 export interface SalesReport {
   meta: ReportMeta;
-  currencies: CurrencySalesGroup[];
+  view: SalesReportView;
+  currencies: SalesReportCurrencyGroup[];
 }
+
+export type ProductReportView = "sales" | "no_sales_with_current_stock";
 
 export interface ProductSalesReport {
   meta: ReportMeta;
   ranking: "product" | "variant";
+  view: ProductReportView;
   items: ReportPage<ProductRankingRow>;
 }
 
-export interface InventoryBalanceRow {
+export type InventoryReportView =
+  "balances" | "movements" | "receipts" | "transfers" | "adjustments";
+
+export interface InventoryReportRow {
   id: string;
-  productName: string;
-  variantName: string;
+  operationType?: string;
+  occurredAt?: string;
+  productName?: string;
+  variantId?: string;
   sku?: string;
-  inventoryLocationName: string;
-  onHand: number;
-}
-
-export type InventoryMovementKind = "receipt" | "transfer" | "adjustment";
-
-export interface InventoryMovementRow {
-  id: string;
-  occurredAt: string;
-  kind: InventoryMovementKind;
-  productName: string;
-  variantName: string;
-  quantity: number;
-  inventoryLocationName: string;
-  relatedInventoryLocationName?: string;
+  inventoryLocationName?: string;
+  onHand?: number;
+  quantityDelta?: number;
+  actorMembershipId?: string;
+  notes?: string;
+  supplierName?: string;
+  lineCount?: number;
+  unitsIn?: number;
+  unitsOut?: number;
 }
 
 export interface InventoryReport {
-  meta: ReportMeta;
-  balances: InventoryBalanceRow[];
-  movements: ReportPage<InventoryMovementRow>;
+  meta: ReportMeta | null;
+  asOf: string | null;
+  view: InventoryReportView;
+  items: ReportPage<InventoryReportRow>;
 }
 
-export interface ReturnedProductRow extends ProductRankingRow {
+export interface ReturnedProductRow {
+  id: string;
+  productName: string;
+  variantId?: string;
+  sku?: string;
+  currency: string;
   returnedUnits: number;
-  disposition: string;
+  acceptedReturnedMinor: number;
 }
 
 export interface CurrencyReturnsGroup {
@@ -152,9 +166,16 @@ export interface CurrencyReturnsGroup {
   metrics: ReturnsMetrics;
 }
 
+export interface ReturnDispositionRow {
+  disposition: string;
+  returnedUnits: number;
+}
+
 export interface ReturnsReport {
   meta: ReportMeta;
+  ranking: "product" | "variant";
   currencies: CurrencyReturnsGroup[];
+  dispositions: ReturnDispositionRow[];
   products: ReportPage<ReturnedProductRow>;
 }
 
@@ -167,11 +188,12 @@ export interface PromotionReportRow {
   associatedOrders: number;
   grossMinor: number;
   netMinor: number;
+  cancelledOrders: number;
 }
 
 export interface PromotionsReport {
   meta: ReportMeta;
-  promotions: ReportPage<PromotionReportRow>;
+  promotions: PromotionReportRow[];
 }
 
 export interface SupplierReportRow {

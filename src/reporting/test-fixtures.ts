@@ -17,82 +17,44 @@ export const REPORT_META: ReportMeta = {
   toExclusive: "2026-09-08T00:00:00+03:00",
 };
 
+const breakdown = {
+  id: "row-1",
+  label: "Downtown",
+  grossMinor: 12_000,
+  discountMinor: 2_000,
+  netMinor: 10_000,
+  orders: 4,
+};
+
 export function currencySales(currency = "USD"): CurrencySalesGroup {
   return {
     currency,
     sales: {
-      grossMinor: 12000,
-      discountMinor: 2000,
-      netMinor: 10000,
+      grossMinor: 12_000,
+      discountMinor: 2_000,
+      netMinor: 10_000,
       orders: 4,
-      averageOrderValueMinor: 2500,
+      averageOrderValueMinor: 2_500,
     },
     returns: {
-      acceptedReturnedMinor: 1200,
+      acceptedReturnedMinor: 1_200,
       succeededRefundedMinor: 900,
       pendingRefundMinor: 300,
       returnCount: 1,
     },
     trend: [
       {
-        label: "Sep 1",
+        label: "2026-09-01T00:00:00+03:00",
         fromInclusive: "2026-09-01T00:00:00+03:00",
-        toExclusive: "2026-09-02T00:00:00+03:00",
-        netMinor: 10000,
+        netMinor: 10_000,
         orders: 4,
       },
     ],
     channels: [
-      { id: "pos", label: "POS", grossMinor: 7000, discountMinor: 1000, netMinor: 6000, orders: 2 },
-      {
-        id: "online",
-        label: "Online",
-        grossMinor: 5000,
-        discountMinor: 1000,
-        netMinor: 4000,
-        orders: 2,
-      },
+      { ...breakdown, id: "pos", label: "POS" },
+      { ...breakdown, id: "online", label: "Online" },
     ],
-    brands: [
-      {
-        id: "brand-1",
-        label: "North Star",
-        grossMinor: 12000,
-        discountMinor: 2000,
-        netMinor: 10000,
-        orders: 4,
-      },
-    ],
-    posBranches: [
-      {
-        id: "branch-1",
-        label: "Downtown",
-        grossMinor: 7000,
-        discountMinor: 1000,
-        netMinor: 6000,
-        orders: 2,
-      },
-    ],
-    posRegisters: [
-      {
-        id: "register-1",
-        label: "Register 1",
-        grossMinor: 7000,
-        discountMinor: 1000,
-        netMinor: 6000,
-        orders: 2,
-      },
-    ],
-    posOperators: [
-      {
-        id: "operator-1",
-        label: "Mona",
-        grossMinor: 7000,
-        discountMinor: 1000,
-        netMinor: 6000,
-        orders: 2,
-      },
-    ],
+    brands: [{ ...breakdown, id: "brand-1", label: "North Star" }],
   };
 }
 
@@ -100,133 +62,143 @@ export function dashboardReport(): DashboardReport {
   return {
     meta: REPORT_META,
     currencies: [currencySales("USD"), currencySales("EUR")],
+    stock: { totalOnHand: 73, variantCount: 3, locationCount: 2, asOf: "2026-09-08T10:00:00Z" },
     topProducts: [
       {
         id: "p1",
         productName: "Linen Shirt",
         currency: "USD",
         unitsSold: 4,
-        grossMinor: 12000,
-        discountMinor: 2000,
-        netMinor: 10000,
+        grossMinor: 12_000,
+        discountMinor: 2_000,
+        netMinor: 10_000,
       },
       {
         id: "p2",
         productName: "Canvas Tote",
         currency: "EUR",
         unitsSold: 2,
-        grossMinor: 6000,
-        discountMinor: 1000,
-        netMinor: 5000,
+        grossMinor: 6_000,
+        discountMinor: 1_000,
+        netMinor: 5_000,
       },
     ],
-    inventoryExceptions: [
-      {
-        id: "i1",
-        productName: "Linen Shirt",
-        variantName: "Medium",
-        inventoryLocationName: "Flagship Stockroom",
-        onHand: 0,
-        label: "No stock currently on hand",
-      },
+    noSalesWithCurrentStock: [
+      { id: "v1", productName: "Linen Shirt", variantId: "v1", sku: "LS-M", currentOnHand: 9 },
     ],
   };
 }
 
 export function fakeReportingAdapter(overrides: Partial<ReportingAdapter> = {}): ReportingAdapter {
-  const productRow = {
-    id: "p1",
-    productName: "Linen Shirt",
-    variantName: "Medium",
-    sku: "LS-M",
-    currency: "USD",
-    unitsSold: 4,
-    grossMinor: 12000,
-    discountMinor: 2000,
-    netMinor: 10000,
-    noSalesWithCurrentStock: true,
-  };
   return {
     getDashboard: async () => dashboardReport(),
-    getSales: async (): Promise<SalesReport> => ({
+    getSales: async (_query, view): Promise<SalesReport> => ({
       meta: REPORT_META,
-      currencies: [currencySales()],
-    }),
-    getProductSales: async (_query, ranking): Promise<ProductSalesReport> => ({
-      meta: REPORT_META,
-      ranking,
-      items: { items: [productRow], nextCursor: "page-2" },
-    }),
-    getInventory: async (): Promise<InventoryReport> => ({
-      meta: REPORT_META,
-      balances: [
+      view,
+      currencies: [
         {
-          id: "b1",
-          productName: "Linen Shirt",
-          variantName: "Medium",
-          inventoryLocationName: "Flagship Stockroom",
-          onHand: 9,
+          currency: "USD",
+          trend: view === "trend" ? currencySales().trend : [],
+          rows: view === "trend" ? [] : [{ ...breakdown, label: "Downtown" }],
         },
       ],
-      movements: {
-        items: [
-          {
-            id: "m1",
-            occurredAt: "2026-09-02T10:00:00Z",
-            kind: "receipt",
-            productName: "Linen Shirt",
-            variantName: "Medium",
-            quantity: 5,
-            inventoryLocationName: "Flagship Stockroom",
-          },
-          {
-            id: "m2",
-            occurredAt: "2026-09-03T10:00:00Z",
-            kind: "transfer",
-            productName: "Linen Shirt",
-            variantName: "Medium",
-            quantity: 2,
-            inventoryLocationName: "Flagship Stockroom",
-            relatedInventoryLocationName: "Overflow Stockroom",
-          },
-          {
-            id: "m3",
-            occurredAt: "2026-09-04T10:00:00Z",
-            kind: "adjustment",
-            productName: "Linen Shirt",
-            variantName: "Medium",
-            quantity: -1,
-            inventoryLocationName: "Flagship Stockroom",
-          },
-        ],
-        nextCursor: "next-movements",
+    }),
+    getProductSales: async (_query, ranking, view): Promise<ProductSalesReport> => ({
+      meta: REPORT_META,
+      ranking,
+      view,
+      items: {
+        items:
+          view === "sales"
+            ? [
+                {
+                  id: "p1",
+                  productName: "Linen Shirt",
+                  variantId: ranking === "variant" ? "variant-1" : undefined,
+                  sku: ranking === "variant" ? "LS-M" : undefined,
+                  currency: "USD",
+                  unitsSold: 4,
+                  grossMinor: 12_000,
+                  discountMinor: 2_000,
+                  netMinor: 10_000,
+                },
+              ]
+            : [
+                {
+                  id: "p1",
+                  productName: "Linen Shirt",
+                  variantId: "variant-1",
+                  sku: "LS-M",
+                  currentOnHand: 9,
+                },
+              ],
+        nextCursor: "page-2",
       },
     }),
-    getReturns: async (): Promise<ReturnsReport> => ({
+    getInventory: async (_query, view): Promise<InventoryReport> => ({
+      meta: view === "balances" ? null : REPORT_META,
+      asOf: view === "balances" ? "2026-09-08T10:00:00Z" : null,
+      view,
+      items: {
+        items:
+          view === "balances"
+            ? [
+                {
+                  id: "b1",
+                  productName: "Linen Shirt",
+                  variantId: "variant-1",
+                  sku: "LS-M",
+                  inventoryLocationName: "Flagship Stockroom",
+                  onHand: 9,
+                },
+              ]
+            : [
+                {
+                  id: "op1",
+                  operationType: view,
+                  occurredAt: "2026-09-02T10:00:00Z",
+                  supplierName: view === "receipts" ? "Nile Textiles" : undefined,
+                  lineCount: 1,
+                  unitsIn: view === "receipts" || view === "transfers" ? 5 : 0,
+                  unitsOut: view === "transfers" || view === "adjustments" ? 2 : 0,
+                },
+              ],
+        nextCursor: "next-inventory",
+      },
+    }),
+    getReturns: async (_query, ranking): Promise<ReturnsReport> => ({
       meta: REPORT_META,
+      ranking,
       currencies: [{ currency: "USD", metrics: currencySales().returns }],
+      dispositions: [{ disposition: "restock", returnedUnits: 1 }],
       products: {
-        items: [{ ...productRow, returnedUnits: 1, disposition: "restock" }],
+        items: [
+          {
+            id: "p1",
+            productName: "Linen Shirt",
+            currency: "USD",
+            returnedUnits: 1,
+            acceptedReturnedMinor: 1_200,
+          },
+        ],
         nextCursor: "next-returns",
       },
     }),
     getPromotions: async (): Promise<PromotionsReport> => ({
       meta: REPORT_META,
-      promotions: {
-        items: [
-          {
-            id: "promo-1",
-            promotionName: "Autumn offer",
-            currency: "USD",
-            redemptions: 3,
-            discountMinor: 1500,
-            associatedOrders: 3,
-            grossMinor: 10000,
-            netMinor: 8500,
-          },
-        ],
-        nextCursor: "next-promotions",
-      },
+      promotions: [
+        {
+          id: "promo-1",
+          promotionName: "Autumn offer",
+          currency: "USD",
+          redemptions: 3,
+          discountMinor: 1_500,
+          associatedOrders: 3,
+          grossMinor: 10_000,
+          netMinor: 8_500,
+          cancelledOrders: 1,
+        },
+      ],
     }),
     getSuppliers: async (): Promise<SuppliersReport> => ({
       meta: REPORT_META,

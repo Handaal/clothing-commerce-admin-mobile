@@ -15,8 +15,8 @@ importers:
         specifier: ~57.0.16
         version: 57.0.16(@expo/log-box@57.0.4)(expo@57.0.25)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.87.0(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.18)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
       '@shifted/clothing-commerce-sdk':
-        specifier: file:vendor/shifted-clothing-commerce-sdk-0.12.1.tgz
-        version: file:vendor/shifted-clothing-commerce-sdk-0.12.1.tgz
+        specifier: file:vendor/shifted-clothing-commerce-sdk-0.13.0.tgz
+        version: file:vendor/shifted-clothing-commerce-sdk-0.13.0.tgz
       expo:
         specifier: ~57.0.25
         version: 57.0.25(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.16)(bufferutil@4.1.0)(expo-router@57.0.23)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.11.4(@babel/core@7.29.7)(@react-native/metro-config@0.87.0(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.87.0(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.18)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.87.0(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.18)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
@@ -1342,9 +1342,9 @@ packages:
   '@scure/bip39@1.6.0':
     resolution: {integrity: sha512-+lF0BbLiJNwVlev4eKelw1WWLaiKXw7sSl8T6FvBlWkdX+94aGJ4o8XjUdlyhTCjd8c+B3KT3JfS8P0bLRNU6A==}
 
-  '@shifted/clothing-commerce-sdk@file:vendor/shifted-clothing-commerce-sdk-0.12.1.tgz':
-    resolution: {integrity: sha512-fy18RVYl14Fh75aeMRf9rZ2UJUPZLZUOLappmV6sctHYG0ehvTIxqRtyX7cksOCb89j+qfVVVLopP2nyHwlg4g==, tarball: file:vendor/shifted-clothing-commerce-sdk-0.12.1.tgz}
-    version: 0.12.1
+  '@shifted/clothing-commerce-sdk@file:vendor/shifted-clothing-commerce-sdk-0.13.0.tgz':
+    resolution: {integrity: sha512-s2jDOxXVXKqc9yqbwYdGrfJ9C6pvMYldZZCF/6sGugoMJbEkEdi4BtgphHtQ0iFm/Zuu+zcVENyZcnoxyTXoRw==, tarball: file:vendor/shifted-clothing-commerce-sdk-0.13.0.tgz}
+    version: 0.13.0
 
   '@sinclair/typebox@0.27.12':
     resolution: {integrity: sha512-hhyNJ+nbR6ZR7pToHvllEFun9TL0sbL+tk/ON75lo+Xas054uez98qRbsuNt7MBCyZKK4+8Yli/OAGZhmfBZ/g==}
@@ -6212,7 +6212,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 
-  '@shifted/clothing-commerce-sdk@file:vendor/shifted-clothing-commerce-sdk-0.12.1.tgz':
+  '@shifted/clothing-commerce-sdk@file:vendor/shifted-clothing-commerce-sdk-0.13.0.tgz':
     dependencies:
       zod: 4.4.3
 

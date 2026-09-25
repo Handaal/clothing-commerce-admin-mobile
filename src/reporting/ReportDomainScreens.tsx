@@ -7,14 +7,16 @@ import { useAsync } from "../ui/useAsync";
 import type { ReportingAdapter } from "./adapter";
 import { DEFAULT_REPORT_RANGE } from "./date-range";
 import type {
-  CurrencySalesGroup,
-  InventoryMovementKind,
   InventoryReport,
+  InventoryReportRow,
+  InventoryReportView,
   ProductRankingRow,
+  ProductReportView,
   PromotionsReport,
   ReportDateRange,
   ReturnsReport,
   SalesReport,
+  SalesReportView,
   SuppliersReport,
 } from "./model";
 import {
@@ -34,8 +36,6 @@ interface ReportScreenProps {
   onBack: () => void;
 }
 
-type SalesView = "trend" | "channel" | "brand" | "pos-branch" | "pos-register" | "pos-operator";
-
 export function SalesReportScreen(props: ReportScreenProps) {
   if (!props.canRead || !props.adapter) {
     return (
@@ -47,9 +47,9 @@ export function SalesReportScreen(props: ReportScreenProps) {
 
 function SalesContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
-  const [view, setView] = useState<SalesView>("trend");
+  const [view, setView] = useState<SalesReportView>("trend");
   const [currency, setCurrency] = useState<string | undefined>();
-  const load = useCallback(() => adapter.getSales({ range }), [adapter, range]);
+  const load = useCallback(() => adapter.getSales({ range }, view), [adapter, range, view]);
   const { state, reload } = useAsync(load);
   return (
     <ReportPageFrame title="Sales" onBack={onBack}>
@@ -57,15 +57,15 @@ function SalesContent({ adapter, onBack }: ReportScreenProps & { adapter: Report
       <SelectField
         label="View"
         selected={view}
-        onSelect={(value) => setView(value as SalesView)}
+        onSelect={(value) => setView(value as SalesReportView)}
         testIDPrefix="sales-view"
         options={[
           { value: "trend", label: "Trend" },
           { value: "channel", label: "Channel" },
           { value: "brand", label: "Brand" },
-          { value: "pos-branch", label: "POS Branch" },
-          { value: "pos-register", label: "POS Register" },
-          { value: "pos-operator", label: "POS Operator" },
+          { value: "pos_branch", label: "POS Branch" },
+          { value: "pos_register", label: "POS Register" },
+          { value: "pos_operator", label: "POS Operator" },
         ]}
       />
       <Divider />
@@ -76,12 +76,7 @@ function SalesContent({ adapter, onBack }: ReportScreenProps & { adapter: Report
         emptyMessage="No sales activity exists for this period."
       >
         {(data) => (
-          <SalesData
-            data={data}
-            view={view}
-            selectedCurrency={currency}
-            onCurrencyChange={setCurrency}
-          />
+          <SalesData data={data} selectedCurrency={currency} onCurrencyChange={setCurrency} />
         )}
       </ReportAsyncState>
     </ReportPageFrame>
@@ -90,12 +85,10 @@ function SalesContent({ adapter, onBack }: ReportScreenProps & { adapter: Report
 
 function SalesData({
   data,
-  view,
   selectedCurrency,
   onCurrencyChange,
 }: {
   data: SalesReport;
-  view: SalesView;
   selectedCurrency?: string;
   onCurrencyChange: (currency: string | undefined) => void;
 }) {
@@ -110,16 +103,38 @@ function SalesData({
         selected={selectedCurrency}
         onChange={onCurrencyChange}
       />
-      <Title>{salesViewTitle(view)}</Title>
-      {view === "pos-branch" ? <Body>Online sales are not assigned to a Branch.</Body> : null}
+      <Title>{salesViewTitle(data.view)}</Title>
+      {data.view === "pos_branch" ? <Body>Online sales are not assigned to a Branch.</Body> : null}
       {groups.map((group) => (
-        <SalesViewRows key={group.currency} group={group} view={view} />
+        <CurrencySection key={group.currency} currency={group.currency}>
+          {data.view === "trend"
+            ? group.trend.map((point) => (
+                <SurfaceRow key={point.fromInclusive}>
+                  <Title>{point.label}</Title>
+                  <InfoRow label="Bucket starts" value={point.fromInclusive} />
+                  <InfoRow label="Net" value={formatMoneyMinor(point.netMinor, group.currency)} />
+                  <InfoRow label="Orders" value={String(point.orders)} />
+                </SurfaceRow>
+              ))
+            : group.rows.map((row) => (
+                <SurfaceRow key={row.id}>
+                  <Title>{row.label}</Title>
+                  <InfoRow label="Gross" value={formatMoneyMinor(row.grossMinor, group.currency)} />
+                  <InfoRow
+                    label="Discount"
+                    value={formatMoneyMinor(row.discountMinor, group.currency)}
+                  />
+                  <InfoRow label="Net" value={formatMoneyMinor(row.netMinor, group.currency)} />
+                  <InfoRow label="Orders" value={String(row.orders)} />
+                </SurfaceRow>
+              ))}
+        </CurrencySection>
       ))}
     </View>
   );
 }
 
-function salesViewTitle(view: SalesView): string {
+function salesViewTitle(view: SalesReportView): string {
   switch (view) {
     case "trend":
       return "Sales trend";
@@ -127,54 +142,13 @@ function salesViewTitle(view: SalesView): string {
       return "Sales by channel";
     case "brand":
       return "Sales by Brand";
-    case "pos-branch":
+    case "pos_branch":
       return "POS sales by branch";
-    case "pos-register":
+    case "pos_register":
       return "POS sales by register";
-    case "pos-operator":
+    case "pos_operator":
       return "POS sales by operator";
   }
-}
-
-function SalesViewRows({ group, view }: { group: CurrencySalesGroup; view: SalesView }) {
-  if (view === "trend") {
-    return (
-      <CurrencySection currency={group.currency}>
-        {group.trend.map((point) => (
-          <SurfaceRow key={point.fromInclusive}>
-            <Title>{point.label}</Title>
-            <InfoRow label="From" value={point.fromInclusive} />
-            <InfoRow label="To" value={point.toExclusive} />
-            <InfoRow label="Net" value={formatMoneyMinor(point.netMinor, group.currency)} />
-            <InfoRow label="Orders" value={String(point.orders)} />
-          </SurfaceRow>
-        ))}
-      </CurrencySection>
-    );
-  }
-  const rows =
-    view === "channel"
-      ? group.channels
-      : view === "brand"
-        ? group.brands
-        : view === "pos-branch"
-          ? group.posBranches
-          : view === "pos-register"
-            ? group.posRegisters
-            : group.posOperators;
-  return (
-    <CurrencySection currency={group.currency}>
-      {rows.map((row) => (
-        <SurfaceRow key={row.id}>
-          <Title>{row.label}</Title>
-          <InfoRow label="Gross" value={formatMoneyMinor(row.grossMinor, group.currency)} />
-          <InfoRow label="Discount" value={formatMoneyMinor(row.discountMinor, group.currency)} />
-          <InfoRow label="Net" value={formatMoneyMinor(row.netMinor, group.currency)} />
-          <InfoRow label="Orders" value={String(row.orders)} />
-        </SurfaceRow>
-      ))}
-    </CurrencySection>
-  );
 }
 
 export function ProductsReportScreen(props: ReportScreenProps) {
@@ -189,33 +163,34 @@ export function ProductsReportScreen(props: ReportScreenProps) {
 function ProductsContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
   const [ranking, setRanking] = useState<"product" | "variant">("product");
+  const [view, setView] = useState<ProductReportView>("sales");
   const pager = useCursorPager();
   const load = useCallback(
-    () => adapter.getProductSales({ range, cursor: pager.cursor }, ranking),
-    [adapter, range, pager.cursor, ranking],
+    () => adapter.getProductSales({ range, cursor: pager.cursor }, ranking, view),
+    [adapter, range, pager.cursor, ranking, view],
   );
   const { state, reload } = useAsync(load);
-  function changeRanking(value: string) {
-    pager.reset();
-    setRanking(value as "product" | "variant");
-  }
   return (
     <ReportPageFrame title="Products" onBack={onBack}>
-      <DateRangeControls
-        value={range}
-        onChange={(next) => {
-          pager.reset();
-          setRange(next);
-        }}
-      />
+      <DateRangeControls value={range} onChange={(next) => changeAndReset(next, setRange, pager)} />
       <SelectField
         label="Ranking"
         selected={ranking}
-        onSelect={changeRanking}
+        onSelect={(value) => changeAndReset(value as "product" | "variant", setRanking, pager)}
         testIDPrefix="product-ranking"
         options={[
           { value: "product", label: "Product ranking" },
           { value: "variant", label: "Variant ranking" },
+        ]}
+      />
+      <SelectField
+        label="Dataset"
+        selected={view}
+        onSelect={(value) => changeAndReset(value as ProductReportView, setView, pager)}
+        testIDPrefix="product-view"
+        options={[
+          { value: "sales", label: "Sales" },
+          { value: "no_sales_with_current_stock", label: "No sales with current stock" },
         ]}
       />
       <ExportReserved dataset="Product/Variant sales" />
@@ -223,7 +198,7 @@ function ProductsContent({ adapter, onBack }: ReportScreenProps & { adapter: Rep
         state={state}
         reload={reload}
         isEmpty={(data) => data.items.items.length === 0}
-        emptyMessage="No Product or Variant sales exist for this period."
+        emptyMessage="No Product or Variant rows exist for this period."
       >
         {(data) => (
           <View style={{ gap: 12 }}>
@@ -248,20 +223,31 @@ function ProductsContent({ adapter, onBack }: ReportScreenProps & { adapter: Rep
 function ProductRanking({ row }: { row: ProductRankingRow }) {
   return (
     <SurfaceRow>
-      <Eyebrow>{row.currency}</Eyebrow>
+      {row.currency ? <Eyebrow>{row.currency}</Eyebrow> : null}
       <Title>{row.productName}</Title>
-      {row.variantName ? <Body>{row.variantName}</Body> : null}
+      {row.variantId ? <InfoRow label="Variant" value={row.variantId} /> : null}
       {row.sku ? <InfoRow label="SKU" value={row.sku} /> : null}
-      <InfoRow label="Units sold" value={String(row.unitsSold)} />
-      <InfoRow label="Gross" value={formatMoneyMinor(row.grossMinor, row.currency)} />
-      <InfoRow label="Discount" value={formatMoneyMinor(row.discountMinor, row.currency)} />
-      <InfoRow label="Net" value={formatMoneyMinor(row.netMinor, row.currency)} />
-      {row.noSalesWithCurrentStock ? <Body>No sales in period with current stock</Body> : null}
+      {row.currentOnHand !== undefined ? (
+        <>
+          <InfoRow label="Current on hand" value={String(row.currentOnHand)} />
+          <Body>No sales in period with current stock</Body>
+        </>
+      ) : null}
+      {row.unitsSold !== undefined ? (
+        <InfoRow label="Units sold" value={String(row.unitsSold)} />
+      ) : null}
+      {row.currency && row.grossMinor !== undefined ? (
+        <InfoRow label="Gross" value={formatMoneyMinor(row.grossMinor, row.currency)} />
+      ) : null}
+      {row.currency && row.discountMinor !== undefined ? (
+        <InfoRow label="Discount" value={formatMoneyMinor(row.discountMinor, row.currency)} />
+      ) : null}
+      {row.currency && row.netMinor !== undefined ? (
+        <InfoRow label="Net" value={formatMoneyMinor(row.netMinor, row.currency)} />
+      ) : null}
     </SurfaceRow>
   );
 }
-
-type InventoryView = "balances" | "movements" | InventoryMovementKind;
 
 export function InventoryReportScreen(props: ReportScreenProps) {
   if (!props.canRead || !props.adapter) {
@@ -278,113 +264,95 @@ export function InventoryReportScreen(props: ReportScreenProps) {
 
 function InventoryContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
-  const [view, setView] = useState<InventoryView>("balances");
+  const [view, setView] = useState<InventoryReportView>("balances");
   const pager = useCursorPager();
   const load = useCallback(
-    () => adapter.getInventory({ range, cursor: pager.cursor }),
-    [adapter, range, pager.cursor],
+    () => adapter.getInventory({ range, cursor: pager.cursor }, view),
+    [adapter, range, pager.cursor, view],
   );
   const { state, reload } = useAsync(load);
   return (
     <ReportPageFrame title="Inventory" onBack={onBack}>
-      <DateRangeControls
-        value={range}
-        onChange={(next) => {
-          pager.reset();
-          setRange(next);
-        }}
-      />
+      <DateRangeControls value={range} onChange={(next) => changeAndReset(next, setRange, pager)} />
       <SelectField
         label="View"
         selected={view}
-        onSelect={(value) => {
-          pager.reset();
-          setView(value as InventoryView);
-        }}
+        onSelect={(value) => changeAndReset(value as InventoryReportView, setView, pager)}
         testIDPrefix="inventory-view"
         options={[
           { value: "balances", label: "Current balances" },
           { value: "movements", label: "Movements" },
-          { value: "receipt", label: "Receipts" },
-          { value: "transfer", label: "Transfers" },
-          { value: "adjustment", label: "Adjustments" },
+          { value: "receipts", label: "Receipts" },
+          { value: "transfers", label: "Transfers" },
+          { value: "adjustments", label: "Adjustments" },
         ]}
       />
       <ExportReserved dataset="Inventory movements" />
       <ReportAsyncState
         state={state}
         reload={reload}
-        isEmpty={(data) => data.balances.length === 0 && data.movements.items.length === 0}
-        emptyMessage="No Inventory balances or movements are available."
+        isEmpty={(data) => data.items.items.length === 0}
+        emptyMessage="No Inventory rows are available."
       >
-        {(data) => <InventoryData data={data} view={view} pager={pager} />}
+        {(data) => <InventoryData data={data} pager={pager} />}
       </ReportAsyncState>
     </ReportPageFrame>
   );
 }
 
-function InventoryData({
-  data,
-  view,
-  pager,
-}: {
-  data: InventoryReport;
-  view: InventoryView;
-  pager: CursorPager;
-}) {
-  const rows =
-    view === "movements"
-      ? data.movements.items
-      : data.movements.items.filter((row) => row.kind === view);
+function InventoryData({ data, pager }: { data: InventoryReport; pager: CursorPager }) {
   return (
     <View style={{ gap: 12 }}>
-      <ReportMetaBlock meta={data.meta} />
+      {data.meta ? <ReportMetaBlock meta={data.meta} /> : null}
+      {data.asOf ? <InfoRow label="Current balances as of" value={data.asOf} /> : null}
       <Body>
         InventoryLocation is the stock-holding identity; it is not a Branch, Warehouse, or Register.
       </Body>
-      <Title>{view === "balances" ? "Current balances" : inventoryViewTitle(view)}</Title>
-      {view === "balances"
-        ? data.balances.map((row) => (
-            <SurfaceRow key={row.id}>
-              <Title>{row.productName}</Title>
-              <Body>{row.variantName}</Body>
-              <InfoRow label="InventoryLocation" value={row.inventoryLocationName} />
-              <InfoRow label="On hand" value={String(row.onHand)} />
-            </SurfaceRow>
-          ))
-        : rows.map((row) => (
-            <SurfaceRow key={row.id}>
-              <Eyebrow>{row.kind}</Eyebrow>
-              <Title>{row.productName}</Title>
-              <Body>{row.variantName}</Body>
-              <InfoRow label="InventoryLocation" value={row.inventoryLocationName} />
-              {row.relatedInventoryLocationName ? (
-                <InfoRow
-                  label="Related InventoryLocation"
-                  value={row.relatedInventoryLocationName}
-                />
-              ) : null}
-              <InfoRow label="Quantity" value={String(row.quantity)} />
-              <InfoRow label="Occurred" value={row.occurredAt} />
-            </SurfaceRow>
-          ))}
-      {view !== "balances" ? (
-        <PaginationControls
-          canPrevious={pager.canPrevious}
-          canNext={data.movements.nextCursor !== null}
-          onPrevious={pager.previous}
-          onNext={() => pager.next(data.movements.nextCursor)}
-        />
-      ) : null}
+      <Title>{inventoryViewTitle(data.view)}</Title>
+      {data.items.items.map((row) => (
+        <InventoryRow key={row.id} row={row} />
+      ))}
+      <PaginationControls
+        canPrevious={pager.canPrevious}
+        canNext={data.items.nextCursor !== null}
+        onPrevious={pager.previous}
+        onNext={() => pager.next(data.items.nextCursor)}
+      />
     </View>
   );
 }
 
-function inventoryViewTitle(view: InventoryView): string {
+function InventoryRow({ row }: { row: InventoryReportRow }) {
+  return (
+    <SurfaceRow>
+      {row.operationType ? <Eyebrow>{row.operationType}</Eyebrow> : null}
+      <Title>{row.productName ?? row.supplierName ?? "Inventory operation"}</Title>
+      {row.variantId ? <InfoRow label="Variant" value={row.variantId} /> : null}
+      {row.sku ? <InfoRow label="SKU" value={row.sku} /> : null}
+      {row.inventoryLocationName ? (
+        <InfoRow label="InventoryLocation" value={row.inventoryLocationName} />
+      ) : null}
+      {row.onHand !== undefined ? <InfoRow label="On hand" value={String(row.onHand)} /> : null}
+      {row.quantityDelta !== undefined ? (
+        <InfoRow label="Quantity change" value={String(row.quantityDelta)} />
+      ) : null}
+      {row.lineCount !== undefined ? <InfoRow label="Lines" value={String(row.lineCount)} /> : null}
+      {row.unitsIn !== undefined ? <InfoRow label="Units in" value={String(row.unitsIn)} /> : null}
+      {row.unitsOut !== undefined ? (
+        <InfoRow label="Units out" value={String(row.unitsOut)} />
+      ) : null}
+      {row.actorMembershipId ? <InfoRow label="Actor" value={row.actorMembershipId} /> : null}
+      {row.notes ? <InfoRow label="Notes" value={row.notes} /> : null}
+      {row.occurredAt ? <InfoRow label="Occurred" value={row.occurredAt} /> : null}
+    </SurfaceRow>
+  );
+}
+
+function inventoryViewTitle(view: InventoryReportView): string {
   if (view === "movements") return "Inventory movements";
-  if (view === "receipt") return "Receipts";
-  if (view === "transfer") return "Transfers";
-  if (view === "adjustment") return "Adjustments";
+  if (view === "receipts") return "Receipts";
+  if (view === "transfers") return "Transfers";
+  if (view === "adjustments") return "Adjustments";
   return "Current balances";
 }
 
@@ -399,20 +367,25 @@ export function ReturnsReportScreen(props: ReportScreenProps) {
 
 function ReturnsContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
+  const [ranking, setRanking] = useState<"product" | "variant">("product");
   const pager = useCursorPager();
   const load = useCallback(
-    () => adapter.getReturns({ range, cursor: pager.cursor }),
-    [adapter, range, pager.cursor],
+    () => adapter.getReturns({ range, cursor: pager.cursor }, ranking),
+    [adapter, range, pager.cursor, ranking],
   );
   const { state, reload } = useAsync(load);
   return (
     <ReportPageFrame title="Returns and refunds" onBack={onBack}>
-      <DateRangeControls
-        value={range}
-        onChange={(next) => {
-          pager.reset();
-          setRange(next);
-        }}
+      <DateRangeControls value={range} onChange={(next) => changeAndReset(next, setRange, pager)} />
+      <SelectField
+        label="Ranking"
+        selected={ranking}
+        onSelect={(value) => changeAndReset(value as "product" | "variant", setRanking, pager)}
+        testIDPrefix="returns-ranking"
+        options={[
+          { value: "product", label: "Products" },
+          { value: "variant", label: "Variants" },
+        ]}
       />
       <ExportReserved dataset="Returns/refunds" />
       <ReportAsyncState
@@ -448,15 +421,22 @@ function ReturnsData({ data, pager }: { data: ReturnsReport; pager: CursorPager 
           <InfoRow label="Return count" value={String(group.metrics.returnCount)} />
         </CurrencySection>
       ))}
-      <Title>Returned Product/Variant rankings</Title>
+      <Title>Disposition</Title>
+      {data.dispositions.map((row) => (
+        <InfoRow key={row.disposition} label={row.disposition} value={String(row.returnedUnits)} />
+      ))}
+      <Title>Returned {data.ranking === "product" ? "Product" : "Variant"} rankings</Title>
       {data.products.items.map((row) => (
         <SurfaceRow key={`${row.currency}-${row.id}`}>
           <Eyebrow>{row.currency}</Eyebrow>
           <Title>{row.productName}</Title>
-          {row.variantName ? <Body>{row.variantName}</Body> : null}
+          {row.variantId ? <InfoRow label="Variant" value={row.variantId} /> : null}
+          {row.sku ? <InfoRow label="SKU" value={row.sku} /> : null}
           <InfoRow label="Returned units" value={String(row.returnedUnits)} />
-          <InfoRow label="Disposition" value={row.disposition} />
-          <InfoRow label="Accepted value" value={formatMoneyMinor(row.netMinor, row.currency)} />
+          <InfoRow
+            label="Accepted value"
+            value={formatMoneyMinor(row.acceptedReturnedMinor, row.currency)}
+          />
         </SurfaceRow>
       ))}
       <PaginationControls
@@ -470,7 +450,7 @@ function ReturnsData({ data, pager }: { data: ReturnsReport; pager: CursorPager 
 }
 
 export function PromotionsReportScreen(props: ReportScreenProps) {
-  if (!props.canRead || !props.adapter)
+  if (!props.canRead || !props.adapter) {
     return (
       <ReportingUnavailable
         title="Promotion reporting"
@@ -478,43 +458,34 @@ export function PromotionsReportScreen(props: ReportScreenProps) {
         onBack={props.onBack}
       />
     );
+  }
   return <PromotionsContent {...props} adapter={props.adapter} />;
 }
 
 function PromotionsContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
-  const pager = useCursorPager();
-  const load = useCallback(
-    () => adapter.getPromotions({ range, cursor: pager.cursor }),
-    [adapter, range, pager.cursor],
-  );
+  const load = useCallback(() => adapter.getPromotions({ range }), [adapter, range]);
   const { state, reload } = useAsync(load);
   return (
     <ReportPageFrame title="Promotions" onBack={onBack}>
-      <DateRangeControls
-        value={range}
-        onChange={(next) => {
-          pager.reset();
-          setRange(next);
-        }}
-      />
+      <DateRangeControls value={range} onChange={setRange} />
       <ReportAsyncState
         state={state}
         reload={reload}
-        isEmpty={(data) => data.promotions.items.length === 0}
+        isEmpty={(data) => data.promotions.length === 0}
         emptyMessage="No Promotion redemptions exist for this period."
       >
-        {(data) => <PromotionsData data={data} pager={pager} />}
+        {(data) => <PromotionsData data={data} />}
       </ReportAsyncState>
     </ReportPageFrame>
   );
 }
 
-function PromotionsData({ data, pager }: { data: PromotionsReport; pager: CursorPager }) {
+function PromotionsData({ data }: { data: PromotionsReport }) {
   return (
     <View style={{ gap: 12 }}>
       <ReportMetaBlock meta={data.meta} />
-      {data.promotions.items.map((row) => (
+      {data.promotions.map((row) => (
         <SurfaceRow key={`${row.currency}-${row.id}`}>
           <Eyebrow>{row.currency}</Eyebrow>
           <Title>{row.promotionName}</Title>
@@ -526,20 +497,15 @@ function PromotionsData({ data, pager }: { data: PromotionsReport; pager: Cursor
           <InfoRow label="Associated Orders" value={String(row.associatedOrders)} />
           <InfoRow label="Gross sales" value={formatMoneyMinor(row.grossMinor, row.currency)} />
           <InfoRow label="Net sales" value={formatMoneyMinor(row.netMinor, row.currency)} />
+          <InfoRow label="Cancelled Orders" value={String(row.cancelledOrders)} />
         </SurfaceRow>
       ))}
-      <PaginationControls
-        canPrevious={pager.canPrevious}
-        canNext={data.promotions.nextCursor !== null}
-        onPrevious={pager.previous}
-        onNext={() => pager.next(data.promotions.nextCursor)}
-      />
     </View>
   );
 }
 
 export function SuppliersReportScreen(props: ReportScreenProps) {
-  if (!props.canRead || !props.adapter)
+  if (!props.canRead || !props.adapter) {
     return (
       <ReportingUnavailable
         title="Supplier reporting"
@@ -547,6 +513,7 @@ export function SuppliersReportScreen(props: ReportScreenProps) {
         onBack={props.onBack}
       />
     );
+  }
   return <SuppliersContent {...props} adapter={props.adapter} />;
 }
 
@@ -560,13 +527,7 @@ function SuppliersContent({ adapter, onBack }: ReportScreenProps & { adapter: Re
   const { state, reload } = useAsync(load);
   return (
     <ReportPageFrame title="Suppliers" onBack={onBack}>
-      <DateRangeControls
-        value={range}
-        onChange={(next) => {
-          pager.reset();
-          setRange(next);
-        }}
-      />
+      <DateRangeControls value={range} onChange={(next) => changeAndReset(next, setRange, pager)} />
       <ExportReserved dataset="Supplier receipt history" />
       <ReportAsyncState
         state={state}
@@ -630,4 +591,9 @@ function useCursorPager(): CursorPager {
     previous: () => setHistory((current) => (current.length > 1 ? current.slice(0, -1) : current)),
     reset: () => setHistory([undefined]),
   };
+}
+
+function changeAndReset<T>(value: T, change: (value: T) => void, pager: CursorPager) {
+  pager.reset();
+  change(value);
 }
