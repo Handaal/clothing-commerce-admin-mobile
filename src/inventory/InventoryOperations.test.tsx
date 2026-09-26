@@ -303,7 +303,7 @@ describe("Adjust (reconcile)", () => {
       idempotencyKey: "K1",
     });
     expect(screen.getByTestId("adjust-new-onhand").textContent).toBe("25");
-    expect(onRefresh).toHaveBeenCalled();
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
   });
 
   it("offers only rows from locations where adjustment is permitted", () => {
@@ -433,7 +433,7 @@ describe("Transfer stock", () => {
     });
     expect(screen.getByTestId("transfer-source-onhand").textContent).toBe("20");
     expect(screen.getByTestId("transfer-destination-onhand").textContent).toBe("2");
-    expect(onRefresh).toHaveBeenCalled();
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
   });
 
   it("prevents choosing the same location as source and destination", () => {

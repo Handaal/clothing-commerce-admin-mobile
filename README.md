@@ -4,7 +4,20 @@ Expo / React Native management-channel app for a clothing business's **authorize
 managers**. It is not a Shifted/platform super-admin app, not a POS/cashier app, not a
 customer-shopping app, and not a website layout builder.
 
-## Current scope — Phase 2Q Admin reporting
+## Current scope — Phase 2R-B Admin settings preparation
+
+Phase 2R-B prepares the complete management-only Settings navigation, forms, safety states, and
+Admin-owned adapter boundary. The canonical transport is intentionally unbound until SDK 0.14.0
+lands: production Settings routes show an explicit transport-pending state and never use guessed
+endpoints or mock data. See [the Phase 2R-B preparation notes](docs/phase-2r-b-preparation.md).
+
+Settings preserve the platform distinctions between Tenant/Brand, Branch/Warehouse,
+Warehouse/InventoryLocation, Register/InventoryLocation, and Device/Register. Immutable identifiers,
+commercial-history currency locks, lifecycle instead of hard deletion, read-only access, Device
+governance, bounded storefront/returns policy, and fixed-layout receipt identity are represented in
+the UX while all authorization and business decisions remain server-authoritative.
+
+## Phase 2Q Admin reporting
 
 Phase 2Q binds the complete Admin-owned reporting experience to the canonical reporting contract in SDK
 0.13.1. It includes deny-by-default Reporting navigation, seven Expo Router routes, normalized
