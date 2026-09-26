@@ -21,6 +21,8 @@ import type {
   ProductReportView,
   ProductSalesReport,
   PromotionsReport,
+  ReportExportDocument,
+  ReportExportRequest,
   ReportMeta,
   ReportQuery,
   ReturnsReport,
@@ -48,6 +50,7 @@ export interface ReportingAdapter {
   getReturns(query: PagedReportQuery, ranking: "product" | "variant"): Promise<ReturnsReport>;
   getPromotions(query: ReportQuery): Promise<PromotionsReport>;
   getSuppliers(query: PagedReportQuery): Promise<SuppliersReport>;
+  exportReport(query: ReportExportRequest): Promise<ReportExportDocument>;
 }
 
 export function resolveReportingAdapter(client: TenantCommerceClient): ReportingAdapter {
@@ -261,6 +264,15 @@ export function resolveReportingAdapter(client: TenantCommerceClient): Reporting
           nextCursor: response.pageInfo.nextCursor,
         },
       };
+    },
+
+    async exportReport(query) {
+      const period = reportPeriodQuery(query.range);
+      return client.exportReport({
+        ...period,
+        dataset: query.dataset,
+        ...("level" in query ? { level: query.level } : {}),
+      });
     },
   };
   adapterCache.set(client, adapter);

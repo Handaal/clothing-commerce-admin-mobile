@@ -198,6 +198,11 @@ function clientFixture() {
     ],
     pageInfo: { nextCursor: "suppliers-next", hasMore: true },
   }));
+  const exportReport = vi.fn(async () => ({
+    body: "name,value\r\n=canonical,1\r\n",
+    mediaType: "text/csv",
+    filename: "canonical-export.csv",
+  }));
 
   return {
     client: {
@@ -209,6 +214,7 @@ function clientFixture() {
       getReturnsReport,
       getPromotionsReport,
       getSuppliersReport,
+      exportReport,
     } as unknown as TenantCommerceClient,
     methods: {
       getReportSummary,
@@ -218,11 +224,12 @@ function clientFixture() {
       getReturnsReport,
       getPromotionsReport,
       getSuppliersReport,
+      exportReport,
     },
   };
 }
 
-describe("SDK 0.13.0 reporting adapter", () => {
+describe("SDK 0.13.1 reporting adapter", () => {
   it("maps dashboard summary without combining currencies and preserves server time metadata", async () => {
     const { client, methods } = clientFixture();
     const result = await resolveReportingAdapter(client).getDashboard(query);
@@ -346,5 +353,35 @@ describe("SDK 0.13.0 reporting adapter", () => {
     expect(methods.getSuppliersReport).toHaveBeenCalledWith(
       expect.objectContaining({ cursor: "opaque-suppliers" }),
     );
+  });
+
+  it("binds the four canonical CSV datasets and returns the SDK document unchanged", async () => {
+    const { client, methods } = clientFixture();
+    const adapter = resolveReportingAdapter(client);
+
+    for (const level of ["product", "variant"] as const) {
+      await expect(
+        adapter.exportReport({ dataset: "sales-products", range: query.range, level }),
+      ).resolves.toEqual({
+        body: "name,value\r\n=canonical,1\r\n",
+        mediaType: "text/csv",
+        filename: "canonical-export.csv",
+      });
+      expect(methods.exportReport).toHaveBeenLastCalledWith({
+        dataset: "sales-products",
+        startDate: "2026-09-01",
+        endDate: "2026-09-30",
+        level,
+      });
+    }
+
+    for (const dataset of ["inventory-movements", "returns", "supplier-receipts"] as const) {
+      await adapter.exportReport({ dataset, range: query.range });
+      expect(methods.exportReport).toHaveBeenLastCalledWith({
+        dataset,
+        startDate: "2026-09-01",
+        endDate: "2026-09-30",
+      });
+    }
   });
 });

@@ -221,17 +221,6 @@ export function ReportPageFrame({
   );
 }
 
-export function ExportReserved({ dataset }: { dataset: string }) {
-  return (
-    <PrimaryButton
-      testID="report-export-reserved"
-      label={`Export ${dataset} (coming with SDK support)`}
-      disabled
-      onPress={() => undefined}
-    />
-  );
-}
-
 export function PaginationControls({
   canPrevious,
   canNext,

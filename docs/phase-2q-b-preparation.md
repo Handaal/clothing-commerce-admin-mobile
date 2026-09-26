@@ -1,11 +1,11 @@
-# Phase 2Q-B — Admin reporting JSON integration
+# Phase 2Q — Admin reporting and CSV export
 
 ## Status and boundary
 
-The Admin-owned reporting experience is connected to the canonical JSON reporting API through
-`@shifted/clothing-commerce-sdk@0.13.0`. `resolveReportingAdapter` maps the seven SDK methods into
-Admin-owned view models. There is no direct HTTP, guessed endpoint, copied API type, API-source import,
-fake production data, or CSV transport.
+The Admin-owned reporting experience is connected to the canonical reporting API through
+`@shifted/clothing-commerce-sdk@0.13.1`. `resolveReportingAdapter` maps the seven JSON methods and the
+bounded `exportReport` document method into Admin-owned view models. There is no direct HTTP, guessed
+endpoint, copied API type, API-source import, fake production data, or client-side CSV generation.
 
 The app remains the owner/manager management channel. This adds no cashier/POS reporting app and no
 Storefront reporting surface. References to POS in Sales are read-only channel breakdowns, with branch
@@ -60,14 +60,30 @@ states without rendering raw backend codes. Product, Inventory, Returns, and Sup
 the current opaque SDK cursor and never download all pages. Promotions are not paged in SDK 0.13.0 and
 therefore expose no invented page control.
 
-## SDK and remaining export boundary
+## Canonical CSV exports
 
-The vendored 0.13.0 artifact SHA-256 is
-`a141fb881752b64625bc1519b92fcf4f7aafd6c83eb81f0eb9b737fec2fb5e90` and is guarded by a test.
+Exactly four export actions call SDK `exportReport` with the screen's current tenant-local
+`startDate`/`endDate`:
 
-The completed integration passes Expo dependency compatibility, Prettier, ESLint, strict TypeScript,
-the full unit/component suite, and the 28-route Expo web export.
+- Products: `sales-products`, preserving the selected Product or Variant `level`.
+- Inventory: `inventory-movements` only; current balances, valuation, and costs are never exported.
+- Returns: `returns`; Return/refund semantics and rows remain server-owned.
+- Suppliers: `supplier-receipts`; no spend, acquisition value, COGS, or cost exists.
 
-CSV controls remain disabled for Product/Variant sales, Inventory movements, Returns/refunds, and
-Supplier receipt history. The only remaining Phase 2Q-B work is to vendor SDK 0.13.1 and bind its
-canonical export methods without inventing URLs, filenames, response types, or download behavior.
+There is no Dashboard export, Promotion export, PDF, XLSX, generic export builder, or arbitrary dataset
+selection. The SDK response `{ body, mediaType, filename }` is passed unchanged to one small platform
+boundary: web creates a direct Blob download; native writes the body under the canonical filename in
+Expo cache and opens the Expo share sheet with the canonical media type. The Admin app never parses,
+normalizes, quotes, truncates, or rebuilds CSV content.
+
+Exports expose idle, exporting, success, and failure states and ignore duplicate taps while active.
+`EXPORT_RANGE_TOO_LARGE` asks the operator to shorten the selected range;
+`EXPORT_TOO_MANY_ROWS` asks them to narrow the date range or filters. Authentication, forbidden,
+invalid request/level, network, contract, and server failures are mapped without showing raw backend
+codes. Dates are never silently shortened, rows are never silently truncated, and no smaller-range
+retry is automatic.
+
+## SDK boundary
+
+The vendored 0.13.1 artifact SHA-256 is
+`287129cb2f6a49b4ff0701e89a1118169afa51f61ab681b61f745a06547fac5c` and is guarded by a test.

@@ -4,17 +4,18 @@ Expo / React Native management-channel app for a clothing business's **authorize
 managers**. It is not a Shifted/platform super-admin app, not a POS/cashier app, not a
 customer-shopping app, and not a website layout builder.
 
-## Current scope — Phase 2Q-B Admin reporting
+## Current scope — Phase 2Q Admin reporting
 
-Phase 2Q-B binds the complete Admin-owned reporting experience to the canonical JSON reporting contract
-in SDK 0.13.0. It includes deny-by-default Reporting navigation, seven Expo Router routes, normalized
+Phase 2Q binds the complete Admin-owned reporting experience to the canonical reporting contract in SDK
+0.13.1. It includes deny-by-default Reporting navigation, seven Expo Router routes, normalized
 presentation view-models, date/currency controls, loading/empty/error/access-denied/refresh states, and
 one-page-at-a-time cursor controls. The adapter is the only SDK DTO boundary; screens never construct
 report URLs or consume wire DTOs directly. See [the Phase 2Q-B notes](docs/phase-2q-b-preparation.md).
 
 Reporting is online-only and management-only. Currency groups are never added together, tenant-local
-dates and timezone boundaries remain server-supplied, and disabled CSV affordances are reserved only
-for Product/Variant sales, Inventory movements, Returns/refunds, and Supplier receipt history.
+dates and timezone boundaries remain server-supplied. Canonical CSV export is enabled only for
+Product/Variant sales, Inventory movements, Returns/refunds, and Supplier receipt history. Dashboard and
+Promotion exports, PDF, and XLSX are deliberately absent.
 
 ## Phase 2P (Promotion management)
 
@@ -24,7 +25,7 @@ All pricing, eligibility, authorization, redemption counts, and post-redemption 
 server-authoritative.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.13.0)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.13.1)
   → GET /me/tenants → tenant selection → GET /me/context
   → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
   → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
@@ -248,18 +249,18 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.13.0**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.13.0.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.13.0.tgz`
-- SHA-256: `a141fb881752b64625bc1519b92fcf4f7aafd6c83eb81f0eb9b737fec2fb5e90`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.13.1**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.13.1.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.13.1.tgz`
+- SHA-256: `287129cb2f6a49b4ff0701e89a1118169afa51f61ab681b61f745a06547fac5c`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.13.0.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.13.1.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.13.0.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.13.1.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
@@ -267,8 +268,8 @@ relative `file:` spec, and byte-for-byte SHA-256).
 
 ### Update the SDK artifact
 
-1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.13.0.tgz`).
-2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.13.0.tgz"`.
+1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.13.1.tgz`).
+2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.13.1.tgz"`.
 3. `pnpm install` to update `pnpm-lock.yaml`.
 4. Update the SHA-256 above and in `src/sdk-artifact.test.ts` expectations, then remove the old
    tarball once nothing references it.

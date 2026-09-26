@@ -19,6 +19,24 @@ export interface PagedReportQuery extends ReportQuery {
   cursor?: string;
 }
 
+export type ReportExportRequest =
+  | {
+      dataset: "sales-products";
+      range: ReportDateRange;
+      level: "product" | "variant";
+    }
+  | {
+      dataset: "inventory-movements" | "returns" | "supplier-receipts";
+      range: ReportDateRange;
+    };
+
+/** The SDK-owned CSV document. Every field is passed to the platform save/share boundary unchanged. */
+export interface ReportExportDocument {
+  body: string;
+  mediaType: string;
+  filename: string;
+}
+
 export interface ReportMeta {
   timezone: string;
   fromInclusive: string;

@@ -29,22 +29,44 @@ describe("reporting domain screens", () => {
     expect(screen.getByTestId("sales-view-pos_operator")).toBeTruthy();
   });
 
-  it("presents Product and Variant rankings, no-sales-with-stock, export reservation and bounded paging", async () => {
+  it("exports canonical Product and Variant sales while preserving bounded JSON paging", async () => {
     const getProductSales = vi.fn(fakeReportingAdapter().getProductSales);
+    const exportReport = vi.fn(fakeReportingAdapter().exportReport);
+    const saveExport = vi.fn(async () => undefined);
     render(
       <ProductsReportScreen
-        adapter={fakeReportingAdapter({ getProductSales })}
+        adapter={fakeReportingAdapter({ getProductSales, exportReport })}
         canRead
         onBack={back}
+        saveExport={saveExport}
       />,
     );
     await screen.findByText("Linen Shirt");
     expect(screen.getAllByText("Product ranking").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("report-export-reserved").hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByTestId("report-export-sales-products"));
+    await waitFor(() =>
+      expect(exportReport).toHaveBeenLastCalledWith({
+        dataset: "sales-products",
+        range: { preset: "today" },
+        level: "product",
+      }),
+    );
+    expect(await screen.findByTestId("report-export-success")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("product-ranking-variant"));
+    fireEvent.click(screen.getByTestId("report-export-sales-products"));
+    await waitFor(() =>
+      expect(exportReport).toHaveBeenLastCalledWith({
+        dataset: "sales-products",
+        range: { preset: "today" },
+        level: "variant",
+      }),
+    );
+
     fireEvent.click(screen.getByTestId("product-view-no_sales_with_current_stock"));
     expect(await screen.findByText("No sales in period with current stock")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("product-ranking-variant"));
-    expect(await screen.findByText("Variant ranking")).toBeTruthy();
+    expect((await screen.findAllByText("Variant ranking")).length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("report-export-sales-products")).toBeNull();
     fireEvent.click(screen.getByText("Next page"));
     await waitFor(() =>
       expect(getProductSales).toHaveBeenLastCalledWith(
@@ -56,10 +78,29 @@ describe("reporting domain screens", () => {
     expect(screen.getByTestId("report-pagination")).toBeTruthy();
   });
 
-  it("keeps InventoryLocation explicit across balances, receipts, transfers and adjustments", async () => {
-    render(<InventoryReportScreen adapter={fakeReportingAdapter()} canRead onBack={back} />);
+  it("exports only Inventory movements and never the current balance snapshot", async () => {
+    const exportReport = vi.fn(fakeReportingAdapter().exportReport);
+    const saveExport = vi.fn(async () => undefined);
+    render(
+      <InventoryReportScreen
+        adapter={fakeReportingAdapter({ exportReport })}
+        canRead
+        onBack={back}
+        saveExport={saveExport}
+      />,
+    );
     expect(await screen.findByText(/InventoryLocation is the stock-holding identity/)).toBeTruthy();
     expect(screen.getAllByText("InventoryLocation").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("report-export-inventory-movements")).toBeNull();
+    fireEvent.click(screen.getByTestId("inventory-view-movements"));
+    expect(await screen.findByText("Inventory movements")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("report-export-inventory-movements"));
+    await waitFor(() =>
+      expect(exportReport).toHaveBeenLastCalledWith({
+        dataset: "inventory-movements",
+        range: { preset: "today" },
+      }),
+    );
     for (const view of ["receipts", "transfers", "adjustments"] as const) {
       fireEvent.click(screen.getByTestId(`inventory-view-${view}`));
       expect(
@@ -70,18 +111,33 @@ describe("reporting domain screens", () => {
         ).length,
       ).toBeGreaterThan(0);
     }
-    expect(screen.getByTestId("report-export-reserved").hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByTestId("report-export-inventory-movements")).toBeNull();
     expect(screen.queryByText(/low stock/i)).toBeNull();
   });
 
-  it("separates accepted returns, succeeded refunds and pending refunds without a return-rate KPI", async () => {
-    render(<ReturnsReportScreen adapter={fakeReportingAdapter()} canRead onBack={back} />);
+  it("exports canonical Returns/refunds without changing the JSON semantics", async () => {
+    const exportReport = vi.fn(fakeReportingAdapter().exportReport);
+    render(
+      <ReturnsReportScreen
+        adapter={fakeReportingAdapter({ exportReport })}
+        canRead
+        onBack={back}
+        saveExport={vi.fn(async () => undefined)}
+      />,
+    );
     expect(await screen.findByText("Accepted returned value")).toBeTruthy();
     expect(screen.getByText("Succeeded refunded value")).toBeTruthy();
     expect(screen.getByText("Pending refunds")).toBeTruthy();
     expect(screen.getByText("Disposition")).toBeTruthy();
     expect(screen.queryByText(/return rate/i)).toBeNull();
     expect(screen.getByTestId("report-pagination")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("report-export-returns"));
+    await waitFor(() =>
+      expect(exportReport).toHaveBeenCalledWith({
+        dataset: "returns",
+        range: { preset: "today" },
+      }),
+    );
   });
 
   it("shows Promotion reporting economics by currency without ROI or export", async () => {
@@ -94,16 +150,30 @@ describe("reporting domain screens", () => {
     expect(screen.getByText("Net sales")).toBeTruthy();
     expect(screen.getByText("Cancelled Orders")).toBeTruthy();
     expect(screen.queryByText(/ROI|profitability/i)).toBeNull();
-    expect(screen.queryByTestId("report-export-reserved")).toBeNull();
+    expect(screen.queryByTestId(/^report-export-/)).toBeNull();
   });
 
-  it("shows Supplier receipt quantities and dates without spend or value", async () => {
-    render(<SuppliersReportScreen adapter={fakeReportingAdapter()} canRead onBack={back} />);
+  it("exports Supplier receipt history without spend or value", async () => {
+    const exportReport = vi.fn(fakeReportingAdapter().exportReport);
+    render(
+      <SuppliersReportScreen
+        adapter={fakeReportingAdapter({ exportReport })}
+        canRead
+        onBack={back}
+        saveExport={vi.fn(async () => undefined)}
+      />,
+    );
     expect(await screen.findByText("Nile Textiles")).toBeTruthy();
     expect(screen.getByText("Receipt count")).toBeTruthy();
     expect(screen.getByText("Units received")).toBeTruthy();
     expect(screen.getByText("Last receipt")).toBeTruthy();
     expect(screen.queryByText(/spend|supplier value/i)).toBeNull();
-    expect(screen.getByTestId("report-export-reserved").hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByTestId("report-export-supplier-receipts"));
+    await waitFor(() =>
+      expect(exportReport).toHaveBeenCalledWith({
+        dataset: "supplier-receipts",
+        range: { preset: "today" },
+      }),
+    );
   });
 });

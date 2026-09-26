@@ -6,6 +6,7 @@ import { Body, Divider, Eyebrow, InfoRow, SelectField, SurfaceRow, Title } from 
 import { useAsync } from "../ui/useAsync";
 import type { ReportingAdapter } from "./adapter";
 import { DEFAULT_REPORT_RANGE } from "./date-range";
+import type { SaveReportExport } from "./export-document";
 import type {
   InventoryReport,
   InventoryReportRow,
@@ -22,18 +23,19 @@ import type {
 import {
   CurrencySelector,
   DateRangeControls,
-  ExportReserved,
   PaginationControls,
   ReportAsyncState,
   ReportMetaBlock,
   ReportPageFrame,
   ReportingUnavailable,
 } from "./ReportingCommon";
+import { ReportExportAction } from "./ReportExportAction";
 
 interface ReportScreenProps {
   adapter: ReportingAdapter | null;
   canRead: boolean;
   onBack: () => void;
+  saveExport?: SaveReportExport;
 }
 
 export function SalesReportScreen(props: ReportScreenProps) {
@@ -160,7 +162,11 @@ export function ProductsReportScreen(props: ReportScreenProps) {
   return <ProductsContent {...props} adapter={props.adapter} />;
 }
 
-function ProductsContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
+function ProductsContent({
+  adapter,
+  onBack,
+  saveExport,
+}: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
   const [ranking, setRanking] = useState<"product" | "variant">("product");
   const [view, setView] = useState<ProductReportView>("sales");
@@ -193,7 +199,14 @@ function ProductsContent({ adapter, onBack }: ReportScreenProps & { adapter: Rep
           { value: "no_sales_with_current_stock", label: "No sales with current stock" },
         ]}
       />
-      <ExportReserved dataset="Product/Variant sales" />
+      {view === "sales" ? (
+        <ReportExportAction
+          adapter={adapter}
+          request={{ dataset: "sales-products", range, level: ranking }}
+          label={`Export ${ranking === "product" ? "Product" : "Variant"} sales CSV`}
+          save={saveExport}
+        />
+      ) : null}
       <ReportAsyncState
         state={state}
         reload={reload}
@@ -262,7 +275,11 @@ export function InventoryReportScreen(props: ReportScreenProps) {
   return <InventoryContent {...props} adapter={props.adapter} />;
 }
 
-function InventoryContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
+function InventoryContent({
+  adapter,
+  onBack,
+  saveExport,
+}: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
   const [view, setView] = useState<InventoryReportView>("balances");
   const pager = useCursorPager();
@@ -287,7 +304,14 @@ function InventoryContent({ adapter, onBack }: ReportScreenProps & { adapter: Re
           { value: "adjustments", label: "Adjustments" },
         ]}
       />
-      <ExportReserved dataset="Inventory movements" />
+      {view === "movements" ? (
+        <ReportExportAction
+          adapter={adapter}
+          request={{ dataset: "inventory-movements", range }}
+          label="Export Inventory movements CSV"
+          save={saveExport}
+        />
+      ) : null}
       <ReportAsyncState
         state={state}
         reload={reload}
@@ -365,7 +389,11 @@ export function ReturnsReportScreen(props: ReportScreenProps) {
   return <ReturnsContent {...props} adapter={props.adapter} />;
 }
 
-function ReturnsContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
+function ReturnsContent({
+  adapter,
+  onBack,
+  saveExport,
+}: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
   const [ranking, setRanking] = useState<"product" | "variant">("product");
   const pager = useCursorPager();
@@ -387,7 +415,12 @@ function ReturnsContent({ adapter, onBack }: ReportScreenProps & { adapter: Repo
           { value: "variant", label: "Variants" },
         ]}
       />
-      <ExportReserved dataset="Returns/refunds" />
+      <ReportExportAction
+        adapter={adapter}
+        request={{ dataset: "returns", range }}
+        label="Export Returns/refunds CSV"
+        save={saveExport}
+      />
       <ReportAsyncState
         state={state}
         reload={reload}
@@ -517,7 +550,11 @@ export function SuppliersReportScreen(props: ReportScreenProps) {
   return <SuppliersContent {...props} adapter={props.adapter} />;
 }
 
-function SuppliersContent({ adapter, onBack }: ReportScreenProps & { adapter: ReportingAdapter }) {
+function SuppliersContent({
+  adapter,
+  onBack,
+  saveExport,
+}: ReportScreenProps & { adapter: ReportingAdapter }) {
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
   const pager = useCursorPager();
   const load = useCallback(
@@ -528,7 +565,12 @@ function SuppliersContent({ adapter, onBack }: ReportScreenProps & { adapter: Re
   return (
     <ReportPageFrame title="Suppliers" onBack={onBack}>
       <DateRangeControls value={range} onChange={(next) => changeAndReset(next, setRange, pager)} />
-      <ExportReserved dataset="Supplier receipt history" />
+      <ReportExportAction
+        adapter={adapter}
+        request={{ dataset: "supplier-receipts", range }}
+        label="Export Supplier receipt history CSV"
+        save={saveExport}
+      />
       <ReportAsyncState
         state={state}
         reload={reload}

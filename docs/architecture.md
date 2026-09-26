@@ -4,7 +4,7 @@
 Clerk (auth, owned by Mobile)
   │  getToken callback (token only — never a Clerk object)
   ▼
-@shifted/clothing-commerce-sdk 0.13.0  (packed tarball under vendor/, relative file: path)
+@shifted/clothing-commerce-sdk 0.13.1  (packed tarball under vendor/, relative file: path)
   │  owns Authorization, X-Client-Type/Version, X-Tenant-Id
   ▼
 Commerce API  →  authoritative commerce core
@@ -99,19 +99,26 @@ lifecycle remains active/inactive; scheduled/expired/exhausted are derived displ
 single-use vouchers share the canonical Promotion Code operations. The
 `PROMOTION_ECONOMICS_LOCKED` recovery explicitly directs deactivate-and-replace.
 
-## Phase 2Q-B Admin reporting (SDK 0.13.0)
+## Phase 2Q Admin reporting (SDK 0.13.1)
 
 Reporting presentation depends only on the Admin-owned `ReportingAdapter` and normalized view-models in
-`src/reporting`. `resolveReportingAdapter` binds the SDK 0.13.0 summary/sales/products/inventory/returns/
+`src/reporting`. `resolveReportingAdapter` binds the SDK summary/sales/products/inventory/returns/
 promotions/suppliers methods and localizes every wire DTO mapping there. Screens build no URL and import
 no API source. Missing `access.reports?.canRead` guidance still fails closed; the API reauthorizes every
-request. CSV remains disabled pending the canonical SDK 0.13.1 export contract.
+request.
 
 The UI treats date presets as tenant-local reporting intent; custom inputs are validated only as ordered
 calendar dates. The service supplies timezone, inclusive/exclusive range boundaries, and trend bucket
 starts. Monetary view-models carry a currency on every applicable group/row and are rendered separately, never
 summed across currencies. Cursor page controls request one bounded page at a time and retain only a short
 back-navigation cursor stack; they do not download or aggregate history.
+
+The same adapter binds SDK 0.13.1 `exportReport` for exactly four datasets: `sales-products` (with the
+selected Product/Variant level), `inventory-movements`, `returns`, and `supplier-receipts`. Dashboard and
+Promotion export do not exist. `src/reporting/export-document.ts` is the one save/share boundary: web
+downloads a Blob; native writes the unchanged SDK body to Expo cache under the unchanged SDK filename and
+opens the Expo share sheet with the unchanged media type. No CSV parsing, quoting, date rewriting,
+truncation, PDF/XLSX, generic builder, valuation, supplier cost, or client-side row export exists.
 
 ## Dependency direction
 
@@ -153,8 +160,8 @@ no tokens, build no headers, and issue no direct `fetch`.
 | Supplier management (2N)              | `src/suppliers/{model,search,status,adapter,load,capabilities,write-errors}.ts`, `src/suppliers/Supplier*.tsx` |
 | Routes: Promotions (2P)               | `app/promotions/{index,new,[promotionId]}.tsx`, `app/promotions/edit/[promotionId].tsx`                        |
 | Promotion management (2P)             | `src/promotions/*`                                                                                             |
-| Routes: Reporting preparation (2Q-B)  | `app/reports/{index,sales,products,inventory,returns,promotions,suppliers}.tsx`                                |
-| Reporting shell + adapter seam (2Q-B) | `src/reporting/*`                                                                                              |
+| Routes: Reporting (2Q)                | `app/reports/{index,sales,products,inventory,returns,promotions,suppliers}.tsx`                                |
+| Reporting + export boundary (2Q)      | `src/reporting/*`                                                                                              |
 
 ## Server-authoritative authorization
 
@@ -233,6 +240,7 @@ and any path param.
 18. Promotion economics, redemption counts, and code state are server truth. The client never evaluates
     or stacks discounts. Post-redemption economics are not bypassed; used Promotions are deactivated and
     replaced when economics must change.
-19. Reporting transport remains unbound until the canonical SDK 0.13.0 artifact is vendored. Components
-    consume only normalized Admin view-models; currency groups remain separate and time boundaries are
-    displayed exactly as supplied, never converted into client-derived business days.
+19. Reporting components consume only normalized Admin view-models; currency groups remain separate and
+    time boundaries are displayed exactly as supplied, never converted into client-derived business
+    days. CSV export uses only SDK `exportReport` for the four canonical datasets and passes its body,
+    filename, and media type unchanged to the platform save/share boundary.

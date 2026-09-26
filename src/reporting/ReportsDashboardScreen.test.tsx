@@ -177,6 +177,6 @@ describe("ReportsDashboardScreen", () => {
       fireEvent.click(screen.getByTestId(`open-report-${report}`));
       expect(onOpen).toHaveBeenLastCalledWith(report);
     }
-    expect(screen.queryByTestId("report-export-reserved")).toBeNull();
+    expect(screen.queryByTestId(/^report-export-/)).toBeNull();
   });
 });

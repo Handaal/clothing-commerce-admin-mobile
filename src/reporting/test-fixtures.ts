@@ -215,6 +215,11 @@ export function fakeReportingAdapter(overrides: Partial<ReportingAdapter> = {}):
         nextCursor: "next-suppliers",
       },
     }),
+    exportReport: async (request) => ({
+      body: `dataset,level\r\n${request.dataset},${"level" in request ? request.level : ""}\r\n`,
+      mediaType: "text/csv",
+      filename: `${request.dataset}.csv`,
+    }),
     ...overrides,
   };
 }
