@@ -25,6 +25,15 @@ describe("classifyCommerceError", () => {
     expect(result.status).toBe(404);
   });
 
+  it("maps invalid report parameters and cursors to validation", () => {
+    expect(
+      classifyCommerceError(new ApiHttpError("raw", 422, "INVALID_REPORT_QUERY", REQUEST_ID)).kind,
+    ).toBe("validation");
+    expect(
+      classifyCommerceError(new ApiHttpError("raw", 400, "INVALID_CURSOR", REQUEST_ID)).kind,
+    ).toBe("validation");
+  });
+
   it("maps 5xx to an unexpected server error", () => {
     const result = classifyCommerceError(new ApiHttpError("boom", 500, "INTERNAL", REQUEST_ID));
     expect(result.kind).toBe("server");

@@ -6,6 +6,7 @@ export type CommerceErrorKind =
   | "auth" // 401 — authentication/session problem
   | "forbidden" // 403 — authenticated but server-side authorization denied
   | "not-found" // 404 — the requested resource does not exist (or is not visible)
+  | "validation" // 400/422 — request parameters, date range, or cursor were rejected
   | "network" // transport failure — Commerce API unreachable
   | "contract" // response violated the API contract
   | "server" // unexpected server-side failure (5xx / other HTTP error)
@@ -44,6 +45,13 @@ export function classifyCommerceError(error: unknown): ClassifiedCommerceError {
       return {
         kind: "not-found",
         message: "The requested item could not be found.",
+        ...base,
+      };
+    }
+    if (error.status === 400 || error.status === 422) {
+      return {
+        kind: "validation",
+        message: "The request parameters were rejected. Review the input and try again.",
         ...base,
       };
     }

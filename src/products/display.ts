@@ -9,6 +9,8 @@ export function errorHeading(kind: CommerceErrorKind): string {
       return "Access denied";
     case "not-found":
       return "Not found";
+    case "validation":
+      return "Invalid request";
     case "network":
       return "Cannot reach the Commerce API";
     case "contract":
