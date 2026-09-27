@@ -6,6 +6,7 @@ export type SettingsErrorKind =
   | "immutable"
   | "historical-lock"
   | "lifecycle-conflict"
+  | "topology-conflict"
   | "device-conflict"
   | "idempotency-conflict"
   | "conflict"
@@ -33,6 +34,37 @@ export function describeSettingsError(error: unknown): SettingsErrorMessage {
         "The service could not complete the request.",
       );
     if (error.status === 409) {
+      // Operational-topology conflicts raised by the Settings write boundary (API SDK 0.14.0+). These
+      // mirror the same rules public checkout and POS enforce; the UI only maps them to guidance and
+      // never restates the server rule. See docs/settings/operational-settings-core.md.
+      if (error.code === "STOREFRONT_LOCATION_NOT_OPERATIONAL") {
+        return message(
+          "topology-conflict",
+          "Storefront location not ready",
+          "Enabling cash-on-delivery needs an active inventory location that is sellable and fulfillment-enabled, under an active brand. Choose or activate a suitable location first.",
+        );
+      }
+      if (error.code === "REGISTER_LOCATION_NOT_OPERATIONAL") {
+        return message(
+          "topology-conflict",
+          "Register location not ready",
+          "Activating a register needs an active branch and an active, fulfillment-enabled default inventory location. Fix the location or branch first.",
+        );
+      }
+      if (error.code === "STOREFRONT_DEPENDENCY_CONFLICT") {
+        return message(
+          "topology-conflict",
+          "In use by an enabled storefront",
+          "This brand or location is required by an enabled storefront. Disable or reroute the storefront before deactivating it or removing its sellable/fulfillment capability.",
+        );
+      }
+      if (error.code === "REGISTER_DEPENDENCY_CONFLICT") {
+        return message(
+          "topology-conflict",
+          "In use by an active register",
+          "This branch or location is required by an active register. Deactivate the register before deactivating it or removing its fulfillment capability.",
+        );
+      }
       if (error.code === "CURRENCY_LOCKED" || /currency|history|sales/i.test(error.message)) {
         return message(
           "historical-lock",

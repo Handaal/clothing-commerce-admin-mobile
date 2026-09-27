@@ -1,4 +1,10 @@
-import type { MeContextResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
+import type {
+  AdjustInventoryResponse,
+  MeContextResponse,
+  ReceiveInventoryResponse,
+  TenantCommerceClient,
+  TransferInventoryResponse,
+} from "@shifted/clothing-commerce-sdk";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 
@@ -16,15 +22,22 @@ import {
   TextField,
   Title,
 } from "../ui/components";
-import { useMutation, type Mutation, type MutationState } from "../ui/useMutation";
-import { secureIdempotencyKey, type IdempotencyKeyFactory } from "./idempotency";
+import { type MutationState } from "../ui/useMutation";
 import type { InventoryItem } from "./load";
+import { InventoryRecoveryPanel } from "./journal/InventoryRecoveryPanel";
+import type { InventoryJournal } from "./journal/journal";
 import {
-  adjustStock,
+  normalizeAdjustPayload,
+  normalizeReceivePayload,
+  normalizeTransferPayload,
+} from "./journal/model";
+import {
+  useJournaledInventoryMutation,
+  type JournaledMutation,
+} from "./journal/useJournaledInventoryMutation";
+import {
   distinctVariants,
-  receiveStock,
   rowKey,
-  transferStock,
   validateCountedQuantity,
   validatePositiveQuantity,
   validateTransferLocations,
@@ -48,8 +61,13 @@ export interface InventoryOperationsProps {
   onRefresh: () => void;
   /** Invalidate a stale adjustment and re-read authoritative inventory after a 409. */
   onConcurrencyConflict: () => void;
-  /** Test seam: deterministic idempotency keys. Production uses the secure default. */
-  generateIdempotencyKey?: IdempotencyKeyFactory;
+  /**
+   * Durable command journal for the high-risk inventory writes. It owns idempotency-key identity so a
+   * command whose response was lost survives a restart and is recovered rather than silently re-minted.
+   */
+  journal: InventoryJournal;
+  /** Tenant/context the journaled commands belong to (scopes every journal read and write). */
+  tenantId: string;
   /**
    * Phase 2N: OPTIONAL supplier linking for the Receive form. When provided, the form offers these
    * ACTIVE suppliers (the caller excludes inactive ones — they cannot back a new receipt) plus an
@@ -70,7 +88,6 @@ type OpKind = "receive" | "adjust" | "transfer";
  */
 export function InventoryOperations(props: InventoryOperationsProps) {
   const [activeOp, setActiveOp] = useState<OpKind | null>(null);
-  const generateKey = props.generateIdempotencyKey ?? secureIdempotencyKey;
 
   const variantOptions = useMemo<SelectOption[]>(
     () =>
@@ -109,6 +126,16 @@ export function InventoryOperations(props: InventoryOperationsProps) {
         These operations are authorized by the Commerce API. Role names grant nothing here; a denied
         write is shown as an explicit access-denied state, never silently ignored.
       </Body>
+      {/* Restart/remount recovery: any inventory command whose result was never confirmed is surfaced
+          here and completed by replaying its original idempotency key — never re-minted into a duplicate. */}
+      <InventoryRecoveryPanel
+        journal={props.journal}
+        tenantId={props.tenantId}
+        client={props.client}
+        items={props.items}
+        locations={props.locations}
+        onResolved={props.onRefresh}
+      />
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {props.write.canReceive ? (
           <OpTab
@@ -139,19 +166,15 @@ export function InventoryOperations(props: InventoryOperationsProps) {
       {activeOp === "receive" && props.write.canReceive ? (
         <ReceiveForm
           {...props}
-          generateKey={generateKey}
           variantOptions={variantOptions}
           locationOptions={receiveLocationOptions}
           supplierOptions={props.receiveSuppliers}
         />
       ) : null}
-      {activeOp === "adjust" && props.write.canAdjust ? (
-        <AdjustForm {...props} generateKey={generateKey} />
-      ) : null}
+      {activeOp === "adjust" && props.write.canAdjust ? <AdjustForm {...props} /> : null}
       {activeOp === "transfer" && props.write.canTransfer ? (
         <TransferForm
           {...props}
-          generateKey={generateKey}
           variantOptions={variantOptions}
           sourceOptions={transferSourceOptions}
           destinationOptions={transferDestinationOptions}
@@ -217,12 +240,12 @@ function variantLabel(
 // Shared error / success panels
 // ---------------------------------------------------------------------------------------------------
 
-function WriteError<TArgs, TResult>({
+function WriteError<TResult extends object>({
   state,
   mutation,
 }: {
   state: Extract<MutationState<TResult>, { status: "error" }>;
-  mutation: Mutation<TArgs, TResult>;
+  mutation: JournaledMutation<TResult>;
 }) {
   const described = describeInventoryWriteError(state.error);
   return (
@@ -256,7 +279,6 @@ const NO_SUPPLIER = "";
 
 function ReceiveForm(
   props: InventoryOperationsProps & {
-    generateKey: IdempotencyKeyFactory;
     variantOptions: SelectOption[];
     locationOptions: SelectOption[];
     supplierOptions?: SelectOption[];
@@ -278,20 +300,11 @@ function ReceiveForm(
   );
   const hasSupplier = suppliersEnabled && supplierId !== NO_SUPPLIER;
 
-  const mutation = useMutation(
-    (
-      args: {
-        variantId: string;
-        inventoryLocationId: string;
-        quantity: number;
-        note?: string;
-        supplierId?: string;
-        supplierReference?: string;
-      },
-      key,
-    ) => receiveStock(props.client, args, key),
-    props.generateKey,
-  );
+  const mutation = useJournaledInventoryMutation<ReceiveInventoryResponse>({
+    client: props.client,
+    journal: props.journal,
+    tenantId: props.tenantId,
+  });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
 
@@ -304,15 +317,17 @@ function ReceiveForm(
     setLocalError(problem);
     if (problem || !variantId || !inventoryLocationId) return;
     const reference = supplierReference.trim();
-    mutation.submit({
-      variantId,
-      inventoryLocationId,
-      quantity: qty,
-      ...(note.trim() ? { note: note.trim() } : {}),
-      // Supplier link is optional; both fields are omitted entirely for a legacy no-supplier receipt.
-      ...(hasSupplier ? { supplierId } : {}),
-      ...(hasSupplier && reference ? { supplierReference: reference } : {}),
-    });
+    mutation.submit(
+      normalizeReceivePayload({
+        variantId,
+        inventoryLocationId,
+        quantity: qty,
+        ...(note.trim() ? { note: note.trim() } : {}),
+        // Supplier link is optional; both fields are omitted entirely for a legacy no-supplier receipt.
+        ...(hasSupplier ? { supplierId } : {}),
+        ...(hasSupplier && reference ? { supplierReference: reference } : {}),
+      }),
+    );
   }
 
   if (mutation.state.status === "success") {
@@ -420,7 +435,7 @@ function ReceiveForm(
 // Adjust (reconcile to an absolute physical count)
 // ---------------------------------------------------------------------------------------------------
 
-function AdjustForm(props: InventoryOperationsProps & { generateKey: IdempotencyKeyFactory }) {
+function AdjustForm(props: InventoryOperationsProps) {
   const adjustableLocationIds = useMemo(
     () =>
       new Set(
@@ -443,19 +458,11 @@ function AdjustForm(props: InventoryOperationsProps & { generateKey: Idempotency
     ? (rows.find((row) => rowKey(row.inventoryLocationId, row.variantId) === selectedKey) ?? null)
     : null;
 
-  const mutation = useMutation(
-    (
-      args: {
-        variantId: string;
-        inventoryLocationId: string;
-        countedQuantity: number;
-        expectedVersion: number;
-        note?: string;
-      },
-      key,
-    ) => adjustStock(props.client, args, key),
-    props.generateKey,
-  );
+  const mutation = useJournaledInventoryMutation<AdjustInventoryResponse>({
+    client: props.client,
+    journal: props.journal,
+    tenantId: props.tenantId,
+  });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
 
@@ -486,13 +493,15 @@ function AdjustForm(props: InventoryOperationsProps & { generateKey: Idempotency
       : validateCountedQuantity(counted);
     setLocalError(problem);
     if (problem || !selectedRow) return;
-    mutation.submit({
-      variantId: selectedRow.variantId,
-      inventoryLocationId: selectedRow.inventoryLocationId,
-      countedQuantity: counted,
-      expectedVersion: selectedRow.version,
-      ...(note.trim() ? { note: note.trim() } : {}),
-    });
+    mutation.submit(
+      normalizeAdjustPayload({
+        variantId: selectedRow.variantId,
+        inventoryLocationId: selectedRow.inventoryLocationId,
+        countedQuantity: counted,
+        expectedVersion: selectedRow.version,
+        ...(note.trim() ? { note: note.trim() } : {}),
+      }),
+    );
   }
 
   if (mutation.state.status === "success") {
@@ -567,7 +576,6 @@ function AdjustForm(props: InventoryOperationsProps & { generateKey: Idempotency
 
 function TransferForm(
   props: InventoryOperationsProps & {
-    generateKey: IdempotencyKeyFactory;
     variantOptions: SelectOption[];
     sourceOptions: SelectOption[];
     destinationOptions: SelectOption[];
@@ -580,19 +588,11 @@ function TransferForm(
   const [note, setNote] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const mutation = useMutation(
-    (
-      args: {
-        variantId: string;
-        sourceInventoryLocationId: string;
-        destinationInventoryLocationId: string;
-        quantity: number;
-        note?: string;
-      },
-      key,
-    ) => transferStock(props.client, args, key),
-    props.generateKey,
-  );
+  const mutation = useJournaledInventoryMutation<TransferInventoryResponse>({
+    client: props.client,
+    journal: props.journal,
+    tenantId: props.tenantId,
+  });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
 
@@ -611,13 +611,15 @@ function TransferForm(
         : (validateTransferLocations(sourceId, destinationId) ?? validatePositiveQuantity(qty));
     setLocalError(problem);
     if (problem || !variantId || !sourceId || !destinationId) return;
-    mutation.submit({
-      variantId,
-      sourceInventoryLocationId: sourceId,
-      destinationInventoryLocationId: destinationId,
-      quantity: qty,
-      ...(note.trim() ? { note: note.trim() } : {}),
-    });
+    mutation.submit(
+      normalizeTransferPayload({
+        variantId,
+        sourceInventoryLocationId: sourceId,
+        destinationInventoryLocationId: destinationId,
+        quantity: qty,
+        ...(note.trim() ? { note: note.trim() } : {}),
+      }),
+    );
   }
 
   if (mutation.state.status === "success") {
