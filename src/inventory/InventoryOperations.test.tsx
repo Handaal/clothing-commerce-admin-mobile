@@ -20,7 +20,11 @@ import {
   transferResponse,
 } from "../test-support/fixtures";
 import { InventoryOperations, type InventoryWriteAccess } from "./InventoryOperations";
+import { createInventoryJournal } from "./journal/journal";
+import { createMemoryJournalStore } from "./journal/store";
 import { rowKey } from "./operations";
+
+const TENANT = "11111111-1111-4111-8111-111111111111";
 
 const LOCATIONS = [
   { id: INVENTORY_LOCATION_A, name: "Flagship Stockroom", branchId: null },
@@ -59,6 +63,12 @@ function keyFactory(...keys: string[]) {
   return () => keys[i++] ?? `overflow-${i}`;
 }
 
+// A fresh durable (memory-backed) journal seeded with a deterministic key sequence, for the direct
+// InventoryOperations renders that do not use the Harness.
+function journalWith(...keys: string[]) {
+  return createInventoryJournal(createMemoryJournalStore(), keyFactory(...keys));
+}
+
 interface HarnessProps {
   client: Parameters<typeof InventoryOperations>[0]["client"];
   generateKey: () => string;
@@ -77,6 +87,10 @@ function Harness({
   onConcurrencyConflict = onRefresh,
 }: HarnessProps) {
   const [conflictCount, setConflictCount] = useState(0);
+  // A durable journal (memory-backed here) built with the deterministic key factory: it owns the
+  // idempotency key exactly as production does, and — living above the keyed InventoryOperations —
+  // it survives the concurrency remount, modelling real cross-remount durability.
+  const [journal] = useState(() => createInventoryJournal(createMemoryJournalStore(), generateKey));
   return (
     <>
       {conflictCount > 0 ? (
@@ -87,6 +101,8 @@ function Harness({
       <InventoryOperations
         key={conflictCount}
         client={client}
+        journal={journal}
+        tenantId={TENANT}
         locations={LOCATIONS}
         write={write}
         items={items}
@@ -95,7 +111,6 @@ function Harness({
           setConflictCount((count) => count + 1);
           onConcurrencyConflict();
         }}
-        generateIdempotencyKey={generateKey}
       />
     </>
   );
@@ -204,7 +219,7 @@ describe("Receive stock", () => {
     await waitFor(() => expect(onRefresh).toHaveBeenCalled());
   });
 
-  it("blocks a duplicate submit while the request is in flight", () => {
+  it("blocks a duplicate submit while the request is in flight", async () => {
     const receiveInventory = vi.fn().mockReturnValue(new Promise(() => {}));
     render(
       <Harness
@@ -221,6 +236,9 @@ describe("Receive stock", () => {
     fireEvent.click(screen.getByTestId("receive-submit"));
     fireEvent.click(screen.getByTestId("receive-submit"));
 
+    // The command is persisted to the durable journal BEFORE transport, so the request is dispatched on
+    // the next tick. The in-flight guard still admits exactly one dispatch despite the double tap.
+    await waitFor(() => expect(receiveInventory).toHaveBeenCalledTimes(1));
     expect(receiveInventory).toHaveBeenCalledTimes(1);
   });
 
@@ -453,7 +471,7 @@ describe("Transfer stock", () => {
     expect(destSameAsSource.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("blocks a duplicate submit while the transfer is in flight", () => {
+  it("blocks a duplicate submit while the transfer is in flight", async () => {
     const transferInventory = vi.fn().mockReturnValue(new Promise(() => {}));
     render(
       <Harness
@@ -471,6 +489,8 @@ describe("Transfer stock", () => {
     fireEvent.click(screen.getByTestId("transfer-submit"));
     fireEvent.click(screen.getByTestId("transfer-submit"));
 
+    // Durable prepare defers transport by a tick; the in-flight guard still admits exactly one dispatch.
+    await waitFor(() => expect(transferInventory).toHaveBeenCalledTimes(1));
     expect(transferInventory).toHaveBeenCalledTimes(1);
   });
 });
@@ -497,7 +517,8 @@ describe("Phase 2N supplier receive integration", () => {
         {...baseProps}
         client={{ receiveInventory: vi.fn(), adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
-        generateIdempotencyKey={keyFactory("K1")}
+        journal={journalWith("K1")}
+        tenantId={TENANT}
       />,
     );
     fireEvent.click(screen.getByTestId("open-receive"));
@@ -512,7 +533,8 @@ describe("Phase 2N supplier receive integration", () => {
         {...baseProps}
         client={{ receiveInventory, adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
-        generateIdempotencyKey={keyFactory("K1")}
+        journal={journalWith("K1")}
+        tenantId={TENANT}
         receiveSuppliers={SUPPLIER_OPTIONS}
       />,
     );
@@ -546,7 +568,8 @@ describe("Phase 2N supplier receive integration", () => {
         {...baseProps}
         client={{ receiveInventory, adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
-        generateIdempotencyKey={keyFactory("K1")}
+        journal={journalWith("K1")}
+        tenantId={TENANT}
         receiveSuppliers={SUPPLIER_OPTIONS}
       />,
     );
@@ -577,7 +600,8 @@ describe("Phase 2N supplier receive integration", () => {
         {...baseProps}
         client={{ receiveInventory: vi.fn(), adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
-        generateIdempotencyKey={keyFactory("K1")}
+        journal={journalWith("K1")}
+        tenantId={TENANT}
         receiveSuppliers={[SUPPLIER_OPTIONS[0]]}
       />,
     );

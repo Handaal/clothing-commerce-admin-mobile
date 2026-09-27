@@ -244,3 +244,59 @@ and any path param.
     time boundaries are displayed exactly as supplied, never converted into client-derived business
     days. CSV export uses only SDK `exportReport` for the four canonical datasets and passes its body,
     filename, and media type unchanged to the platform save/share boundary.
+
+## Phase 2S-F2 durable inventory mutation recovery
+
+The three high-risk inventory writes (Receive — including a supplier-linked receipt — Adjust, and
+Transfer) previously held their idempotency key only in React memory (`useMutation`'s refs). If the
+response was lost and the app was restarted or the operations surface remounted, that key was gone:
+the server had committed the mutation but the client, unable to replay the lost key, would mint a new
+one and apply the command a second time. This phase makes those commands **crash-durable** so a
+lost-response command is recovered and replayed with its original key (at most once), never silently
+duplicated. Nothing else in Admin is journaled in this phase.
+
+Design (`src/inventory/journal/`):
+
+1. **Durable journal, not refs.** `InventoryJournal` (over a `JournalStore`) is the source of truth for
+   in-flight command identity. The device backend is `localStorage` on web and a JSON file in the
+   persistent document directory on native (`createDurableJournalStore`), both surviving an app/process
+   restart; a memory store backs tests and is the last-resort fallback. `InventoryScreen` creates the
+   journal once and passes it to `InventoryOperations`.
+2. **Persist before transport.** `useJournaledInventoryMutation` writes the command — normalized payload,
+   idempotency key, tenant/context, prepared timestamp, lifecycle status — to the journal (`prepared`)
+   _before_ any request, moves it to `sent` at dispatch, then to `accepted` (with the canonical server
+   response) once resolved. The key is minted once, in the journal, and reused verbatim on every replay.
+3. **Result classification.** An ambiguous outcome (transport/5xx → the write-error `retry` recovery)
+   leaves the command unresolved so it can be replayed; every definitive rejection (validation, business,
+   auth, stale-version) did not apply and is discarded. A command is `acknowledged` (pruned) once the
+   operator has seen its resolution.
+4. **Equivalence dedupe.** `prepare` reuses the existing key for an equivalent, still-unresolved command
+   (same normalized payload identity) rather than minting a second key — so a repeated equivalent intent
+   can never become a second mutation. A recount against a new `expectedVersion` is a genuinely new
+   command, not an equivalent repeat.
+5. **Recovery surface.** On the inventory operations surface (startup/remount) `InventoryRecoveryPanel`
+   lists every unresolved command for the tenant and requires an explicit resolution: replay reuses the
+   original key/payload and reconciles the canonical server response; an idempotent server dedupes it so
+   stock changes exactly once. A replay rejected as an idempotency conflict is shown and discarded, never
+   silently reapplied. Unrelated read-only Admin work stays fully usable while the panel is shown.
+6. **Supplier receipts share the journal.** A supplier-linked receipt is the same receive command with
+   `supplierId`/`supplierReference` in the persisted payload — no parallel system — and that metadata is
+   replayed verbatim on recovery.
+
+Tenant isolation: every journal read/write is filtered by `tenantId`, so one tenant's unresolved
+commands are never visible to, or replayable in, another.
+
+## Phase 2S-F2 Settings topology error UX
+
+The Settings write boundary in the Commerce API now returns four stable operational-topology conflict
+codes. `describeSettingsError` maps each to distinct, actionable guidance (kind `topology-conflict`)
+without ever leaking the backend code, mirroring — never restating — the server rule:
+
+- `STOREFRONT_LOCATION_NOT_OPERATIONAL` — enabling cash-on-delivery needs an active, sellable,
+  fulfillment-enabled location under an active brand.
+- `REGISTER_LOCATION_NOT_OPERATIONAL` — activating a register needs an active branch and an active,
+  fulfillment-enabled default location.
+- `STOREFRONT_DEPENDENCY_CONFLICT` — a location/brand is required by an enabled storefront; disable or
+  reroute the storefront before deactivating it or removing sellable/fulfillment capability.
+- `REGISTER_DEPENDENCY_CONFLICT` — a branch/location is required by an active register; deactivate the
+  register first.

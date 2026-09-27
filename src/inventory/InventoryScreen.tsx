@@ -23,6 +23,9 @@ import {
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
 import { InventoryOperations } from "./InventoryOperations";
+import { createDurableJournalStore } from "./journal/durable-store";
+import { createInventoryJournal } from "./journal/journal";
+import { secureIdempotencyKey } from "./idempotency";
 import { loadAllInventory, type InventoryItem } from "./load";
 
 export interface InventoryScreenProps {
@@ -57,6 +60,12 @@ export function InventoryScreen({ tenantId, context, onBack }: InventoryScreenPr
 function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
+  // The durable inventory-mutation journal: device-backed so a high-risk command whose response is lost
+  // survives an app restart and is recovered rather than silently re-minted. Created once per screen.
+  const journal = useMemo(
+    () => createInventoryJournal(createDurableJournalStore(), secureIdempotencyKey),
+    [],
+  );
   // One bounded producer that follows the server cursor across all pages (see loadAllInventory).
   const load = useCallback(() => loadAllInventory(client), [client]);
   const { state, reload } = useAsync<InventoryItem[]>(load);
@@ -122,6 +131,8 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
       {state.status === "success" ? (
         <InventoryOperations
           client={client}
+          journal={journal}
+          tenantId={tenantId}
           locations={context.access.inventory.locations}
           write={context.access.inventory.write}
           items={state.data}
