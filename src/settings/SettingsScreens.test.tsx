@@ -3,7 +3,7 @@ import { ApiHttpError } from "@shifted/clothing-commerce-sdk";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { BrandForm, RegisterForm } from "./SettingsForms";
+import { BrandForm, CommerceForm, RegisterForm } from "./SettingsForms";
 import {
   BranchFormScreen,
   BrandFormScreen,
@@ -11,13 +11,23 @@ import {
   CommerceSettingsScreen,
   DeviceDetailScreen,
   DevicesSettingsScreen,
+  InventoryLocationCreateScreen,
   InventoryLocationDetailScreen,
   InventorySettingsScreen,
   ReceiptSettingsScreen,
   RegisterFormScreen,
   SettingsHomeScreen,
+  WarehouseCreateScreen,
 } from "./SettingsScreens";
-import { brand, branch, business, fakeSettingsAdapter, location, register } from "./test-fixtures";
+import {
+  brand,
+  branch,
+  business,
+  commerce,
+  fakeSettingsAdapter,
+  location,
+  register,
+} from "./test-fixtures";
 
 const noop = () => {};
 afterEach(() => cleanup());
@@ -113,6 +123,8 @@ describe("Phase 2R Settings preparation", () => {
     expect(screen.getByTestId("branch-fulfillment-yes")).toBeTruthy();
     expect(screen.getByTestId("branch-collect-yes")).toBeTruthy();
     expect(screen.getByTestId("settings-lifecycle")).toBeTruthy();
+    expect(screen.getByText("Eligible Brands")).toBeTruthy();
+    expect(screen.getByTestId(`branch-brand-${brand.id}-yes`)).toBeTruthy();
     expect(screen.queryByText("Delete")).toBeNull();
   });
 
@@ -146,6 +158,20 @@ describe("Phase 2R Settings preparation", () => {
     expect(await screen.findByText("Parent · read-only")).toBeTruthy();
     expect(screen.getByText("Location type · read-only")).toBeTruthy();
     expect(screen.getByTestId("save-inventory-settings")).toBeTruthy();
+  });
+
+  it("creates Warehouses and InventoryLocations through canonical parent selectors", async () => {
+    const adapter = fakeSettingsAdapter();
+    const { unmount } = render(
+      <WarehouseCreateScreen adapter={adapter} canRead canManage onBack={noop} />,
+    );
+    expect(screen.getByTestId("warehouse-code")).toBeTruthy();
+    expect(screen.getByTestId("save-warehouse")).toBeTruthy();
+    unmount();
+    render(<InventoryLocationCreateScreen adapter={adapter} canRead canManage onBack={noop} />);
+    expect(await screen.findByTestId(`location-parent-branch:${branch.id}`)).toBeTruthy();
+    expect(screen.getByTestId("location-type")).toBeTruthy();
+    expect(screen.queryByText(/parent UUID/i)).toBeNull();
   });
 
   it("keeps Register Branch and code read-only after creation", async () => {
@@ -219,6 +245,29 @@ describe("Phase 2R Settings preparation", () => {
     expect(screen.queryByText(/shipping engine/i)).toBeNull();
   });
 
+  it("shows the canonical Storefront currency-history rejection", async () => {
+    const onSave = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiHttpError(
+          "Currency cannot change once commercial history exists.",
+          409,
+          "CURRENCY_LOCKED",
+          null,
+        ),
+      );
+    render(
+      <CommerceForm
+        value={commerce}
+        brandOptions={[{ id: brand.id, label: brand.displayName }]}
+        locationOptions={[{ id: location.id, label: location.displayName }]}
+        onSave={onSave}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("save-commerce"));
+    expect(await screen.findByTestId("settings-save-error-historical-lock")).toBeTruthy();
+  });
+
   it("renders receipt identity/footer and a fixed preview without a designer", async () => {
     render(
       <ReceiptSettingsScreen adapter={fakeSettingsAdapter()} canRead canManage onBack={noop} />,
@@ -230,13 +279,13 @@ describe("Phase 2R Settings preparation", () => {
     expect(screen.queryByText(/HTML template/i)).toBeNull();
   });
 
-  it("covers access-denied, transport-pending, loading, empty, and error states", async () => {
+  it("covers access-denied, unavailable, loading, empty, and error states", async () => {
     const { rerender } = render(
       <BusinessSettingsScreen adapter={null} canRead={false} canManage={false} onBack={noop} />,
     );
     expect(screen.getByTestId("settings-access-denied")).toBeTruthy();
     rerender(<BusinessSettingsScreen adapter={null} canRead canManage onBack={noop} />);
-    expect(screen.getByTestId("settings-transport-pending")).toBeTruthy();
+    expect(screen.getByTestId("settings-unavailable")).toBeTruthy();
     rerender(
       <DevicesSettingsScreen
         adapter={fakeSettingsAdapter({ listDevices: () => new Promise(() => {}) })}

@@ -4,12 +4,12 @@ Expo / React Native management-channel app for a clothing business's **authorize
 managers**. It is not a Shifted/platform super-admin app, not a POS/cashier app, not a
 customer-shopping app, and not a website layout builder.
 
-## Current scope — Phase 2R-B Admin settings preparation
+## Current scope — Phase 2R-B Admin operational settings
 
-Phase 2R-B prepares the complete management-only Settings navigation, forms, safety states, and
-Admin-owned adapter boundary. The canonical transport is intentionally unbound until SDK 0.14.0
-lands: production Settings routes show an explicit transport-pending state and never use guessed
-endpoints or mock data. See [the Phase 2R-B preparation notes](docs/phase-2r-b-preparation.md).
+Phase 2R-B binds the complete management-only Settings navigation and forms to the canonical
+SDK 0.14.0 operational-settings contract through one Admin-owned adapter boundary. Production uses
+only the tenant-scoped SDK methods; there are no guessed endpoints, API source imports, direct database
+access, or mock fallbacks. See [the Phase 2R-B integration notes](docs/phase-2r-b-preparation.md).
 
 Settings preserve the platform distinctions between Tenant/Brand, Branch/Warehouse,
 Warehouse/InventoryLocation, Register/InventoryLocation, and Device/Register. Immutable identifiers,
@@ -38,7 +38,7 @@ All pricing, eligibility, authorization, redemption counts, and post-redemption 
 server-authoritative.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.13.1)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.14.0)
   → GET /me/tenants → tenant selection → GET /me/context
   → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
   → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
@@ -262,18 +262,18 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.13.1**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.13.1.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.13.1.tgz`
-- SHA-256: `287129cb2f6a49b4ff0701e89a1118169afa51f61ab681b61f745a06547fac5c`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.14.0**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.14.0.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.14.0.tgz`
+- SHA-256: `f6a666241c135c302829d78f22e601deaffc963e102570db0ee667703b4bf69a`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.13.1.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.14.0.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.13.1.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.14.0.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
@@ -281,8 +281,8 @@ relative `file:` spec, and byte-for-byte SHA-256).
 
 ### Update the SDK artifact
 
-1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.13.1.tgz`).
-2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.13.1.tgz"`.
+1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.14.0.tgz`).
+2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.14.0.tgz"`.
 3. `pnpm install` to update `pnpm-lock.yaml`.
 4. Update the SHA-256 above and in `src/sdk-artifact.test.ts` expectations, then remove the old
    tarball once nothing references it.

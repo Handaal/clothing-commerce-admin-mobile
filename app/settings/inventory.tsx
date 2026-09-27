@@ -11,6 +11,8 @@ export default function Route() {
       {...settingsRouteState(state.context, getTenantClient(state.tenantId))}
       onOpenWarehouse={(id) => router.push(`/settings/warehouses/${id}`)}
       onOpenLocation={(id) => router.push(`/settings/inventory-locations/${id}`)}
+      onCreateWarehouse={() => router.push("/settings/warehouses/new")}
+      onCreateLocation={() => router.push("/settings/inventory-locations/new")}
       onBack={() => router.back()}
     />
   );

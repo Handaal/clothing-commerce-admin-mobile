@@ -33,20 +33,18 @@ export function SettingsFrame({
 export function SettingsUnavailable({
   title,
   canRead,
-  transportPending,
   onBack,
 }: {
   title: string;
   canRead: boolean;
-  transportPending: boolean;
   onBack: () => void;
 }) {
   return (
     <SettingsFrame title={title} onBack={onBack}>
       <Title>{canRead ? "Settings unavailable" : "Access denied"}</Title>
-      <Body testID={canRead ? "settings-transport-pending" : "settings-access-denied"}>
-        {canRead && transportPending
-          ? "Canonical transport binding pending SDK 0.14.0. No settings data has been requested or changed."
+      <Body testID={canRead ? "settings-unavailable" : "settings-access-denied"}>
+        {canRead
+          ? "Settings could not be opened. Check your connection and try again."
           : "Your current business access does not include Settings."}
       </Body>
     </SettingsFrame>

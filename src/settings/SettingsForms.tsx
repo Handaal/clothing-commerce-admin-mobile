@@ -18,11 +18,14 @@ import type {
   BranchSettingsDraft,
   BusinessSettings,
   BusinessSettingsDraft,
+  CapabilityFlags,
   CommerceSettings,
+  InventoryLocationSettingsDraft,
   ReceiptSettings,
   RegisterSettings,
   RegisterSettingsDraft,
   SettingsOption,
+  WarehouseSettingsDraft,
 } from "./model";
 import { SettingsSection } from "./SettingsCommon";
 
@@ -185,11 +188,13 @@ export function BranchForm({
   mode,
   initial,
   locationOptions,
+  brandOptions = [],
   onSave,
 }: {
   mode: "create" | "edit";
   initial?: BranchSettings;
   locationOptions: SettingsOption[];
+  brandOptions?: SettingsOption[];
   onSave: (draft: BranchSettingsDraft) => Promise<unknown>;
 }) {
   const [draft, setDraft] = useState<BranchSettingsDraft>(() => ({
@@ -197,6 +202,12 @@ export function BranchForm({
     displayName: initial?.displayName ?? "",
     timezone: initial?.timezone ?? "",
     address: initial?.address ?? "",
+    addressLine1: initial?.addressLine1 ?? "",
+    addressLine2: initial?.addressLine2 ?? "",
+    city: initial?.city ?? "",
+    region: initial?.region ?? "",
+    postalCode: initial?.postalCode ?? "",
+    countryCode: initial?.countryCode ?? "",
     contactEmail: initial?.contactEmail ?? "",
     contactPhone: initial?.contactPhone ?? "",
     fulfillmentEnabled: initial?.fulfillmentEnabled ?? false,
@@ -207,6 +218,9 @@ export function BranchForm({
     status: initial?.status ?? "active",
   }));
   const [save, setSave] = useState<SaveState>({ status: "idle" });
+  const eligibleLocations = locationOptions.filter(
+    (option) => initial && option.parentKind === "branch" && option.parentId === initial.id,
+  );
   return (
     <View style={{ gap: 12 }}>
       {mode === "create" ? (
@@ -232,11 +246,40 @@ export function BranchForm({
         testID="branch-timezone"
       />
       <TextField
-        label="Address"
-        value={draft.address}
-        onChangeText={(v) => setDraft({ ...draft, address: v })}
+        label="Address line 1"
+        value={draft.addressLine1}
+        onChangeText={(v) => setDraft({ ...draft, addressLine1: v, address: v })}
         testID="branch-address"
-        multiline
+      />
+      <TextField
+        label="Address line 2"
+        value={draft.addressLine2}
+        onChangeText={(v) => setDraft({ ...draft, addressLine2: v })}
+        testID="branch-address-2"
+      />
+      <TextField
+        label="City"
+        value={draft.city}
+        onChangeText={(v) => setDraft({ ...draft, city: v })}
+        testID="branch-city"
+      />
+      <TextField
+        label="Region"
+        value={draft.region}
+        onChangeText={(v) => setDraft({ ...draft, region: v })}
+        testID="branch-region"
+      />
+      <TextField
+        label="Postal code"
+        value={draft.postalCode}
+        onChangeText={(v) => setDraft({ ...draft, postalCode: v })}
+        testID="branch-postal-code"
+      />
+      <TextField
+        label="Country code"
+        value={draft.countryCode}
+        onChangeText={(v) => setDraft({ ...draft, countryCode: v.toUpperCase() })}
+        testID="branch-country-code"
       />
       <TextField
         label="Contact email"
@@ -267,7 +310,7 @@ export function BranchForm({
         label="Default InventoryLocation"
         options={[
           { value: "", label: "None" },
-          ...locationOptions.map((o) => ({ value: o.id, label: o.label })),
+          ...eligibleLocations.map((o) => ({ value: o.id, label: o.label })),
         ]}
         selected={draft.defaultInventoryLocationId ?? ""}
         onSelect={(v) => setDraft({ ...draft, defaultInventoryLocationId: v || null })}
@@ -280,6 +323,29 @@ export function BranchForm({
         testID="branch-receipt-footer"
         multiline
       />
+      {brandOptions.length ? (
+        <SettingsSection title="Eligible Brands">
+          {brandOptions.map((brand) => {
+            const selected = draft.eligibleBrandIds?.includes(brand.id) ?? false;
+            return (
+              <BooleanField
+                key={brand.id}
+                label={brand.label}
+                value={selected}
+                onChange={(enabled) =>
+                  setDraft({
+                    ...draft,
+                    eligibleBrandIds: enabled
+                      ? [...(draft.eligibleBrandIds ?? []), brand.id]
+                      : (draft.eligibleBrandIds ?? []).filter((id) => id !== brand.id),
+                  })
+                }
+                testID={`branch-brand-${brand.id}`}
+              />
+            );
+          })}
+        </SettingsSection>
+      ) : null}
       <SaveFeedback state={save} />
       <PrimaryButton
         label={mode === "create" ? "Create Branch" : "Save Branch"}
@@ -318,6 +384,10 @@ export function RegisterForm({
     status: initial?.status ?? "active",
   }));
   const [save, setSave] = useState<SaveState>({ status: "idle" });
+  const eligibleLocations = locationOptions.filter(
+    (option) =>
+      !draft.branchId || (option.parentKind === "branch" && option.parentId === draft.branchId),
+  );
   return (
     <View style={{ gap: 12 }}>
       {mode === "create" ? (
@@ -351,7 +421,7 @@ export function RegisterForm({
         label="Default InventoryLocation"
         options={[
           { value: "", label: "None" },
-          ...locationOptions.map((o) => ({ value: o.id, label: o.label })),
+          ...eligibleLocations.map((o) => ({ value: o.id, label: o.label })),
         ]}
         selected={draft.defaultInventoryLocationId ?? ""}
         onSelect={(v) => setDraft({ ...draft, defaultInventoryLocationId: v || null })}
@@ -383,48 +453,294 @@ export function RegisterForm({
   );
 }
 
+const emptyCapabilities: CapabilityFlags = {
+  sellable: false,
+  receiving: false,
+  transferOrigin: false,
+  transferDestination: false,
+  fulfillment: false,
+};
+
+export function WarehouseCreateForm({
+  onSave,
+}: {
+  onSave: (draft: WarehouseSettingsDraft) => Promise<unknown>;
+}) {
+  const [draft, setDraft] = useState<WarehouseSettingsDraft>({
+    code: "",
+    displayName: "",
+    timezone: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    region: "",
+    postalCode: "",
+    countryCode: "",
+    contactEmail: "",
+    contactPhone: "",
+    capabilities: { ...emptyCapabilities, sellable: undefined },
+  });
+  const [save, setSave] = useState<SaveState>({ status: "idle" });
+  return (
+    <View style={{ gap: 12 }}>
+      <TextField
+        label="Code"
+        value={draft.code}
+        onChangeText={(code) => setDraft({ ...draft, code: code.toUpperCase() })}
+        testID="warehouse-code"
+      />
+      <TextField
+        label="Display name"
+        value={draft.displayName}
+        onChangeText={(displayName) => setDraft({ ...draft, displayName })}
+        testID="warehouse-display-name"
+      />
+      <TextField
+        label="Timezone"
+        value={draft.timezone}
+        onChangeText={(timezone) => setDraft({ ...draft, timezone })}
+        testID="warehouse-timezone"
+      />
+      <TextField
+        label="Address line 1"
+        value={draft.addressLine1}
+        onChangeText={(addressLine1) => setDraft({ ...draft, addressLine1 })}
+        testID="warehouse-address"
+      />
+      <TextField
+        label="Address line 2"
+        value={draft.addressLine2}
+        onChangeText={(addressLine2) => setDraft({ ...draft, addressLine2 })}
+      />
+      <TextField
+        label="City"
+        value={draft.city}
+        onChangeText={(city) => setDraft({ ...draft, city })}
+      />
+      <TextField
+        label="Region"
+        value={draft.region}
+        onChangeText={(region) => setDraft({ ...draft, region })}
+      />
+      <TextField
+        label="Postal code"
+        value={draft.postalCode}
+        onChangeText={(postalCode) => setDraft({ ...draft, postalCode })}
+      />
+      <TextField
+        label="Country code"
+        value={draft.countryCode}
+        onChangeText={(countryCode) =>
+          setDraft({ ...draft, countryCode: countryCode.toUpperCase() })
+        }
+      />
+      <TextField
+        label="Contact email"
+        value={draft.contactEmail}
+        onChangeText={(contactEmail) => setDraft({ ...draft, contactEmail })}
+        autoCapitalize="none"
+      />
+      <TextField
+        label="Contact phone"
+        value={draft.contactPhone}
+        onChangeText={(contactPhone) => setDraft({ ...draft, contactPhone })}
+      />
+      <CapabilityFields
+        value={draft.capabilities}
+        onChange={(capabilities) => setDraft({ ...draft, capabilities })}
+        includeSellable={false}
+      />
+      <SaveFeedback state={save} />
+      <PrimaryButton
+        label={save.status === "saving" ? "Creating…" : "Create Warehouse"}
+        testID="save-warehouse"
+        disabled={
+          !draft.code.trim() ||
+          !draft.displayName.trim() ||
+          !draft.timezone.trim() ||
+          save.status === "saving"
+        }
+        onPress={() => void runSave(onSave(draft), setSave)}
+      />
+    </View>
+  );
+}
+
+export function InventoryLocationCreateForm({
+  branchOptions,
+  warehouseOptions,
+  onSave,
+}: {
+  branchOptions: SettingsOption[];
+  warehouseOptions: SettingsOption[];
+  onSave: (draft: InventoryLocationSettingsDraft) => Promise<unknown>;
+}) {
+  const [draft, setDraft] = useState<InventoryLocationSettingsDraft>({
+    code: "",
+    displayName: "",
+    parentId: "",
+    parentKind: "branch",
+    locationType: "stockroom",
+    capabilities: { ...emptyCapabilities },
+  });
+  const [save, setSave] = useState<SaveState>({ status: "idle" });
+  const parent = draft.parentId ? `${draft.parentKind}:${draft.parentId}` : "";
+  return (
+    <View style={{ gap: 12 }}>
+      <TextField
+        label="Code"
+        value={draft.code}
+        onChangeText={(code) => setDraft({ ...draft, code: code.toUpperCase() })}
+        testID="location-code"
+      />
+      <TextField
+        label="Display name"
+        value={draft.displayName}
+        onChangeText={(displayName) => setDraft({ ...draft, displayName })}
+        testID="location-display-name"
+      />
+      <SelectField
+        label="Parent (Branch or Warehouse)"
+        options={[
+          ...branchOptions.map((item) => ({
+            value: `branch:${item.id}`,
+            label: `Branch · ${item.label}`,
+          })),
+          ...warehouseOptions.map((item) => ({
+            value: `warehouse:${item.id}`,
+            label: `Warehouse · ${item.label}`,
+          })),
+        ]}
+        selected={parent}
+        onSelect={(value) => {
+          const [parentKind, parentId] = value.split(":", 2) as ["branch" | "warehouse", string];
+          setDraft({ ...draft, parentKind, parentId });
+        }}
+        testIDPrefix="location-parent"
+      />
+      <TextField
+        label="Location type"
+        value={draft.locationType}
+        onChangeText={(locationType) => setDraft({ ...draft, locationType })}
+        testID="location-type"
+      />
+      <CapabilityFields
+        value={draft.capabilities}
+        onChange={(capabilities) => setDraft({ ...draft, capabilities })}
+        includeSellable
+      />
+      <SaveFeedback state={save} />
+      <PrimaryButton
+        label={save.status === "saving" ? "Creating…" : "Create InventoryLocation"}
+        testID="save-location"
+        disabled={
+          !draft.code.trim() ||
+          !draft.displayName.trim() ||
+          !draft.parentId ||
+          !draft.locationType.trim() ||
+          save.status === "saving"
+        }
+        onPress={() => void runSave(onSave(draft), setSave)}
+      />
+    </View>
+  );
+}
+
+function CapabilityFields({
+  value,
+  onChange,
+  includeSellable,
+}: {
+  value: CapabilityFlags;
+  onChange: (value: CapabilityFlags) => void;
+  includeSellable: boolean;
+}) {
+  const fields: Array<[keyof CapabilityFlags, string]> = [
+    ...(includeSellable
+      ? [["sellable" as keyof CapabilityFlags, "Sellable"] as [keyof CapabilityFlags, string]]
+      : []),
+    ["fulfillment", "Fulfillment"],
+    ["receiving", "Receiving"],
+    ["transferOrigin", "Transfer origin"],
+    ["transferDestination", "Transfer destination"],
+  ];
+  return (
+    <SettingsSection title="Capability flags">
+      {fields.map(([key, label]) => (
+        <BooleanField
+          key={key}
+          label={label}
+          value={value[key] === true}
+          onChange={(enabled) => onChange({ ...value, [key]: enabled })}
+          testID={`capability-${key}`}
+        />
+      ))}
+    </SettingsSection>
+  );
+}
+
 export function CommerceForm({
   value,
+  brandOptions = [],
+  locationOptions = [],
   onSave,
 }: {
   value: CommerceSettings;
+  brandOptions?: SettingsOption[];
+  locationOptions?: SettingsOption[];
   onSave: (value: CommerceSettings) => Promise<unknown>;
 }) {
   const [draft, setDraft] = useState(value);
-  const [windowDays, setWindowDays] = useState(String(value.returns.windowDays));
+  const [windowDays, setWindowDays] = useState(
+    value.returns.windowDays === null ? "" : String(value.returns.windowDays),
+  );
   const [maxRefund, setMaxRefund] = useState(
     value.returns.maxManualRefundMinor === null ? "" : String(value.returns.maxManualRefundMinor),
+  );
+  const [allowedReasons, setAllowedReasons] = useState(
+    (value.returns.allowedReasons ?? []).join(", "),
   );
   const [save, setSave] = useState<SaveState>({ status: "idle" });
   const submitted: CommerceSettings = {
     ...draft,
     returns: {
       ...draft.returns,
-      windowDays: Number(windowDays),
+      windowDays: windowDays === "" ? null : Number(windowDays),
       maxManualRefundMinor: maxRefund ? Number(maxRefund) : null,
+      allowedReasons: allowedReasons
+        .split(",")
+        .map((reason) => reason.trim())
+        .filter(Boolean),
     },
   };
   return (
     <View style={{ gap: 12 }}>
       <SettingsSection title="Storefront">
-        <TextField
-          label="Brand/context identifier (optional)"
-          value={draft.storefront.brandId ?? ""}
-          onChangeText={(v) =>
-            setDraft({ ...draft, storefront: { ...draft.storefront, brandId: v || null } })
-          }
-          testID="storefront-brand"
-        />
-        <TextField
-          label="Fulfillment InventoryLocation"
-          value={draft.storefront.fulfillmentInventoryLocationId ?? ""}
-          onChangeText={(v) =>
+        <SelectField
+          label="Brand/context"
+          options={brandOptions.map((option) => ({ value: option.id, label: option.label }))}
+          selected={draft.storefront.brandId}
+          onSelect={(brandId) => {
+            const existing = draft.storefronts.find((item) => item.brandId === brandId);
+            const brandName = brandOptions.find((item) => item.id === brandId)?.label ?? brandId;
             setDraft({
               ...draft,
-              storefront: { ...draft.storefront, fulfillmentInventoryLocationId: v || null },
+              storefront: existing ?? { ...draft.storefront, brandId, brandName },
+            });
+          }}
+          testIDPrefix="storefront-brand"
+        />
+        <SelectField
+          label="Fulfillment InventoryLocation"
+          options={locationOptions.map((option) => ({ value: option.id, label: option.label }))}
+          selected={draft.storefront.fulfillmentInventoryLocationId}
+          onSelect={(fulfillmentInventoryLocationId) =>
+            setDraft({
+              ...draft,
+              storefront: { ...draft.storefront, fulfillmentInventoryLocationId },
             })
           }
-          testID="storefront-location"
+          testIDPrefix="storefront-location"
         />
         <TextField
           label="Currency"
@@ -471,17 +787,23 @@ export function CommerceForm({
           onChangeText={setMaxRefund}
           testID="max-manual-refund"
         />
-        {draft.returns.allowedReasons ? (
-          <Body>Allowed reasons: {draft.returns.allowedReasons.join(", ")}</Body>
-        ) : null}
+        <TextField
+          label="Allowed reasons (comma separated)"
+          value={allowedReasons}
+          onChangeText={setAllowedReasons}
+          testID="returns-reasons"
+        />
       </SettingsSection>
       <SaveFeedback state={save} />
       <PrimaryButton
         label="Save commerce settings"
         testID="save-commerce"
         disabled={
-          !Number.isInteger(Number(windowDays)) ||
-          Number(windowDays) < 0 ||
+          !draft.storefront.brandId ||
+          !draft.storefront.fulfillmentInventoryLocationId ||
+          !/^[A-Z]{3}$/.test(draft.storefront.currency) ||
+          (windowDays !== "" &&
+            (!Number.isInteger(Number(windowDays)) || Number(windowDays) < 0)) ||
           save.status === "saving"
         }
         onPress={() => void runSave(onSave(submitted), setSave)}
@@ -492,9 +814,13 @@ export function CommerceForm({
 
 export function ReceiptForm({
   value,
+  branchOptions = [],
+  onBranchChange,
   onSave,
 }: {
   value: ReceiptSettings;
+  branchOptions?: SettingsOption[];
+  onBranchChange?: (branchId: string) => Promise<ReceiptSettings>;
   onSave: (value: ReceiptSettings) => Promise<unknown>;
 }) {
   const [draft, setDraft] = useState(value);
@@ -522,18 +848,64 @@ export function ReceiptForm({
         />
       </SettingsSection>
       <SettingsSection title="Branch identity">
-        <InfoRow label="Branch context" value={draft.branchId ?? "Not selected"} />
+        {branchOptions.length ? (
+          <SelectField
+            label="Branch context"
+            options={branchOptions.map((option) => ({ value: option.id, label: option.label }))}
+            selected={draft.branchId}
+            onSelect={(branchId) => {
+              if (onBranchChange) {
+                void onBranchChange(branchId).then(setDraft, (error: unknown) =>
+                  setSave({ status: "error", error }),
+                );
+              }
+            }}
+            testIDPrefix="receipt-branch"
+          />
+        ) : (
+          <InfoRow label="Branch context" value={draft.branchId ?? "Not selected"} />
+        )}
         <TextField
-          label="Branch address"
-          value={draft.branchAddress}
-          onChangeText={(v) => setDraft({ ...draft, branchAddress: v })}
+          label="Branch address line 1"
+          value={draft.branchAddressLine1}
+          onChangeText={(v) => setDraft({ ...draft, branchAddressLine1: v })}
           testID="receipt-address"
-          multiline
         />
         <TextField
-          label="Branch contact"
-          value={draft.branchContact}
-          onChangeText={(v) => setDraft({ ...draft, branchContact: v })}
+          label="Branch address line 2"
+          value={draft.branchAddressLine2}
+          onChangeText={(v) => setDraft({ ...draft, branchAddressLine2: v })}
+        />
+        <TextField
+          label="Branch city"
+          value={draft.branchCity}
+          onChangeText={(v) => setDraft({ ...draft, branchCity: v })}
+        />
+        <TextField
+          label="Branch region"
+          value={draft.branchRegion}
+          onChangeText={(v) => setDraft({ ...draft, branchRegion: v })}
+        />
+        <TextField
+          label="Branch postal code"
+          value={draft.branchPostalCode}
+          onChangeText={(v) => setDraft({ ...draft, branchPostalCode: v })}
+        />
+        <TextField
+          label="Branch country code"
+          value={draft.branchCountryCode}
+          onChangeText={(v) => setDraft({ ...draft, branchCountryCode: v.toUpperCase() })}
+        />
+        <TextField
+          label="Branch contact email"
+          value={draft.branchContactEmail}
+          onChangeText={(v) => setDraft({ ...draft, branchContactEmail: v })}
+          autoCapitalize="none"
+        />
+        <TextField
+          label="Branch contact phone"
+          value={draft.branchContactPhone}
+          onChangeText={(v) => setDraft({ ...draft, branchContactPhone: v })}
           testID="receipt-contact"
         />
         <TextField
@@ -549,8 +921,21 @@ export function ReceiptForm({
           <Title>{draft.businessDisplayName || "Business name"}</Title>
           <Body>{draft.legalName}</Body>
           <Body>{draft.taxIdentifier}</Body>
-          <Body>{draft.branchAddress}</Body>
-          <Body>{draft.branchContact}</Body>
+          <Body>
+            {[
+              draft.branchAddressLine1,
+              draft.branchAddressLine2,
+              draft.branchCity,
+              draft.branchRegion,
+              draft.branchPostalCode,
+              draft.branchCountryCode,
+            ]
+              .filter(Boolean)
+              .join(", ")}
+          </Body>
+          <Body>
+            {[draft.branchContactEmail, draft.branchContactPhone].filter(Boolean).join(" · ")}
+          </Body>
           <Body>{draft.footer}</Body>
         </View>
       </SettingsSection>

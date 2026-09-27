@@ -14,6 +14,7 @@ import {
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
 import type { SettingsAdapter } from "./adapter";
+import { describeSettingsError } from "./errors";
 import type {
   BrandSettings,
   BranchSettings,
@@ -37,8 +38,10 @@ import {
   BranchForm,
   BusinessForm,
   CommerceForm,
+  InventoryLocationCreateForm,
   ReceiptForm,
   RegisterForm,
+  WarehouseCreateForm,
 } from "./SettingsForms";
 
 export type SettingsSectionKey =
@@ -62,15 +65,7 @@ export function SettingsHomeScreen({
   onOpen: (section: SettingsSectionKey) => void;
   onBack: () => void;
 }) {
-  if (!canRead)
-    return (
-      <SettingsUnavailable
-        title="Settings"
-        canRead={false}
-        transportPending={false}
-        onBack={onBack}
-      />
-    );
+  if (!canRead) return <SettingsUnavailable title="Settings" canRead={false} onBack={onBack} />;
   const sections: Array<{ key: SettingsSectionKey; title: string; description: string }> = [
     {
       key: "business",
@@ -366,6 +361,7 @@ function BranchFormContent({
     async () => ({
       branch: branchId ? await adapter.getBranch(branchId) : null,
       locations: await adapter.listInventoryLocationOptions(),
+      brands: await adapter.listBrandOptions(),
     }),
     [adapter, branchId],
   );
@@ -373,12 +369,13 @@ function BranchFormContent({
   return (
     <SettingsFrame title={branchId ? "Branch details" : "Create Branch"} onBack={onBack}>
       <SettingsAsync state={state} reload={reload} empty={() => false}>
-        {({ branch, locations }) => (
+        {({ branch, locations, brands }) => (
           <>
             <BranchForm
               mode={branch ? "edit" : "create"}
               initial={branch ?? undefined}
               locationOptions={locations}
+              brandOptions={brands}
               onSave={(draft) => saveBranch(adapter, branch, draft)}
             />
             {branch ? (
@@ -425,6 +422,12 @@ function saveBranch(
     displayName: draft.displayName,
     timezone: draft.timezone,
     address: draft.address,
+    addressLine1: draft.addressLine1,
+    addressLine2: draft.addressLine2,
+    city: draft.city,
+    region: draft.region,
+    postalCode: draft.postalCode,
+    countryCode: draft.countryCode,
     contactEmail: draft.contactEmail,
     contactPhone: draft.contactPhone,
     fulfillmentEnabled: draft.fulfillmentEnabled,
@@ -444,7 +447,14 @@ export function InventorySettingsScreen({
   onBack,
   onOpenWarehouse,
   onOpenLocation,
-}: BaseProps & { onOpenWarehouse: (id: string) => void; onOpenLocation: (id: string) => void }) {
+  onCreateWarehouse,
+  onCreateLocation,
+}: BaseProps & {
+  onOpenWarehouse: (id: string) => void;
+  onOpenLocation: (id: string) => void;
+  onCreateWarehouse?: () => void;
+  onCreateLocation?: () => void;
+}) {
   if (!canRead || !adapter)
     return (
       <Pending title="Inventory settings" canRead={canRead} adapter={adapter} onBack={onBack} />
@@ -456,6 +466,8 @@ export function InventorySettingsScreen({
       onBack={onBack}
       onOpenWarehouse={onOpenWarehouse}
       onOpenLocation={onOpenLocation}
+      onCreateWarehouse={onCreateWarehouse}
+      onCreateLocation={onCreateLocation}
     />
   );
 }
@@ -465,12 +477,16 @@ function InventoryContent({
   onBack,
   onOpenWarehouse,
   onOpenLocation,
+  onCreateWarehouse,
+  onCreateLocation,
 }: {
   adapter: SettingsAdapter;
   canManage: boolean;
   onBack: () => void;
   onOpenWarehouse: (id: string) => void;
   onOpenLocation: (id: string) => void;
+  onCreateWarehouse?: () => void;
+  onCreateLocation?: () => void;
 }) {
   const load = useCallback(() => adapter.getInventoryOverview(), [adapter]);
   const { state, reload } = useAsync(load);
@@ -489,6 +505,13 @@ function InventoryContent({
         {(v) => (
           <>
             <SettingsSection title="Warehouses">
+              {canManage && onCreateWarehouse ? (
+                <PrimaryButton
+                  label="Create Warehouse"
+                  testID="create-warehouse"
+                  onPress={onCreateWarehouse}
+                />
+              ) : null}
               {v.warehouses.length ? (
                 v.warehouses.map((w) => (
                   <EntityRow
@@ -505,6 +528,13 @@ function InventoryContent({
               )}
             </SettingsSection>
             <SettingsSection title="InventoryLocations">
+              {canManage && onCreateLocation ? (
+                <PrimaryButton
+                  label="Create InventoryLocation"
+                  testID="create-location"
+                  onPress={onCreateLocation}
+                />
+              ) : null}
               {v.locations.length ? (
                 v.locations.map((l) => (
                   <PressableRow
@@ -527,6 +557,68 @@ function InventoryContent({
             </SettingsSection>
           </>
         )}
+      </SettingsAsync>
+    </SettingsFrame>
+  );
+}
+
+export function WarehouseCreateScreen({ adapter, canRead, canManage, onBack }: BaseProps) {
+  if (!canRead || !adapter)
+    return <Pending title="Create Warehouse" canRead={canRead} adapter={adapter} onBack={onBack} />;
+  return (
+    <SettingsFrame title="Create Warehouse" onBack={onBack}>
+      {canManage ? (
+        <WarehouseCreateForm onSave={(draft) => adapter.createWarehouse(draft)} />
+      ) : (
+        <ReadOnlyNotice />
+      )}
+    </SettingsFrame>
+  );
+}
+
+export function InventoryLocationCreateScreen({ adapter, canRead, canManage, onBack }: BaseProps) {
+  if (!canRead || !adapter)
+    return (
+      <Pending
+        title="Create InventoryLocation"
+        canRead={canRead}
+        adapter={adapter}
+        onBack={onBack}
+      />
+    );
+  return <InventoryLocationCreateContent adapter={adapter} canManage={canManage} onBack={onBack} />;
+}
+
+function InventoryLocationCreateContent({
+  adapter,
+  canManage,
+  onBack,
+}: {
+  adapter: SettingsAdapter;
+  canManage: boolean;
+  onBack: () => void;
+}) {
+  const load = useCallback(
+    async () => ({
+      branches: await adapter.listBranchOptions(),
+      warehouses: await adapter.listWarehouseOptions(),
+    }),
+    [adapter],
+  );
+  const { state, reload } = useAsync(load);
+  return (
+    <SettingsFrame title="Create InventoryLocation" onBack={onBack}>
+      {!canManage ? <ReadOnlyNotice /> : null}
+      <SettingsAsync state={state} reload={reload} empty={() => false}>
+        {({ branches, warehouses }) =>
+          canManage ? (
+            <InventoryLocationCreateForm
+              branchOptions={branches}
+              warehouseOptions={warehouses}
+              onSave={(draft) => adapter.createInventoryLocation(draft)}
+            />
+          ) : null
+        }
       </SettingsAsync>
     </SettingsFrame>
   );
@@ -602,7 +694,7 @@ function InventoryDetailContent({
   id: string;
   onBack: () => void;
 }) {
-  const load = useCallback(
+  const load = useCallback<() => Promise<WarehouseSettings | InventoryLocationSettings>>(
     () => (kind === "warehouse" ? adapter.getWarehouse(id) : adapter.getInventoryLocation(id)),
     [adapter, id, kind],
   );
@@ -865,49 +957,92 @@ function DeviceDetailContent({
 export function CommerceSettingsScreen({ adapter, canRead, canManage, onBack }: BaseProps) {
   if (!canRead || !adapter)
     return <Pending title="Commerce" canRead={canRead} adapter={adapter} onBack={onBack} />;
+  return <CommerceSettingsContent adapter={adapter} canManage={canManage} onBack={onBack} />;
+}
+
+function CommerceSettingsContent({
+  adapter,
+  canManage,
+  onBack,
+}: {
+  adapter: SettingsAdapter;
+  canManage: boolean;
+  onBack: () => void;
+}) {
+  const load = useCallback(
+    async () => ({
+      value: await adapter.getCommerce(),
+      brands: await adapter.listBrandOptions(),
+      locations: await adapter.listInventoryLocationOptions(),
+    }),
+    [adapter],
+  );
+  const { state, reload } = useAsync(load);
   return (
-    <SimpleFormContent
-      title="Commerce"
-      adapter={adapter}
-      canManage={canManage}
-      onBack={onBack}
-      load={() => adapter.getCommerce()}
-      render={(value) => (
-        <CommerceForm value={value} onSave={(draft) => adapter.updateCommerce(draft)} />
-      )}
-      read={(value) => (
-        <>
-          <SettingsSection title="Storefront">
-            <InfoRow label="Brand/context" value={value.storefront.brandId ?? "Not set"} />
-            <InfoRow
-              label="Fulfillment InventoryLocation"
-              value={value.storefront.fulfillmentInventoryLocationId ?? "Not set"}
+    <SettingsFrame title="Commerce" onBack={onBack}>
+      {!canManage ? <ReadOnlyNotice /> : null}
+      <SettingsAsync state={state} reload={reload} empty={() => false}>
+        {({ value, brands, locations }) =>
+          canManage ? (
+            <CommerceForm
+              value={value}
+              brandOptions={brands}
+              locationOptions={locations}
+              onSave={(draft) => adapter.updateCommerce(draft)}
             />
-            <InfoRow label="Currency" value={value.storefront.currency} />
-            <InfoRow label="COD" value={value.storefront.codEnabled ? "Enabled" : "Disabled"} />
-          </SettingsSection>
-          <SettingsSection title="Returns">
-            <InfoRow label="Returns" value={value.returns.enabled ? "Enabled" : "Disabled"} />
-            <InfoRow label="Window" value={`${value.returns.windowDays} days`} />
-            <InfoRow
-              label="Manual refunds"
-              value={value.returns.manualRefundsEnabled ? "Enabled" : "Disabled"}
-            />
-            <InfoRow
-              label="Maximum manual refund"
-              value={
-                value.returns.maxManualRefundMinor === null
-                  ? "Not set"
-                  : String(value.returns.maxManualRefundMinor)
-              }
-            />
-            {value.returns.allowedReasons ? (
-              <InfoRow label="Allowed reasons" value={value.returns.allowedReasons.join(", ")} />
-            ) : null}
-          </SettingsSection>
-        </>
-      )}
-    />
+          ) : (
+            <>
+              <SettingsSection title="Storefront">
+                {value.storefronts.length ? (
+                  value.storefronts.map((storefront) => (
+                    <View key={storefront.brandId} style={{ gap: 6 }}>
+                      <InfoRow label="Brand/context" value={storefront.brandName} />
+                      <InfoRow
+                        label="Fulfillment InventoryLocation"
+                        value={storefront.fulfillmentInventoryLocationId}
+                      />
+                      <InfoRow label="Currency" value={storefront.currency} />
+                      <InfoRow label="COD" value={storefront.codEnabled ? "Enabled" : "Disabled"} />
+                    </View>
+                  ))
+                ) : (
+                  <Body>No Storefront checkout settings configured.</Body>
+                )}
+              </SettingsSection>
+              <SettingsSection title="Returns">
+                <InfoRow label="Returns" value={value.returns.enabled ? "Enabled" : "Disabled"} />
+                <InfoRow
+                  label="Window"
+                  value={
+                    value.returns.windowDays === null
+                      ? "Not set"
+                      : `${value.returns.windowDays} days`
+                  }
+                />
+                <InfoRow
+                  label="Manual refunds"
+                  value={value.returns.manualRefundsEnabled ? "Enabled" : "Disabled"}
+                />
+                <InfoRow
+                  label="Maximum manual refund"
+                  value={
+                    value.returns.maxManualRefundMinor === null
+                      ? "Not set"
+                      : String(value.returns.maxManualRefundMinor)
+                  }
+                />
+                {value.returns.allowedReasons ? (
+                  <InfoRow
+                    label="Allowed reasons"
+                    value={value.returns.allowedReasons.join(", ")}
+                  />
+                ) : null}
+              </SettingsSection>
+            </>
+          )
+        }
+      </SettingsAsync>
+    </SettingsFrame>
   );
 }
 
@@ -920,17 +1055,25 @@ export function ReceiptSettingsScreen({ adapter, canRead, canManage, onBack }: B
       adapter={adapter}
       canManage={canManage}
       onBack={onBack}
-      load={() => adapter.getReceipt()}
-      render={(value) => (
-        <ReceiptForm value={value} onSave={(draft) => adapter.updateReceipt(draft)} />
+      load={async () => ({
+        receipt: await adapter.getReceipt(),
+        branches: await adapter.listBranchOptions(),
+      })}
+      render={({ receipt, branches }) => (
+        <ReceiptForm
+          value={receipt}
+          branchOptions={branches}
+          onBranchChange={(branchId) => adapter.getReceipt(branchId)}
+          onSave={(draft) => adapter.updateReceipt(draft)}
+        />
       )}
-      read={(value) => (
+      read={({ receipt: value }) => (
         <>
           <InfoRow label="Business name" value={value.businessDisplayName} />
           <InfoRow label="Legal name" value={value.legalName} />
           <InfoRow label="Tax identifier" value={value.taxIdentifier} />
-          <InfoRow label="Branch address" value={value.branchAddress} />
-          <InfoRow label="Branch contact" value={value.branchContact} />
+          <InfoRow label="Branch address" value={value.branchAddressLine1} />
+          <InfoRow label="Branch contact" value={value.branchContactPhone} />
           <InfoRow label="Receipt footer" value={value.footer} />
         </>
       )}
@@ -947,7 +1090,7 @@ interface BaseProps {
 function Pending({
   title,
   canRead,
-  adapter,
+  adapter: _adapter,
   onBack,
 }: {
   title: string;
@@ -955,14 +1098,8 @@ function Pending({
   adapter: SettingsAdapter | null;
   onBack: () => void;
 }) {
-  return (
-    <SettingsUnavailable
-      title={title}
-      canRead={canRead}
-      transportPending={canRead && adapter === null}
-      onBack={onBack}
-    />
-  );
+  void _adapter;
+  return <SettingsUnavailable title={title} canRead={canRead} onBack={onBack} />;
 }
 
 function EntityList<T>({
@@ -1032,6 +1169,7 @@ function LifecycleActions({
   noun: string;
   onChange: (status: "active" | "inactive") => Promise<unknown>;
 }) {
+  const [action, setAction] = useState<ActionState>({ status: "idle" });
   return (
     <SettingsSection title="Lifecycle">
       <Body>Referenced commercial entities are deactivated or archived, never deleted.</Body>
@@ -1039,8 +1177,12 @@ function LifecycleActions({
         label={status === "active" ? `Deactivate ${noun}` : `Reactivate ${noun}`}
         confirmLabel={status === "active" ? "Confirm deactivation" : "Confirm reactivation"}
         testID="settings-lifecycle"
-        onConfirm={() => void onChange(status === "active" ? "inactive" : "active")}
+        disabled={action.status === "saving"}
+        onConfirm={() =>
+          void runAction(onChange(status === "active" ? "inactive" : "active"), setAction)
+        }
       />
+      <ActionFeedback state={action} />
     </SettingsSection>
   );
 }
@@ -1080,7 +1222,24 @@ function InventoryDetailPanel({
 }) {
   const [name, setName] = useState(value.displayName);
   const [capabilities, setCapabilities] = useState(value.capabilities);
+  const [action, setAction] = useState<ActionState>({ status: "idle" });
   const location = "parentName" in value ? value : null;
+  const warehouse = "timezone" in value ? value : null;
+  const [warehouseFields, setWarehouseFields] = useState(() =>
+    warehouse
+      ? {
+          timezone: warehouse.timezone,
+          addressLine1: warehouse.addressLine1,
+          addressLine2: warehouse.addressLine2,
+          city: warehouse.city,
+          region: warehouse.region,
+          postalCode: warehouse.postalCode,
+          countryCode: warehouse.countryCode,
+          contactEmail: warehouse.contactEmail,
+          contactPhone: warehouse.contactPhone,
+        }
+      : null,
+  );
   return (
     <View style={{ gap: 12 }}>
       <Title>{value.displayName}</Title>
@@ -1095,6 +1254,14 @@ function InventoryDetailPanel({
           <InfoRow label="Location type · read-only" value={location.locationType} />
         </>
       ) : null}
+      {warehouse && !canManage ? (
+        <>
+          <InfoRow label="Timezone" value={warehouse.timezone} />
+          <InfoRow label="Address" value={warehouse.addressLine1} />
+          <InfoRow label="Contact email" value={warehouse.contactEmail} />
+          <InfoRow label="Contact phone" value={warehouse.contactPhone} />
+        </>
+      ) : null}
       {canManage ? (
         <>
           <TextField
@@ -1103,20 +1270,101 @@ function InventoryDetailPanel({
             onChangeText={setName}
             testID="inventory-display-name"
           />
+          {warehouseFields ? (
+            <>
+              <TextField
+                label="Timezone"
+                value={warehouseFields.timezone}
+                onChangeText={(timezone) => setWarehouseFields({ ...warehouseFields, timezone })}
+              />
+              <TextField
+                label="Address line 1"
+                value={warehouseFields.addressLine1}
+                onChangeText={(addressLine1) =>
+                  setWarehouseFields({ ...warehouseFields, addressLine1 })
+                }
+              />
+              <TextField
+                label="Address line 2"
+                value={warehouseFields.addressLine2}
+                onChangeText={(addressLine2) =>
+                  setWarehouseFields({ ...warehouseFields, addressLine2 })
+                }
+              />
+              <TextField
+                label="City"
+                value={warehouseFields.city}
+                onChangeText={(city) => setWarehouseFields({ ...warehouseFields, city })}
+              />
+              <TextField
+                label="Region"
+                value={warehouseFields.region}
+                onChangeText={(region) => setWarehouseFields({ ...warehouseFields, region })}
+              />
+              <TextField
+                label="Postal code"
+                value={warehouseFields.postalCode}
+                onChangeText={(postalCode) =>
+                  setWarehouseFields({ ...warehouseFields, postalCode })
+                }
+              />
+              <TextField
+                label="Country code"
+                value={warehouseFields.countryCode}
+                onChangeText={(countryCode) =>
+                  setWarehouseFields({ ...warehouseFields, countryCode: countryCode.toUpperCase() })
+                }
+              />
+              <TextField
+                label="Contact email"
+                value={warehouseFields.contactEmail}
+                onChangeText={(contactEmail) =>
+                  setWarehouseFields({ ...warehouseFields, contactEmail })
+                }
+                autoCapitalize="none"
+              />
+              <TextField
+                label="Contact phone"
+                value={warehouseFields.contactPhone}
+                onChangeText={(contactPhone) =>
+                  setWarehouseFields({ ...warehouseFields, contactPhone })
+                }
+              />
+            </>
+          ) : null}
           <CapabilityEditor value={capabilities} onChange={setCapabilities} />
           <PrimaryButton
             label="Save operational capabilities"
             testID="save-inventory-settings"
-            onPress={() => void onSave({ ...value, displayName: name, capabilities })}
+            disabled={action.status === "saving"}
+            onPress={() =>
+              void runAction(
+                onSave({
+                  ...value,
+                  ...(warehouseFields ?? {}),
+                  displayName: name,
+                  capabilities,
+                }),
+                setAction,
+              )
+            }
           />
           <ConfirmButton
             label={value.status === "active" ? "Deactivate" : "Reactivate"}
             confirmLabel="Confirm lifecycle change"
             testID="inventory-lifecycle"
+            disabled={action.status === "saving"}
             onConfirm={() =>
-              void onSave({ ...value, status: value.status === "active" ? "inactive" : "active" })
+              void runAction(
+                onSave({
+                  ...value,
+                  status: value.status === "active" ? "inactive" : "active",
+                }),
+                setAction,
+              )
             }
           />
+          <ActionFeedback state={action} />
         </>
       ) : (
         <CapabilitySummary value={capabilities} />
@@ -1133,42 +1381,46 @@ function CapabilityEditor({
 }) {
   return (
     <SettingsSection title="Capability flags">
-      {(Object.keys(value) as Array<keyof CapabilityFlags>).map((key) => (
-        <SelectField
-          key={key}
-          label={capabilityLabel(key)}
-          options={[
-            { value: "yes", label: "Enabled" },
-            { value: "no", label: "Disabled" },
-          ]}
-          selected={value[key] ? "yes" : "no"}
-          onSelect={(v) => onChange({ ...value, [key]: v === "yes" })}
-          testIDPrefix={`capability-${key}`}
-        />
-      ))}
+      {(Object.keys(value) as Array<keyof CapabilityFlags>)
+        .filter((key) => value[key] !== undefined)
+        .map((key) => (
+          <SelectField
+            key={key}
+            label={capabilityLabel(key)}
+            options={[
+              { value: "yes", label: "Enabled" },
+              { value: "no", label: "Disabled" },
+            ]}
+            selected={value[key] === true ? "yes" : "no"}
+            onSelect={(v) => onChange({ ...value, [key]: v === "yes" })}
+            testIDPrefix={`capability-${key}`}
+          />
+        ))}
     </SettingsSection>
   );
 }
 function CapabilitySummary({ value }: { value: CapabilityFlags }) {
   return (
     <SettingsSection title="Capability flags">
-      {(Object.keys(value) as Array<keyof CapabilityFlags>).map((key) => (
-        <InfoRow
-          key={key}
-          label={capabilityLabel(key)}
-          value={value[key] ? "Enabled" : "Disabled"}
-        />
-      ))}
+      {(Object.keys(value) as Array<keyof CapabilityFlags>)
+        .filter((key) => value[key] !== undefined)
+        .map((key) => (
+          <InfoRow
+            key={key}
+            label={capabilityLabel(key)}
+            value={value[key] === true ? "Enabled" : "Disabled"}
+          />
+        ))}
     </SettingsSection>
   );
 }
 function capabilityLabel(key: keyof CapabilityFlags) {
   return {
-    canReceive: "Receive",
-    canAdjust: "Adjust",
-    canTransferFrom: "Transfer origin",
-    canTransferTo: "Transfer destination",
-    canFulfill: "Fulfillment",
+    sellable: "Sellable",
+    receiving: "Receiving",
+    transferOrigin: "Transfer origin",
+    transferDestination: "Transfer destination",
+    fulfillment: "Fulfillment",
   }[key];
 }
 
@@ -1186,10 +1438,16 @@ function DevicePanel({
   onRevoke: () => Promise<unknown>;
 }) {
   const [selected, setSelected] = useState(device.registerId ?? "");
+  const [action, setAction] = useState<ActionState>({ status: "idle" });
   return (
     <View style={{ gap: 12 }}>
       <Title>{device.displayName}</Title>
       <Badge label={device.status} />
+      <InfoRow label="Installation" value={device.installationId} />
+      <InfoRow label="Device type" value={device.deviceType} />
+      <InfoRow label="Platform" value={device.platform ?? "Not reported"} />
+      <InfoRow label="OS version" value={device.osVersion ?? "Not reported"} />
+      <InfoRow label="Client version" value={device.clientVersion ?? "Not reported"} />
       <InfoRow label="Current Register" value={device.registerName ?? "Unassigned"} />
       <InfoRow label="Last seen" value={device.lastSeenAt ?? "Never"} />
       {canManage && device.status !== "revoked" ? (
@@ -1204,19 +1462,44 @@ function DevicePanel({
           <PrimaryButton
             label="Save Register assignment"
             testID="assign-device"
-            disabled={!selected}
-            onPress={() => void onAssign(selected)}
+            disabled={!selected || action.status === "saving"}
+            onPress={() => void runAction(onAssign(selected), setAction)}
           />
           <ConfirmButton
             label="Revoke Device"
             confirmLabel="Confirm Device revocation"
             testID="revoke-device"
-            onConfirm={() => void onRevoke()}
+            disabled={action.status === "saving"}
+            onConfirm={() => void runAction(onRevoke(), setAction)}
           />
+          <ActionFeedback state={action} />
         </>
       ) : null}
     </View>
   );
+}
+
+type ActionState = { status: "idle" | "saving" } | { status: "error"; error: unknown };
+
+function ActionFeedback({ state }: { state: ActionState }) {
+  if (state.status !== "error") return null;
+  const described = describeSettingsError(state.error);
+  return (
+    <View testID={`settings-action-error-${described.kind}`} style={{ gap: 4 }}>
+      <Title>{described.heading}</Title>
+      <Body>{described.message}</Body>
+    </View>
+  );
+}
+
+async function runAction(promise: Promise<unknown>, setState: (state: ActionState) => void) {
+  setState({ status: "saving" });
+  try {
+    await promise;
+    setState({ status: "idle" });
+  } catch (error) {
+    setState({ status: "error", error });
+  }
 }
 
 function SimpleFormContent<T>({

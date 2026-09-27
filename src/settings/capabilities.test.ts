@@ -15,5 +15,11 @@ describe("settingsCapabilities", () => {
       access: { ...context.access, settings: { canRead: true, canManage: false } },
     };
     expect(settingsCapabilities(withSettings)).toEqual({ canRead: true, canManage: false });
+    expect(
+      settingsCapabilities({
+        ...context,
+        access: { ...context.access, settings: { canRead: false, canManage: true } },
+      }),
+    ).toEqual({ canRead: false, canManage: true });
   });
 });

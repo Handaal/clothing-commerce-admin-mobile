@@ -1,95 +1,70 @@
-# Phase 2R-B — Admin operational settings preparation
+# Phase 2R-B — Admin operational settings
 
-Phase 2R-B prepares the Admin Mobile Settings experience while the canonical Phase 2R API and SDK
-0.14.0 are being completed. It deliberately contains no guessed endpoints, wire DTOs, API source
-imports, production mock transport, database access, POS selling flow, or receipt layout designer.
+Phase 2R-B is integrated against the canonical Commerce SDK **0.14.0**. The exact vendored artifact is
+`vendor/shifted-clothing-commerce-sdk-0.14.0.tgz`, SHA-256
+`f6a666241c135c302829d78f22e601deaffc963e102570db0ee667703b4bf69a`. The Settings screens depend on
+Admin-owned view-models; `src/settings/adapter.ts` is the only SDK DTO and method boundary.
 
-## Authorization and navigation
+## Authorization and mutation safety
 
-The optional future `/me/context` guidance is read defensively as
-`access.settings?: { canRead, canManage }`. Missing or malformed guidance denies access.
+`getContext().access.settings?: { canRead, canManage }` is typed by the SDK and denied by default when
+missing. The flags are independent: `canRead` exposes navigation and read surfaces, while `canManage`
+exposes writes. They are UX guidance only; the API authorizes every request tenant-wide.
 
-- `canRead` shows Settings navigation and permits list/detail screens.
-- `canManage` shows create, edit, lifecycle, Device revoke, and Register assignment actions.
-- Read-only users retain every readable setting while management actions are hidden.
-- This is presentation guidance only. The Commerce API remains authoritative for every operation.
+All writes use SDK idempotency inputs. The adapter coalesces an in-flight duplicate and retains the
+same key for an ambiguous network/5xx retry; definitive rejection or success retires the key. The SDK
+owns the `Idempotency-Key` header and the server owns exact replay/conflict behavior.
 
-Prepared routes:
+The client never decides whether commercial history exists. Canonical `CURRENCY_LOCKED` responses for
+Tenant, Register, and Storefront currencies are shown as a concise non-bypassable restriction.
+Brand/Branch/Warehouse/Register codes, InventoryLocation parent/type, and Register Branch are absent
+from update requests and shown read-only after creation. Organization records use active/inactive or
+archived lifecycle changes; no hard-delete operation exists.
 
-```text
-/settings
-/settings/business
-/settings/brands                 /settings/brands/new                 /settings/brands/[brandId]
-/settings/branches               /settings/branches/new               /settings/branches/[branchId]
-/settings/inventory              /settings/warehouses/[warehouseId]
-                                 /settings/inventory-locations/[locationId]
-/settings/registers              /settings/registers/new              /settings/registers/[registerId]
-/settings/devices                /settings/devices/[deviceId]
-/settings/commerce
-/settings/receipt
-```
+## Operational scope
 
-The Settings home stays compact: Business, Brands, Branches, Inventory, Registers & Devices,
-Commerce, and Receipt. It is not one giant form.
+- **Business:** display/legal name, contact email/phone, timezone, country code, tax identifier, default
+  currency, and read-only tenant slug/identity.
+- **Brands:** paged list/detail, create, mutable names, lifecycle, and immutable code.
+- **Branches:** paged list/detail, create/update, structured address/contact, timezone, fulfillment,
+  click-and-collect, same-Branch default InventoryLocation, receipt footer, Brand eligibility, and
+  lifecycle.
+- **Warehouses:** paged list/detail, create/update, address/contact/timezone, operational capability
+  flags, and lifecycle. Warehouse remains distinct from Branch.
+- **InventoryLocations:** paged list/detail and creation beneath exactly one selected Branch or
+  Warehouse. Parent, code, and location type are read-only after creation; capability flags and
+  lifecycle remain editable. InventoryLocation remains distinct from Register.
+- **Registers:** paged list/detail, create/update, selected Branch/default InventoryLocation, selling
+  currency, and lifecycle. Branch and code become read-only after creation.
+- **Devices:** governance-only list/detail, safe installation metadata, current Register assignment,
+  reassign, and revoke. Enrollment, credential creation/rotation, offline bootstrap, and private-key
+  material are never rendered or called.
+- **Storefront:** Brand context, fulfillment InventoryLocation, currency, and COD only. Theme,
+  deployment identity, payment-gateway, shipping-engine, and publication settings are absent.
+- **Returns:** enabled, optional window, allowed reasons, manual-refund enablement, and maximum manual
+  refund. The server owns integrity ceilings and stored policy snapshots; there is no return workflow.
+- **Receipt identity:** Tenant display/legal name and tax id plus Branch address/contact/footer, with a
+  fixed preview. There is no template or layout designer.
 
-## Prepared UX
+All cursor-backed lists follow every advertised page with the shared bounded paginator and fail closed
+if the safety cap is exceeded. Reads and writes require connectivity and never substitute mock data.
 
-- **Business:** display/legal names, contact email/phone, timezone, country, tax identifier, default
-  currency, and read-only tenant id/slug. Currency copy explicitly leaves history locks to the server.
-- **Brands:** list/create/detail/edit and reversible lifecycle. Code becomes read-only after creation;
-  there is no delete action or forced single-brand selector.
-- **Branches:** list/create/detail/edit, address/contact, timezone, fulfillment, click-and-collect,
-  default InventoryLocation, receipt footer, status, and lifecycle. Code becomes read-only.
-- **Inventory:** Warehouse and InventoryLocation remain explicit. Detail includes editable capability
-  flags and lifecycle. InventoryLocation parent and type are immutable after creation; there is no
-  re-parent or location-type edit UI. Creation routes are intentionally not invented before the SDK
-  confirms their canonical contracts.
-- **Registers:** list/create/detail/edit, Branch, default InventoryLocation, currency, and status.
-  Branch and code become read-only after creation. Server currency-history rejections get a dedicated,
-  non-bypassable message.
-- **Devices:** governance-only list/detail/status, current Register, assign/reassign, and revoke with
-  confirmation. Device and Register are visibly distinct. Enrollment, key rotation, offline bootstrap,
-  and private key material are absent.
-- **Commerce:** bounded Storefront controls (context, fulfillment InventoryLocation, currency, COD)
-  and Returns controls (enabled, window, manual refunds, maximum manual refund, optional reasons).
-  There is no gateway setup, shipping engine, theme builder, or returns workflow.
-- **Receipt:** tenant identity, Branch address/contact, receipt footer, and a small fixed-layout preview.
-  There is no drag/drop, HTML editor, or arbitrary block system.
+## Error UX
 
-Referenced commercial entities use Deactivate/Reactivate or Archive semantics, never hard delete.
-Loading, empty, classified error, access-denied, read-only, and explicit SDK-pending states are shared.
+Forbidden/session, validation (including invalid parent/default-location relationships), immutable
+field, historical currency lock, lifecycle/device/idempotency conflicts, network, and server failures
+map to concise operator guidance. Raw backend codes and messages never reach the screen.
 
-## Adapter boundary
+## Validation and runtime boundary
 
-`src/settings/adapter.ts` is the only future transport boundary. Components consume Admin-owned
-view-models from `src/settings/model.ts`; routes resolve a nullable adapter. In SDK 0.13.1 production,
-the resolver returns `null`, so a read-authorized route says exactly:
+Automated coverage exercises the SDK version/hash, capability guidance, read-only surfaces, every
+Settings domain mapping, immutable update payloads, both InventoryLocation parent kinds, lifecycle,
+Device governance, receipt identity/footer, canonical errors, and ambiguous-retry key reuse. The final
+repository gate is Expo dependency check, Prettier, ESLint, strict TypeScript, focused tests, the full
+suite, and Expo web export.
 
-> Canonical transport binding pending SDK 0.14.0.
+Authenticated acceptance must use the API repository's disposable/local fixture pattern and a real
+development Clerk session. It must never target production. When that identity/runtime is unavailable,
+the limitation is reported explicitly; automated transport-contract coverage is not weakened.
 
-It does not fabricate data or make hand-written HTTP requests. Tests inject a local view-model adapter
-only to exercise Admin-owned behavior.
-
-Presentation maps forbidden, validation, immutable-field, historical-lock, conflict, network, and
-server failures to concise messages. Raw backend codes never reach the screen.
-
-## Exact SDK 0.14.0 transport work remaining
-
-After the canonical artifact lands:
-
-1. Vendor the deterministic SDK 0.14.0 tarball and update the exact `package.json`/lockfile pin.
-2. Replace the defensive `unknown` capability read with the SDK-typed `access.settings` field.
-3. Implement `resolveSettingsAdapter` using only canonical tenant-client methods and DTOs.
-4. Map every SDK response/request at the adapter boundary; adjust Admin view-models only where the
-   canonical contract requires it. Do not leak SDK DTOs into screens.
-5. Confirm canonical pagination, query/filter fields, idempotency requirements, lifecycle enums,
-   Warehouse/InventoryLocation creation support, Branch Brand eligibility, allowed return reasons,
-   and receipt settings ownership before exposing any contract-dependent control.
-6. Route server field validation into local field presentation where the SDK supplies locations.
-7. Preserve exact retry/idempotency semantics for every settings mutation and refresh authoritative
-   server state after success.
-8. Add adapter mapping tests against real SDK 0.14.0 DTO fixtures, SDK artifact integrity checks, and
-   authenticated runtime acceptance for read-only and managing identities.
-
-Until those steps are complete, this branch is a preparation shell and is not a merge-ready transport
-integration.
+Phase 2S is not started here.
