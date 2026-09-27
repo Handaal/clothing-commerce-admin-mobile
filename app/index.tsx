@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { classifyCommerceError } from "../src/commerce/errors";
 import { promotionCapabilities } from "../src/promotions/capabilities";
 import { reportingCapabilities } from "../src/reporting/capabilities";
+import { settingsCapabilities } from "../src/settings/capabilities";
 import { useSession } from "../src/session/SessionProvider";
 import { staffCapabilities } from "../src/staff/capabilities";
 import {
@@ -117,6 +118,7 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
   const staff = staffCapabilities(context);
   const promotions = promotionCapabilities(context);
   const reports = reportingCapabilities(context);
+  const settings = settingsCapabilities(context);
   return (
     <Frame>
       <Title>{context.tenant.name}</Title>
@@ -175,6 +177,12 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
         }
       />
       <InfoRow label="Reporting" value={reports.canRead ? "Read" : "No read access"} />
+      <InfoRow
+        label="Settings"
+        value={
+          settings.canRead ? (settings.canManage ? "Read · manage" : "Read") : "No read access"
+        }
+      />
       <Divider />
       {access.catalog.canRead ? (
         <PrimaryButton
@@ -233,6 +241,15 @@ function ReadyScreen({ tenantId, context }: { tenantId: string; context: MeConte
           testID="open-reports"
           label="View reports"
           onPress={() => router.push("/reports")}
+        />
+      ) : null}
+      {/* Settings guidance is optional until SDK 0.14.0. Missing guidance is denied; the API remains
+          authoritative for every eventual read and mutation. */}
+      {settings.canRead ? (
+        <PrimaryButton
+          testID="open-settings"
+          label="Open settings"
+          onPress={() => router.push("/settings")}
         />
       ) : null}
       <SignOutButton />
