@@ -174,7 +174,7 @@ export function InventoryRecoveryPanel({
     async (entry: JournalEntry) => {
       dispatch({ type: "status", key: entry.commandKey, status: { kind: "replaying" } });
       try {
-        await journal.markSent(entry.commandKey);
+        await journal.markSent(entry.commandKey, entry.payloadIdentity);
       } catch {
         // The durable entry disappeared or storage failed: fail closed, do NOT transport.
         dispatch({ type: "unavailable", reason: "storage" });
@@ -183,7 +183,7 @@ export function InventoryRecoveryPanel({
       }
       try {
         const result = await runJournaledCommand(client, entry.payload, entry.commandKey);
-        await journal.recordAccepted(entry.commandKey, result);
+        await journal.recordAccepted(entry.commandKey, result, entry.payloadIdentity);
         dispatch({ type: "status", key: entry.commandKey, status: { kind: "accepted" } });
         onResolvedRef.current();
       } catch (error) {
@@ -200,7 +200,7 @@ export function InventoryRecoveryPanel({
         // Definitive rejection: it never applied. Move to `rejected` (kept until acknowledged) and
         // refresh authoritative inventory.
         try {
-          await journal.recordRejected(entry.commandKey);
+          await journal.recordRejected(entry.commandKey, entry.payloadIdentity);
         } catch {
           // Already resolved/gone; the rejection UI below still stands.
         }
@@ -218,7 +218,7 @@ export function InventoryRecoveryPanel({
   const acknowledge = useCallback(
     async (entry: JournalEntry) => {
       try {
-        await journal.acknowledge(entry.commandKey);
+        await journal.acknowledge(entry.commandKey, entry.payloadIdentity);
         dispatch({ type: "remove", key: entry.commandKey });
       } catch {
         // Refused (still unresolved) or storage failure — leave the row in place; never lose it.

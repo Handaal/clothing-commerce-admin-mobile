@@ -92,9 +92,10 @@ type OpKind = "receive" | "adjust" | "transfer";
  */
 export function InventoryOperations(props: InventoryOperationsProps) {
   const [activeOp, setActiveOp] = useState<OpKind | null>(null);
-  // While the recovery journal is corrupt/unavailable or a legacy journal needs reconciliation, the
-  // write forms are hidden (fail closed) — but read-only inventory above remains fully usable.
-  const [writesAvailable, setWritesAvailable] = useState(true);
+  // Fail closed at startup: write forms stay hidden until the recovery panel has validated the durable
+  // V2 store AND completed the legacy V1 check and reported availability. There is deliberately NO window
+  // where a mutation could be submitted before those checks finish. Read-only inventory stays usable.
+  const [writesAvailable, setWritesAvailable] = useState(false);
   const onAvailabilityChange = useCallback(
     (available: boolean) => setWritesAvailable(available),
     [],

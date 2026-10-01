@@ -311,19 +311,17 @@ Phase 2S-F4 closes four confirmed P1 defects in the merged F2 journal. The journ
    never called** when the durable prepare could not be secured. The in-memory store remains available
    only for tests/explicit DI.
 
-3. **Crash-safe native write.** The native file is the only known-good copy and is never truncated in
-   place. A write goes to a sibling `*.tmp`, which is fully written and then atomically renamed over the
-   target (`File.move({ overwrite: true })`). Recovery rule on read: the main file is authoritative; a
-   stray `*.tmp` means a replacement was interrupted before the rename, so the main file is still the
-   last valid journal and the temp is discarded. A relaunch always selects the last fully-written
-   journal deterministically.
+3. **Crash-safe native write.** The native file is written through a temp copy before replacing the live
+   file. (Phase 2S-F6 replaces this with a three-generation protocol — see below — because an Expo
+   overwrite-move is **not** atomic: it deletes the destination first, so a crash mid-move could erase
+   the only copy.)
 
 4. **Serialized journal transitions.** Every write — `prepare`, `markSent`, `recordAccepted`,
-   `recordRejected`, `acknowledge`, and recovery-panel replays — runs through one journal-wide async
-   mutex, eliminating the lost-update window where two overlapping forms (Receive + Adjust, Transfer +
-   Supplier Receive, or a recovery replay overlapping a new prepare) could clobber each other's
-   whole-document write and lose an entry. Because `InventoryScreen` creates one journal instance per
-   owner and shares it with every form and the recovery panel, the mutex covers the shared storage.
+   `recordRejected`, `acknowledge`, and recovery-panel replays — runs through a shared async mutex,
+   eliminating the lost-update window where two overlapping forms (Receive + Adjust, Transfer + Supplier
+   Receive, or a recovery replay overlapping a new prepare) could clobber each other's whole-document
+   write and lose an entry. (Phase 2S-F6 lifts this lock above the journal instance so it is shared
+   per-namespace across remounts and browser tabs — see below.)
 
 5. **Transition invariants.** Each transition verifies the target entry exists, is owned by this journal
    (tenant **and** membership), and is in a status that permits the change; otherwise it throws
@@ -352,6 +350,55 @@ Phase 2S-F4 closes four confirmed P1 defects in the merged F2 journal. The journ
    until dismissed). Corruption/storage failures and legacy quarantine render blocking, non-destructive
    notices and hide the write forms (via `onAvailabilityChange`) while read-only inventory stays usable;
    raw filesystem/localStorage errors are never shown (dev-only logging).
+
+## Phase 2S-F6 journal durability — generation protocol, namespace locking, strict validation
+
+Phase 2S-F6 closes four follow-up P1s that an independent verification found in F4.
+
+1. **Native generation protocol (not atomic move).** An Expo overwrite-move deletes its destination
+   first, so the F4 temp→move promotion had a crash window that could erase the only journal. The native
+   store (`createGenerationStore`, over an injectable `GenerationFs` seam) now keeps **three physical
+   generations** — `main`, `backup`, `temp` — each a complete copy carrying a monotonic `generation`.
+   Write (new generation `G = max valid generation + 1`): (1) write the full new content to `temp`;
+   (2) validate `temp`; (3) if `main` is valid, copy it to `backup` _before_ `main` is touched;
+   (4) write the new content over `main`; (5) validate `main`; (6) only then remove the now-stale `temp`
+   and `backup`. The invariant is that **at every interruption point at least one complete, valid
+   generation survives** (a crash between 4 and 5 leaves `temp` = G and `backup` = G-1). Startup recovery
+   independently validates every surviving generation and returns the one with the **highest generation**
+   (ties: `main` > `temp` > `backup`); reads NEVER delete anything (a stale `temp` is never removed before
+   a valid generation is chosen), and if files exist but none is valid the bytes are preserved and
+   `JournalCorruptError` is thrown — never an empty journal.
+
+2. **Namespace-scoped coordinator (+ web cross-tab).** Serialization is lifted above the `InventoryJournal`
+   instance into a module-level registry keyed by `(tenant, membership)` (`getNamespaceCoordinator`), so a
+   screen that remounts a brand-new journal over the same namespace shares one effective lock with the
+   old instance. On web each critical section is additionally wrapped in a `navigator.locks` request named
+   per namespace, serializing two browser tabs; where Web Locks is unavailable the in-process mutex still
+   protects a single runtime (cross-tab coordination is simply not offered, never silently faked).
+
+3. **Strict whole-document validation.** The persisted parser (`parsePersisted`) is strict: any single
+   defect — bad `version`/`generation`, a malformed or impossible entry (unknown status/operation, missing
+   tenant/membership/key, bad timestamp, invalid quantity/version, wrong payload shape), a duplicate key,
+   an illegal status/result combination (`accepted` without a result, `prepared` carrying one), or a
+   payload whose **recomputed identity** does not match the stored `payloadIdentity` — makes the WHOLE
+   document corrupt (`JournalCorruptError`). Entries are never silently filtered out. Recomputing the
+   identity from the stored payload prevents a damaged payload from being replayed under a stale key.
+
+4. **V1 blocks on all non-terminal evidence + fail-closed init.** Legacy V1 detection now blocks on any
+   non-acknowledged V1 entry for the tenant — including `accepted` (a committed, un-acknowledged legacy
+   mutation) and unknown statuses — and treats an unreadable or malformed V1 journal as blocking evidence
+   (never "no journal"). The Inventory write surface starts with writes **unavailable** and only enables
+   the forms after the V2 store has validated AND the V1 check has completed with no blocking state, so
+   there is no startup window in which a mutation could be submitted. A storage-unavailable namespace
+   hides ALL write forms for that owner (read-only inventory stays usable).
+
+5. **Transition identity (P2).** The lifecycle is strict `prepared → sent → (accepted | rejected)` — a
+   result is only recorded for a command that was actually dispatched. Transitions additionally accept an
+   `expectedIdentity` (the caller's payload fingerprint); a mismatch fails the transition, so a transition
+   can never mutate a row whose stored payload has diverged.
+
+6. **`supplierReference` (P2).** `normalizeReceivePayload` now keeps a document reference whenever
+   provided, independent of `supplierId`, matching the canonical API input (the UI is unchanged).
 
 ## Phase 2S-F2 Settings topology error UX
 

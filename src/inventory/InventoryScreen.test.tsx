@@ -127,7 +127,12 @@ beforeEach(() => {
   mocks.randomUUID.mockReset().mockReturnValueOnce("K1").mockReturnValueOnce("K2");
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // The screen now wires the real web durable store (localStorage); clear it so a journal written by
+  // one test never bleeds into the next and blocks its write forms.
+  localStorage.clear();
+});
 
 describe("InventoryScreen", () => {
   it("shows a loading state while inventory is being fetched", async () => {
@@ -282,9 +287,9 @@ describe("InventoryScreen", () => {
     );
     renderInventory();
     await screen.findByText("Linen Shirt");
-    expect(screen.getByTestId("open-receive")).toBeTruthy();
-    expect(screen.getByTestId("open-adjust")).toBeTruthy();
-    expect(screen.getByTestId("open-transfer")).toBeTruthy();
+    expect(await screen.findByTestId("open-receive")).toBeTruthy();
+    expect(await screen.findByTestId("open-adjust")).toBeTruthy();
+    expect(await screen.findByTestId("open-transfer")).toBeTruthy();
   });
 
   it("loads ACTIVE suppliers and offers them in the Receive form", async () => {
@@ -303,7 +308,7 @@ describe("InventoryScreen", () => {
         expect.objectContaining({ status: "active" }),
       ),
     );
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     expect(await screen.findByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeTruthy();
   });
 
@@ -315,7 +320,7 @@ describe("InventoryScreen", () => {
     renderInventory();
     await screen.findByText("Linen Shirt");
 
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     // No supplier selector appears, and the Receive form is fully usable — a legacy receipt.
     expect(screen.queryByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeNull();
     expect(screen.getByTestId("receive-submit")).toBeTruthy();
@@ -344,7 +349,7 @@ describe("InventoryScreen", () => {
     renderInventory();
 
     await screen.findByText("Linen Shirt");
-    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(await screen.findByTestId("open-adjust"));
     fireEvent.click(screen.getByTestId(`adjust-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`));
     fireEvent.change(screen.getByTestId("adjust-counted"), { target: { value: "23" } });
     fireEvent.click(screen.getByTestId("adjust-submit"));
@@ -363,7 +368,7 @@ describe("InventoryScreen", () => {
       ).toBe("24"),
     );
 
-    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(await screen.findByTestId("open-adjust"));
     fireEvent.click(await screen.findByTestId(`adjust-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`));
     fireEvent.change(screen.getByTestId("adjust-counted"), { target: { value: "23" } });
     fireEvent.click(screen.getByTestId("adjust-submit"));

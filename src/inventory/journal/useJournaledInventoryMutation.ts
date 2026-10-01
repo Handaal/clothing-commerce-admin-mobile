@@ -4,7 +4,12 @@ import { classifyCommerceError } from "../../commerce/errors";
 import { describeInventoryWriteError } from "../write-errors";
 import { runJournaledCommand, type JournaledInventoryClient } from "./command-runner";
 import type { InventoryJournal } from "./journal";
-import { JournalCorruptError, JournalStorageError, type JournalPayload } from "./model";
+import {
+  JournalCorruptError,
+  JournalStorageError,
+  payloadIdentity,
+  type JournalPayload,
+} from "./model";
 
 type ClassifiedError = ReturnType<typeof classifyCommerceError>;
 
@@ -99,11 +104,14 @@ export function useJournaledInventoryMutation<TResult extends object>(options: {
       const key = keyRef.current;
       const payload = payloadRef.current;
       if (key === null || payload === null) return;
+      // The expected payload identity guards every transition: if the stored entry's identity ever
+      // diverged from the command we are running, the transition fails rather than mutating the wrong row.
+      const identity = payloadIdentity(payload);
       inFlightRef.current = true;
       dispatch({ type: "submitting" });
       // Mark sent BEFORE transport. If the durable entry disappeared or storage failed, we must NOT
       // transport — the durable record is the only identity we have for an at-most-once replay.
-      void journal.markSent(key).then(
+      void journal.markSent(key, identity).then(
         () => {
           runJournaledCommand(client, payload, key).then(
             async (data) => {
@@ -111,7 +119,7 @@ export function useJournaledInventoryMutation<TResult extends object>(options: {
               // Transport already succeeded, so there is no duplication risk if recording the result
               // fails; record best-effort and still surface the canonical success to the operator.
               try {
-                await journal.recordAccepted(key, data);
+                await journal.recordAccepted(key, data, identity);
               } catch (error) {
                 logJournalIssue("recordAccepted", error);
               }
@@ -127,7 +135,7 @@ export function useJournaledInventoryMutation<TResult extends object>(options: {
               // never silently deleted.
               if (describeInventoryWriteError(classified).recovery !== "retry") {
                 try {
-                  await journal.recordRejected(key);
+                  await journal.recordRejected(key, identity);
                 } catch (rejectError) {
                   logJournalIssue("recordRejected", rejectError);
                 }
@@ -202,12 +210,15 @@ export function useJournaledInventoryMutation<TResult extends object>(options: {
     seqRef.current += 1; // invalidate any in-flight response from the abandoned operation
     inFlightRef.current = false;
     const key = keyRef.current;
+    const identity = payloadRef.current ? payloadIdentity(payloadRef.current) : undefined;
     keyRef.current = null;
     payloadRef.current = null;
     // A resolved (accepted/rejected) command is pruned on acknowledgement; the journal REFUSES to prune
     // an unresolved command, so an ambiguous command is intentionally left for the recovery surface.
     if (key !== null) {
-      void journal.acknowledge(key).catch((error) => logJournalIssue("acknowledge", error));
+      void journal
+        .acknowledge(key, identity)
+        .catch((error) => logJournalIssue("acknowledge", error));
     }
     dispatch({ type: "reset" });
   }, [journal]);

@@ -1,4 +1,5 @@
 import type { IdempotencyKeyFactory } from "../idempotency";
+import { getNamespaceCoordinator, type RunExclusive } from "./coordinator";
 import {
   isOwnedBy,
   isRecoverable,
@@ -23,15 +24,17 @@ import type { JournalStore } from "./store";
  * fingerprint the API scopes inventory idempotency to — so a command minted by one user can never be
  * seen or replayed by a different user on the same device/tenant.
  *
- * Every transition is a read-modify-write over the whole document, and ALL of them run through one
- * journal-wide mutex ({@link runExclusive}). This is essential: two overlapping forms (e.g. Receive and
- * Adjust) that each read the document, mutate their own entry, and write it back would otherwise clobber
- * each other and lose an entry — after which a mutation could be transported whose durable record had
- * vanished. Serializing every write eliminates that lost-update window on the shared storage instance.
+ * Every transition is a read-modify-write over the whole document, and ALL of them run through the
+ * NAMESPACE coordinator ({@link getNamespaceCoordinator}) — a single lock shared by every journal
+ * instance addressing the same (tenant, membership), including instances created across screen
+ * remounts, and (on web) across browser tabs. This eliminates the lost-update window where two
+ * overlapping writers clobber each other's whole-document write and lose an entry, after which a
+ * mutation could be transported whose durable record had vanished.
  *
- * Transitions are also guarded by invariants: the target entry must exist, be owned by this journal, and
- * be in a status that permits the requested change. A transition against a missing/foreign/wrong-status
- * entry FAILS ({@link JournalTransitionError}) rather than silently continuing or recreating a key.
+ * Transitions are also guarded by invariants: the target entry must exist, be owned by this journal, be
+ * in a status that permits the requested change, and — when the caller supplies it — still carry the
+ * expected payload identity. A transition that fails any check FAILS ({@link JournalTransitionError})
+ * rather than silently continuing or recreating a key.
  */
 export interface InventoryJournal {
   /**
@@ -41,23 +44,23 @@ export interface InventoryJournal {
    * returned entry is always in `prepared`.
    */
   prepare(payload: JournalPayload): Promise<JournalEntry>;
-  /** Move a prepared command to `sent` at the instant the request is dispatched (idempotent re-send). */
-  markSent(commandKey: string): Promise<void>;
-  /** Record a definitive server success and move the command to `accepted` (resolved, kept until ack). */
-  recordAccepted(commandKey: string, result: unknown): Promise<void>;
+  /** Move a prepared/sent command to `sent` at dispatch (idempotent re-send on recovery replay). */
+  markSent(commandKey: string, expectedIdentity?: string): Promise<void>;
+  /** Record a definitive server success and move a `sent` command to `accepted` (kept until ack). */
+  recordAccepted(commandKey: string, result: unknown, expectedIdentity?: string): Promise<void>;
   /**
-   * Record a DEFINITIVE server rejection (validation/business/auth) that did not apply. The entry is
-   * kept in `rejected` (resolved, not terminal) so the operator sees the outcome and dismisses it
-   * deliberately — it is never silently deleted.
+   * Record a DEFINITIVE server rejection (validation/business/auth) of a `sent` command that did not
+   * apply. The entry is kept in `rejected` (resolved, not terminal) so the operator sees the outcome and
+   * dismisses it deliberately — it is never silently deleted.
    */
-  recordRejected(commandKey: string): Promise<void>;
+  recordRejected(commandKey: string, expectedIdentity?: string): Promise<void>;
   /**
    * Acknowledge a RESOLVED command (accepted/rejected) once the operator has seen it, pruning it.
    * Idempotent if the entry is already gone. Refuses to prune a still-unresolved command — an ambiguous
    * command can never be discarded merely to dismiss it (that would delete the only durable idempotency
    * identity for a command the server may already have committed).
    */
-  acknowledge(commandKey: string): Promise<void>;
+  acknowledge(commandKey: string, expectedIdentity?: string): Promise<void>;
   /**
    * Every not-yet-acknowledged command for this owner, oldest first: unresolved commands that still need
    * completing AND resolved commands that still need acknowledging. This is the full recovery set that
@@ -70,26 +73,16 @@ export interface InventoryJournal {
   get(commandKey: string): Promise<JournalEntry | null>;
 }
 
-/** A minimal async mutex: chains work so only one critical section touches the store at a time. */
-function createMutex(): <T>(work: () => Promise<T>) => Promise<T> {
-  let tail: Promise<unknown> = Promise.resolve();
-  return <T>(work: () => Promise<T>): Promise<T> => {
-    const run = tail.then(work, work);
-    // Keep the chain alive regardless of individual outcomes; never let a rejection break serialization.
-    tail = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
-  };
-}
-
-/** Which current statuses permit each transition. A transition from any other status is an invariant error. */
+/**
+ * Which current statuses permit each transition. The strict lifecycle is
+ * `prepared → sent → (accepted | rejected)`: a result is only ever recorded for a command that was
+ * actually dispatched (`sent`), never straight from `prepared`. `markSent` additionally tolerates a
+ * `sent` source so a recovery replay can re-dispatch the same command idempotently.
+ */
 const ALLOWED_FROM: Record<"markSent" | "recordAccepted" | "recordRejected", JournalStatus[]> = {
-  // Re-sending an already-`sent` command is legitimate (recovery replay), so `sent` is allowed too.
   markSent: ["prepared", "sent"],
-  recordAccepted: ["prepared", "sent"],
-  recordRejected: ["prepared", "sent"],
+  recordAccepted: ["sent"],
+  recordRejected: ["sent"],
 };
 
 export function createInventoryJournal(
@@ -98,10 +91,14 @@ export function createInventoryJournal(
   generateKey: IdempotencyKeyFactory,
   now: () => string = () => new Date().toISOString(),
 ): InventoryJournal {
-  const runExclusive = createMutex();
+  const runExclusive: RunExclusive = getNamespaceCoordinator(owner);
 
   /** Locate an owned entry by key, or throw a transition error if it is missing or foreign. */
-  function requireOwned(entries: JournalEntry[], commandKey: string): JournalEntry {
+  function requireOwned(
+    entries: JournalEntry[],
+    commandKey: string,
+    expectedIdentity?: string,
+  ): JournalEntry {
     const entry = entries.find((e) => e.commandKey === commandKey);
     if (!entry) {
       throw new JournalTransitionError(commandKey, "The journal entry no longer exists.");
@@ -112,19 +109,26 @@ export function createInventoryJournal(
         "The journal entry belongs to a different user.",
       );
     }
+    if (expectedIdentity !== undefined && entry.payloadIdentity !== expectedIdentity) {
+      throw new JournalTransitionError(
+        commandKey,
+        "The journal entry's payload identity has changed.",
+      );
+    }
     return entry;
   }
 
-  /** Apply a status transition to one owned entry, enforcing the allowed-from invariant. */
+  /** Apply a status transition to one owned entry, enforcing the allowed-from and identity invariants. */
   function transition(
     kind: "markSent" | "recordAccepted" | "recordRejected",
     commandKey: string,
     to: JournalStatus,
+    expectedIdentity: string | undefined,
     extra: Partial<JournalEntry> = {},
   ): Promise<void> {
     return runExclusive(async () => {
       const document = await store.read();
-      const entry = requireOwned(document.entries, commandKey);
+      const entry = requireOwned(document.entries, commandKey, expectedIdentity);
       if (!ALLOWED_FROM[kind].includes(entry.status)) {
         throw new JournalTransitionError(
           commandKey,
@@ -170,14 +174,16 @@ export function createInventoryJournal(
         return entry;
       }),
 
-    markSent: (commandKey) => transition("markSent", commandKey, "sent"),
+    markSent: (commandKey, expectedIdentity) =>
+      transition("markSent", commandKey, "sent", expectedIdentity),
 
-    recordAccepted: (commandKey, result) =>
-      transition("recordAccepted", commandKey, "accepted", { result }),
+    recordAccepted: (commandKey, result, expectedIdentity) =>
+      transition("recordAccepted", commandKey, "accepted", expectedIdentity, { result }),
 
-    recordRejected: (commandKey) => transition("recordRejected", commandKey, "rejected"),
+    recordRejected: (commandKey, expectedIdentity) =>
+      transition("recordRejected", commandKey, "rejected", expectedIdentity),
 
-    acknowledge: (commandKey) =>
+    acknowledge: (commandKey, expectedIdentity) =>
       runExclusive(async () => {
         const document = await store.read();
         const entry = document.entries.find((e) => e.commandKey === commandKey);
@@ -186,6 +192,12 @@ export function createInventoryJournal(
           throw new JournalTransitionError(
             commandKey,
             "The journal entry belongs to a different user.",
+          );
+        }
+        if (expectedIdentity !== undefined && entry.payloadIdentity !== expectedIdentity) {
+          throw new JournalTransitionError(
+            commandKey,
+            "The journal entry's payload identity has changed.",
           );
         }
         // Refuse to discard an ambiguous/unresolved command: its durable key is the only identity we

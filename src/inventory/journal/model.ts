@@ -167,8 +167,10 @@ function optionalText(value: string | undefined): string | undefined {
 
 /**
  * Normalize command args into a canonical journal payload. Optional fields that are blank are dropped
- * so that "no note" and "note of spaces" are the same command, and a supplier reference is only kept
- * alongside a supplier. Normalization is what makes {@link payloadIdentity} a reliable equivalence key.
+ * so that "no note" and "note of spaces" are the same command. A `supplierReference` (document reference)
+ * persists whenever it is provided, independent of `supplierId` — this matches the canonical API input,
+ * which permits a reference without a supplier. Normalization is what makes {@link payloadIdentity} a
+ * reliable equivalence key.
  */
 export function normalizeReceivePayload(args: ReceiveArgs): ReceiveJournalPayload {
   const hasSupplier = typeof args.supplierId === "string" && args.supplierId.length > 0;
@@ -179,7 +181,7 @@ export function normalizeReceivePayload(args: ReceiveArgs): ReceiveJournalPayloa
     quantity: args.quantity,
     ...(optionalText(args.note) ? { note: optionalText(args.note) } : {}),
     ...(hasSupplier ? { supplierId: args.supplierId } : {}),
-    ...(hasSupplier && optionalText(args.supplierReference)
+    ...(optionalText(args.supplierReference)
       ? { supplierReference: optionalText(args.supplierReference) }
       : {}),
   };

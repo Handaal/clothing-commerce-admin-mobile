@@ -175,7 +175,7 @@ describe("inventory mutation crash recovery", () => {
     api.setLossy(true);
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
     renderOps(journal, api.client);
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
@@ -211,7 +211,7 @@ describe("inventory mutation crash recovery", () => {
     // Receive succeeds: server commits and the client records `accepted`.
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
     renderOps(journal, api.client);
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
@@ -261,7 +261,7 @@ describe("inventory mutation crash recovery", () => {
       receiveSuppliers: [{ value: SUPPLIER_A, label: "Nile Textiles · SUP-001" }],
     });
 
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     fireEvent.click(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`));
@@ -304,7 +304,7 @@ describe("inventory mutation crash recovery", () => {
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("KA"));
     renderOps(journal, api.client);
 
-    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(await screen.findByTestId("open-adjust"));
     fireEvent.click(screen.getByTestId(`adjust-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`));
     fireEvent.change(screen.getByTestId("adjust-counted"), { target: { value: "25" } });
     fireEvent.click(screen.getByTestId("adjust-submit"));
@@ -329,7 +329,7 @@ describe("inventory mutation crash recovery", () => {
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("KT"));
     renderOps(journal, api.client);
 
-    fireEvent.click(screen.getByTestId("open-transfer"));
+    fireEvent.click(await screen.findByTestId("open-transfer"));
     fireEvent.click(screen.getByTestId(`transfer-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`transfer-source-${INVENTORY_LOCATION_A}`));
     fireEvent.click(screen.getByTestId(`transfer-destination-${INVENTORY_LOCATION_B}`));
@@ -354,7 +354,7 @@ describe("inventory mutation crash recovery", () => {
     api.setLossy(true);
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("KC"));
     renderOps(journal, api.client);
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
@@ -381,7 +381,7 @@ describe("inventory mutation crash recovery", () => {
     api.setLossy(true);
     const journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
     renderOps(journal, api.client);
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
@@ -400,7 +400,7 @@ describe("inventory mutation crash recovery", () => {
     renderOps(journal, api.client);
 
     // First submit → ambiguous, left unresolved as K1.
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
@@ -426,7 +426,7 @@ describe("membership-scoped ownership (P1-4)", () => {
     // User A (same tenant/device) leaves an unresolved command.
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("KA"));
     renderOps(journal, api.client);
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
@@ -507,5 +507,23 @@ describe("durable storage failure (P1-2)", () => {
     // Write forms are hidden (fail closed); read-only inventory elsewhere is unaffected.
     expect(screen.queryByTestId("open-receive")).toBeNull();
     expect(api.client.receiveInventory).not.toHaveBeenCalled();
+  });
+});
+
+describe("fail-closed initialization (P1-4C)", () => {
+  it("hides write forms until the availability checks finish — no submission window at startup", async () => {
+    const store: JournalStore = createMemoryJournalStore();
+    const api = fakeApi();
+    const journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
+    renderOps(journal, api.client);
+
+    // Immediately after the first render — before the async V2/V1 checks resolve — every write form is
+    // absent, so there is no frame where a mutation could be submitted.
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(screen.queryByTestId("open-adjust")).toBeNull();
+    expect(screen.queryByTestId("open-transfer")).toBeNull();
+
+    // Only after the checks report availability do the forms appear.
+    await screen.findByTestId("open-receive");
   });
 });

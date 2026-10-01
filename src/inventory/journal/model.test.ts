@@ -32,7 +32,7 @@ describe("journal payload normalization", () => {
     expect(payloadIdentity(a)).toBe(payloadIdentity(b));
   });
 
-  it("keeps a supplier reference only alongside a supplier", () => {
+  it("keeps a supplier reference whenever provided, independent of a supplier", () => {
     const linked = normalizeReceivePayload({
       variantId: VARIANT,
       inventoryLocationId: LOCATION,
@@ -42,15 +42,24 @@ describe("journal payload normalization", () => {
     });
     expect(linked).toMatchObject({ supplierId: SUPPLIER, supplierReference: "GRN-1" });
 
-    // A reference without a supplier is dropped entirely (a legacy no-supplier receipt).
-    const unlinked = normalizeReceivePayload({
+    // The API permits a document reference without a supplier, so a reference-only receipt keeps the
+    // reference (and still omits the supplier). A blank reference is still dropped.
+    const referenceOnly = normalizeReceivePayload({
       variantId: VARIANT,
       inventoryLocationId: LOCATION,
       quantity: 2,
       supplierReference: "GRN-1",
     });
-    expect(unlinked).not.toHaveProperty("supplierId");
-    expect(unlinked).not.toHaveProperty("supplierReference");
+    expect(referenceOnly).not.toHaveProperty("supplierId");
+    expect(referenceOnly).toMatchObject({ supplierReference: "GRN-1" });
+
+    const blankReference = normalizeReceivePayload({
+      variantId: VARIANT,
+      inventoryLocationId: LOCATION,
+      quantity: 2,
+      supplierReference: "   ",
+    });
+    expect(blankReference).not.toHaveProperty("supplierReference");
   });
 
   it("gives a stable identity independent of key order but sensitive to real differences", () => {

@@ -147,7 +147,7 @@ describe("server-derived write capability UX", () => {
     expect(screen.queryByTestId("open-transfer")).toBeNull();
   });
 
-  it("offers Receive only at locations with canReceive", () => {
+  it("offers Receive only at locations with canReceive", async () => {
     const write: InventoryWriteAccess = {
       ...WRITE_ACCESS,
       locations: WRITE_LOCATIONS.map((location) => ({
@@ -159,12 +159,12 @@ describe("server-derived write capability UX", () => {
       <Harness client={client} generateKey={keyFactory("K1")} onRefresh={vi.fn()} write={write} />,
     );
 
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     expect(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`)).toBeTruthy();
     expect(screen.queryByTestId(`receive-location-${INVENTORY_LOCATION_B}`)).toBeNull();
   });
 
-  it("filters Transfer origins and destinations independently", () => {
+  it("filters Transfer origins and destinations independently", async () => {
     const write: InventoryWriteAccess = {
       ...WRITE_ACCESS,
       locations: WRITE_LOCATIONS.map((location) => ({
@@ -177,7 +177,7 @@ describe("server-derived write capability UX", () => {
       <Harness client={client} generateKey={keyFactory("K1")} onRefresh={vi.fn()} write={write} />,
     );
 
-    fireEvent.click(screen.getByTestId("open-transfer"));
+    fireEvent.click(await screen.findByTestId("open-transfer"));
     expect(screen.getByTestId(`transfer-source-${INVENTORY_LOCATION_A}`)).toBeTruthy();
     expect(screen.queryByTestId(`transfer-source-${INVENTORY_LOCATION_B}`)).toBeNull();
     expect(screen.getByTestId(`transfer-destination-${INVENTORY_LOCATION_B}`)).toBeTruthy();
@@ -203,7 +203,7 @@ describe("Receive stock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     typeInto("receive-quantity", "5");
@@ -232,7 +232,7 @@ describe("Receive stock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     typeInto("receive-quantity", "5");
@@ -257,7 +257,7 @@ describe("Receive stock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     typeInto("receive-quantity", "5");
@@ -281,7 +281,7 @@ describe("Receive stock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     typeInto("receive-quantity", "5");
@@ -310,7 +310,7 @@ describe("Adjust (reconcile)", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(await screen.findByTestId("open-adjust"));
     fireEvent.click(screen.getByTestId(`adjust-row-${rowKey(INVENTORY_LOCATION_A, VARIANT_A)}`));
     typeInto("adjust-counted", "25");
     fireEvent.click(screen.getByTestId("adjust-submit"));
@@ -327,7 +327,7 @@ describe("Adjust (reconcile)", () => {
     await waitFor(() => expect(onRefresh).toHaveBeenCalled());
   });
 
-  it("offers only rows from locations where adjustment is permitted", () => {
+  it("offers only rows from locations where adjustment is permitted", async () => {
     const write: InventoryWriteAccess = {
       ...WRITE_ACCESS,
       locations: WRITE_LOCATIONS.map((location) => ({
@@ -353,7 +353,7 @@ describe("Adjust (reconcile)", () => {
         items={items}
       />,
     );
-    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(await screen.findByTestId("open-adjust"));
     expect(
       screen.getByTestId(`adjust-row-${rowKey(INVENTORY_LOCATION_A, VARIANT_A)}`),
     ).toBeTruthy();
@@ -374,7 +374,7 @@ describe("Adjust (reconcile)", () => {
       <Harness client={client} generateKey={generateKey} onRefresh={onRefresh} />,
     );
 
-    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(await screen.findByTestId("open-adjust"));
     fireEvent.click(screen.getByTestId(`adjust-row-${rowKey(INVENTORY_LOCATION_A, VARIANT_A)}`));
     typeInto("adjust-counted", "25");
     fireEvent.click(screen.getByTestId("adjust-submit"));
@@ -394,7 +394,7 @@ describe("Adjust (reconcile)", () => {
         items={refreshedItems}
       />,
     );
-    fireEvent.click(screen.getByTestId("open-adjust"));
+    fireEvent.click(await screen.findByTestId("open-adjust"));
     fireEvent.click(screen.getByTestId(`adjust-row-${rowKey(INVENTORY_LOCATION_A, VARIANT_A)}`));
     typeInto("adjust-counted", "24");
     fireEvent.click(screen.getByTestId("adjust-submit"));
@@ -437,7 +437,7 @@ describe("Transfer stock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-transfer"));
+    fireEvent.click(await screen.findByTestId("open-transfer"));
     fireEvent.click(screen.getByTestId(`transfer-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`transfer-source-${INVENTORY_LOCATION_A}`));
     fireEvent.click(screen.getByTestId(`transfer-destination-${INVENTORY_LOCATION_B}`));
@@ -457,7 +457,7 @@ describe("Transfer stock", () => {
     await waitFor(() => expect(onRefresh).toHaveBeenCalled());
   });
 
-  it("prevents choosing the same location as source and destination", () => {
+  it("prevents choosing the same location as source and destination", async () => {
     const transferInventory = vi.fn();
     render(
       <Harness
@@ -467,7 +467,7 @@ describe("Transfer stock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-transfer"));
+    fireEvent.click(await screen.findByTestId("open-transfer"));
     fireEvent.click(screen.getByTestId(`transfer-source-${INVENTORY_LOCATION_A}`));
     // The source location is disabled in the destination list.
     const destSameAsSource = screen.getByTestId(`transfer-destination-${INVENTORY_LOCATION_A}`);
@@ -484,7 +484,7 @@ describe("Transfer stock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("open-transfer"));
+    fireEvent.click(await screen.findByTestId("open-transfer"));
     fireEvent.click(screen.getByTestId(`transfer-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`transfer-source-${INVENTORY_LOCATION_A}`));
     fireEvent.click(screen.getByTestId(`transfer-destination-${INVENTORY_LOCATION_B}`));
@@ -514,7 +514,7 @@ describe("Phase 2N supplier receive integration", () => {
     { value: SUPPLIER_B, label: "Delta Fabrics · SUP-002" },
   ];
 
-  it("renders no supplier field when no supplier options are provided (Receive is unchanged)", () => {
+  it("renders no supplier field when no supplier options are provided (Receive is unchanged)", async () => {
     render(
       <InventoryOperations
         {...baseProps}
@@ -523,7 +523,7 @@ describe("Phase 2N supplier receive integration", () => {
         journal={journalWith("K1")}
       />,
     );
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     expect(screen.queryByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeNull();
     expect(screen.getByTestId("receive-submit")).toBeTruthy();
   });
@@ -539,7 +539,7 @@ describe("Phase 2N supplier receive integration", () => {
         receiveSuppliers={SUPPLIER_OPTIONS}
       />,
     );
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     // The supplier selector is offered but defaults to "No supplier".
     expect(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeTruthy();
 
@@ -573,7 +573,7 @@ describe("Phase 2N supplier receive integration", () => {
         receiveSuppliers={SUPPLIER_OPTIONS}
       />,
     );
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
     fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
     fireEvent.click(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`));
@@ -594,7 +594,7 @@ describe("Phase 2N supplier receive integration", () => {
     expect(screen.getByTestId("receive-supplier-result")).toBeTruthy();
   });
 
-  it("only offers the supplied (active) suppliers — an unlisted supplier is not selectable", () => {
+  it("only offers the supplied (active) suppliers — an unlisted supplier is not selectable", async () => {
     render(
       <InventoryOperations
         {...baseProps}
@@ -604,7 +604,7 @@ describe("Phase 2N supplier receive integration", () => {
         receiveSuppliers={[SUPPLIER_OPTIONS[0]]}
       />,
     );
-    fireEvent.click(screen.getByTestId("open-receive"));
+    fireEvent.click(await screen.findByTestId("open-receive"));
     expect(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeTruthy();
     // A supplier the caller excluded (e.g. inactive) is never rendered as an option.
     expect(screen.queryByTestId(`receive-supplier-${SUPPLIER_B}`)).toBeNull();
