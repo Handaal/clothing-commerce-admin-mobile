@@ -260,16 +260,18 @@ Design (`src/inventory/journal/`):
 1. **Durable journal, not refs.** `InventoryJournal` (over a `JournalStore`) is the source of truth for
    in-flight command identity. The device backend is `localStorage` on web and a JSON file in the
    persistent document directory on native (`createDurableJournalStore`), both surviving an app/process
-   restart; a memory store backs tests and is the last-resort fallback. `InventoryScreen` creates the
-   journal once and passes it to `InventoryOperations`.
+   restart; a memory store backs tests only. (Phase 2S-F4 makes storage fail-closed: there is no
+   production memory fallback.) `InventoryScreen` creates the journal once and passes it to
+   `InventoryOperations`.
 2. **Persist before transport.** `useJournaledInventoryMutation` writes the command — normalized payload,
    idempotency key, tenant/context, prepared timestamp, lifecycle status — to the journal (`prepared`)
    _before_ any request, moves it to `sent` at dispatch, then to `accepted` (with the canonical server
    response) once resolved. The key is minted once, in the journal, and reused verbatim on every replay.
 3. **Result classification.** An ambiguous outcome (transport/5xx → the write-error `retry` recovery)
    leaves the command unresolved so it can be replayed; every definitive rejection (validation, business,
-   auth, stale-version) did not apply and is discarded. A command is `acknowledged` (pruned) once the
-   operator has seen its resolution.
+   auth, stale-version) did not apply. (Phase 2S-F4 keeps a rejection as a `rejected` entry shown until
+   dismissed, rather than deleting it.) A command is `acknowledged` (pruned) only once the operator has
+   explicitly acknowledged its resolution.
 4. **Equivalence dedupe.** `prepare` reuses the existing key for an equivalent, still-unresolved command
    (same normalized payload identity) rather than minting a second key — so a repeated equivalent intent
    can never become a second mutation. A recount against a new `expectedVersion` is a genuinely new
@@ -283,8 +285,73 @@ Design (`src/inventory/journal/`):
    `supplierId`/`supplierReference` in the persisted payload — no parallel system — and that metadata is
    replayed verbatim on recovery.
 
-Tenant isolation: every journal read/write is filtered by `tenantId`, so one tenant's unresolved
-commands are never visible to, or replayable in, another.
+Tenant isolation: every journal read/write is filtered by owner (see Phase 2S-F4), so one owner's
+unresolved commands are never visible to, or replayable in, another.
+
+## Phase 2S-F4 inventory recovery journal hardening
+
+Phase 2S-F4 closes four confirmed P1 defects in the merged F2 journal. The journal format is bumped to
+**v2** (membership-scoped, owner-namespaced storage); the released v1 journal is never silently adopted.
+
+1. **Accepted survives until acknowledged (lifecycle).** The lifecycle is now
+   `prepared → sent → (accepted | rejected) → acknowledged`. `accepted` is _resolved but not terminal_:
+   it survives a restart and stays visible in the recovery surface until the operator explicitly
+   acknowledges it — there is no startup auto-prune of accepted results (`findRecoverable` returns every
+   not-yet-acknowledged entry; nothing is pruned on load). A definitive rejection becomes `rejected`
+   (kept, shown, dismissed deliberately) rather than being deleted, so nothing silently vanishes. Only an
+   explicit acknowledgement deletes an entry, and the journal **refuses to acknowledge an unresolved
+   command** — removing the old unsafe "Discard without completing", since an ambiguous command's durable
+   key is the only identity for a mutation the server may already have committed.
+
+2. **Fail-closed durable storage.** `createDurableJournalStore` never degrades to memory. A failed write
+   (quota, disabled storage, native I/O) throws `JournalStorageError`; unreadable/corrupt content throws
+   `JournalCorruptError` and is **preserved** (web: original key intact plus a `.corrupt` copy; native: a
+   `.corrupt` sibling copy) — corruption is never coerced into an empty journal. The write hook persists
+   `prepared` _before_ transport and treats any durability failure as a blocking state: **the API is
+   never called** when the durable prepare could not be secured. The in-memory store remains available
+   only for tests/explicit DI.
+
+3. **Crash-safe native write.** The native file is the only known-good copy and is never truncated in
+   place. A write goes to a sibling `*.tmp`, which is fully written and then atomically renamed over the
+   target (`File.move({ overwrite: true })`). Recovery rule on read: the main file is authoritative; a
+   stray `*.tmp` means a replacement was interrupted before the rename, so the main file is still the
+   last valid journal and the temp is discarded. A relaunch always selects the last fully-written
+   journal deterministically.
+
+4. **Serialized journal transitions.** Every write — `prepare`, `markSent`, `recordAccepted`,
+   `recordRejected`, `acknowledge`, and recovery-panel replays — runs through one journal-wide async
+   mutex, eliminating the lost-update window where two overlapping forms (Receive + Adjust, Transfer +
+   Supplier Receive, or a recovery replay overlapping a new prepare) could clobber each other's
+   whole-document write and lose an entry. Because `InventoryScreen` creates one journal instance per
+   owner and shares it with every form and the recovery panel, the mutex covers the shared storage.
+
+5. **Transition invariants.** Each transition verifies the target entry exists, is owned by this journal
+   (tenant **and** membership), and is in a status that permits the change; otherwise it throws
+   `JournalTransitionError`. Transport never continues if the durable record unexpectedly disappeared,
+   and a missing entry is never silently reconstructed under a new key.
+
+6. **Membership-scoped ownership.** Journal ownership is `{ tenantId, membershipId }`, using the
+   canonical `/me/context` `membership.id` — the same actor fingerprint the API scopes inventory
+   idempotency to (never email/display name). Storage is owner-namespaced: web key
+   `admin-mobile.inventory-journal.v2.<tenant>.<membership>`, native file
+   `inventory-journal.v2.<tenant>.<membership>.json`. On a user switch the journal is recreated for the
+   new owner, so one user never sees, replays, acknowledges, or deletes another's unresolved commands,
+   and the originating user recovers them on return.
+
+7. **V1 quarantine.** The released v1 journal (no membership owner) is detected per tenant
+   (`readLegacyV1Unresolved`) and **never auto-claimed or replayed**. Unresolved v1 entries block new
+   inventory mutations behind a non-destructive notice until the operator explicitly archives them
+   (`quarantineLegacyV1` preserves the v1 data under a `.quarantined` key/path, never deleting it).
+
+8. **Equivalent-intent UX.** Submitting a form whose normalized intent matches an already-unresolved
+   command does not look like a fresh send: it is blocked (`pending-equivalent`) and the operator is
+   pointed at the existing recovery entry. No second key is ever minted.
+
+9. **Recovery / storage UX.** `InventoryRecoveryPanel` distinguishes prepared vs sent/ambiguous (exact
+   retry only), accepted (confirmed — shows "Applied", awaiting acknowledgement), and rejected (kept
+   until dismissed). Corruption/storage failures and legacy quarantine render blocking, non-destructive
+   notices and hide the write forms (via `onAvailabilityChange`) while read-only inventory stays usable;
+   raw filesystem/localStorage errors are never shown (dev-only logging).
 
 ## Phase 2S-F2 Settings topology error UX
 

@@ -2,56 +2,92 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import { View } from "react-native";
 
 import { classifyCommerceError } from "../../commerce/errors";
-import {
-  Badge,
-  Body,
-  Divider,
-  InfoRow,
-  PrimaryButton,
-  TextButton,
-  Title,
-} from "../../ui/components";
+import { Badge, Body, Divider, InfoRow, PrimaryButton, Title } from "../../ui/components";
 import type { InventoryItem } from "../load";
 import type { InventoryLocationRef } from "../InventoryOperations";
 import { describeInventoryWriteError } from "../write-errors";
 import { runJournaledCommand, type JournaledInventoryClient } from "./command-runner";
 import type { InventoryJournal } from "./journal";
-import type { JournalEntry, JournalPayload } from "./model";
+import { JournalCorruptError, type JournalEntry, type JournalPayload } from "./model";
 
 export interface InventoryRecoveryPanelProps {
   journal: InventoryJournal;
-  tenantId: string;
   client: JournaledInventoryClient;
   items: InventoryItem[];
   locations: InventoryLocationRef[];
   /** Re-read authoritative inventory after a recovered command settles (once resolved). */
   onResolved: () => void;
+  /**
+   * Detect unresolved entries in the RELEASED V1 journal for this tenant. They lack a membership owner
+   * and are quarantined (never auto-replayed under the current user); returning a non-empty result
+   * blocks new mutations until the operator archives them.
+   */
+  detectLegacy?: () => Promise<JournalEntry[]>;
+  /** Archive (preserve, never delete) the legacy V1 journal so new mutations can resume. */
+  quarantineLegacy?: () => Promise<void>;
+  /**
+   * Report whether high-risk mutations may proceed. False while the journal is corrupt/unavailable or a
+   * legacy journal needs reconciliation — the parent hides the write forms but keeps read-only inventory.
+   */
+  onAvailabilityChange?: (available: boolean) => void;
 }
 
 type RowStatus =
-  | { kind: "unresolved" }
+  | { kind: "unresolved"; sent: boolean }
   | { kind: "replaying" }
-  | { kind: "resolved" }
+  | { kind: "accepted" }
   | { kind: "ambiguous"; message: string }
   | { kind: "rejected"; heading: string; message: string };
 
+type Availability =
+  | { kind: "loading" }
+  | { kind: "available" }
+  | { kind: "blocked"; reason: "corrupt" | "storage" }
+  | { kind: "legacy" };
+
 interface PanelState {
-  loaded: boolean;
+  availability: Availability;
   entries: JournalEntry[];
   statuses: Record<string, RowStatus>;
 }
 
 type PanelAction =
   | { type: "loaded"; entries: JournalEntry[] }
+  | { type: "unavailable"; reason: "corrupt" | "storage" }
+  | { type: "legacy" }
   | { type: "status"; key: string; status: RowStatus }
   | { type: "remove"; key: string };
 
-// State transitions go through a reducer (never a bare setState in the effect), mirroring useAsync and
-// the SessionProvider lifecycle model.
+function initialRowStatus(status: JournalEntry["status"]): RowStatus {
+  switch (status) {
+    case "prepared":
+      return { kind: "unresolved", sent: false };
+    case "accepted":
+      return { kind: "accepted" };
+    case "rejected":
+      return {
+        kind: "rejected",
+        heading: "Not applied",
+        message: "The server refused this operation, so it did not change stock. Dismiss it.",
+      };
+    case "sent":
+    case "acknowledged":
+      return { kind: "unresolved", sent: true };
+  }
+}
+
 function reducer(state: PanelState, action: PanelAction): PanelState {
   switch (action.type) {
-    case "loaded":
-      return { ...state, loaded: true, entries: action.entries };
+    case "loaded": {
+      const statuses: Record<string, RowStatus> = {};
+      for (const entry of action.entries)
+        statuses[entry.commandKey] = initialRowStatus(entry.status);
+      return { availability: { kind: "available" }, entries: action.entries, statuses };
+    }
+    case "unavailable":
+      return { ...state, availability: { kind: "blocked", reason: action.reason } };
+    case "legacy":
+      return { ...state, availability: { kind: "legacy" } };
     case "status":
       return { ...state, statuses: { ...state.statuses, [action.key]: action.status } };
     case "remove": {
@@ -67,48 +103,88 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
 }
 
 /**
- * The restart/remount recovery surface. On mount it prunes stale resolved results, then lists every
- * inventory command that is still UNRESOLVED for the active tenant — a command whose response was lost
- * before we knew whether it applied. The operator resolves each by replaying it, which reuses the
- * ORIGINAL idempotency key and payload so the server applies it at most once. New equivalent commands
- * are already deduped by the journal (same key), but this surface makes the pending state explicit and
- * requires a deliberate resolution rather than silently allowing a repeat mutation. Unrelated read-only
- * work elsewhere in the app remains fully usable while this is shown.
+ * The restart/remount recovery surface. On mount it loads every not-yet-acknowledged command for the
+ * active OWNER (tenant + membership): unresolved commands awaiting completion AND resolved commands
+ * (accepted/rejected) awaiting acknowledgement. Nothing is auto-pruned — an `accepted` result survives a
+ * restart and stays visible until the operator explicitly acknowledges it.
+ *
+ * The operator completes an unresolved command by replaying it, which reuses the ORIGINAL idempotency
+ * key and payload so the server applies it at most once. There is deliberately NO generic "discard" for
+ * an unresolved command: its durable key is the only identity for a mutation the server may already have
+ * committed, so it can only be completed/reconciled, never dismissed away.
+ *
+ * If durable storage is corrupt/unavailable, or a released V1 journal needs reconciliation, the panel
+ * shows a blocking (non-destructive) notice and reports unavailability so the parent hides the write
+ * forms. Unrelated read-only Admin work stays fully usable throughout.
  */
 export function InventoryRecoveryPanel({
   journal,
-  tenantId,
   client,
   items,
   locations,
   onResolved,
+  detectLegacy,
+  quarantineLegacy,
+  onAvailabilityChange,
 }: InventoryRecoveryPanelProps) {
-  const [state, dispatch] = useReducer(reducer, { loaded: false, entries: [], statuses: {} });
+  const [state, dispatch] = useReducer(reducer, {
+    availability: { kind: "loading" },
+    entries: [],
+    statuses: {},
+  });
   const onResolvedRef = useRef(onResolved);
+  const onAvailabilityRef = useRef(onAvailabilityChange);
   useEffect(() => {
     onResolvedRef.current = onResolved;
+    onAvailabilityRef.current = onAvailabilityChange;
   });
+
+  const load = useCallback(async () => {
+    try {
+      // Legacy V1 is checked first: an un-attributable legacy journal must block new mutations.
+      if (detectLegacy) {
+        const legacy = await detectLegacy();
+        if (legacy.length > 0) {
+          onAvailabilityRef.current?.(false);
+          return { type: "legacy" as const };
+        }
+      }
+      const entries = await journal.findRecoverable();
+      onAvailabilityRef.current?.(true);
+      return { type: "loaded" as const, entries };
+    } catch (error) {
+      const reason: "corrupt" | "storage" =
+        error instanceof JournalCorruptError ? "corrupt" : "storage";
+      onAvailabilityRef.current?.(false);
+      return { type: "unavailable" as const, reason };
+    }
+  }, [journal, detectLegacy]);
 
   useEffect(() => {
     let active = true;
-    void (async () => {
-      await journal.pruneResolved(tenantId);
-      const unresolved = await journal.findUnresolved(tenantId);
-      if (active) dispatch({ type: "loaded", entries: unresolved });
-    })();
+    void load().then((action) => {
+      if (active) dispatch(action);
+    });
     return () => {
       active = false;
     };
-  }, [journal, tenantId]);
+  }, [load]);
 
   const replay = useCallback(
     async (entry: JournalEntry) => {
       dispatch({ type: "status", key: entry.commandKey, status: { kind: "replaying" } });
-      await journal.markSent(entry.commandKey);
+      try {
+        await journal.markSent(entry.commandKey);
+      } catch {
+        // The durable entry disappeared or storage failed: fail closed, do NOT transport.
+        dispatch({ type: "unavailable", reason: "storage" });
+        onAvailabilityRef.current?.(false);
+        return;
+      }
       try {
         const result = await runJournaledCommand(client, entry.payload, entry.commandKey);
         await journal.recordAccepted(entry.commandKey, result);
-        dispatch({ type: "status", key: entry.commandKey, status: { kind: "resolved" } });
+        dispatch({ type: "status", key: entry.commandKey, status: { kind: "accepted" } });
         onResolvedRef.current();
       } catch (error) {
         const described = describeInventoryWriteError(classifyCommerceError(error));
@@ -121,8 +197,13 @@ export function InventoryRecoveryPanel({
           });
           return;
         }
-        // Definitive rejection: it never applied. Discard it and refresh authoritative inventory.
-        await journal.discard(entry.commandKey);
+        // Definitive rejection: it never applied. Move to `rejected` (kept until acknowledged) and
+        // refresh authoritative inventory.
+        try {
+          await journal.recordRejected(entry.commandKey);
+        } catch {
+          // Already resolved/gone; the rejection UI below still stands.
+        }
         dispatch({
           type: "status",
           key: entry.commandKey,
@@ -136,25 +217,73 @@ export function InventoryRecoveryPanel({
 
   const acknowledge = useCallback(
     async (entry: JournalEntry) => {
-      await journal.acknowledge(entry.commandKey);
-      dispatch({ type: "remove", key: entry.commandKey });
+      try {
+        await journal.acknowledge(entry.commandKey);
+        dispatch({ type: "remove", key: entry.commandKey });
+      } catch {
+        // Refused (still unresolved) or storage failure — leave the row in place; never lose it.
+      }
     },
     [journal],
   );
 
-  if (!state.loaded || state.entries.length === 0) return null;
+  const archiveLegacy = useCallback(async () => {
+    if (!quarantineLegacy) return;
+    await quarantineLegacy();
+    void load().then(dispatch);
+  }, [quarantineLegacy, load]);
+
+  if (state.availability.kind === "loading") return null;
+
+  if (state.availability.kind === "blocked") {
+    return (
+      <View style={{ gap: 12 }} testID="inventory-recovery-blocked">
+        <Divider />
+        <Title>Inventory changes temporarily unavailable</Title>
+        <Body>
+          {state.availability.reason === "corrupt"
+            ? "The inventory recovery journal could not be read and needs attention before new stock changes can be made. Your other Admin data is unaffected."
+            : "The inventory recovery journal could not be saved, so inventory changes are temporarily unavailable. Your other Admin data is unaffected."}
+        </Body>
+      </View>
+    );
+  }
+
+  if (state.availability.kind === "legacy") {
+    return (
+      <View style={{ gap: 12 }} testID="inventory-recovery-legacy">
+        <Divider />
+        <Title>An earlier inventory operation needs attention</Title>
+        <Body>
+          An inventory recovery journal from a previous app version was found. It cannot be
+          attributed to your account automatically, so new inventory changes are paused until it is
+          reviewed and archived. This never resends those operations on your behalf.
+        </Body>
+        {quarantineLegacy ? (
+          <PrimaryButton
+            label="Archive and continue"
+            testID="recovery-legacy-archive"
+            onPress={() => void archiveLegacy()}
+          />
+        ) : null}
+      </View>
+    );
+  }
+
+  if (state.entries.length === 0) return null;
 
   return (
     <View style={{ gap: 12 }} testID="inventory-recovery">
       <Divider />
       <Title>Unfinished inventory operations</Title>
       <Body>
-        These operations were started but their result was not confirmed. Complete each one to apply
-        it safely — this reuses the original request, so it can never be counted twice. Start a new
-        equivalent operation only after these are resolved.
+        These operations were started but their result was not confirmed, or are awaiting your
+        acknowledgement. Complete each unresolved one to apply it safely — this reuses the original
+        request, so it can never be counted twice. Start a new equivalent operation only after these
+        are resolved.
       </Body>
       {state.entries.map((entry) => {
-        const status = state.statuses[entry.commandKey] ?? { kind: "unresolved" };
+        const status = state.statuses[entry.commandKey] ?? { kind: "unresolved", sent: true };
         return (
           <View
             key={entry.commandKey}
@@ -163,7 +292,7 @@ export function InventoryRecoveryPanel({
           >
             <Divider />
             <InfoRow label="Operation" value={describePayload(entry.payload, items, locations)} />
-            {status.kind === "resolved" ? (
+            {status.kind === "accepted" ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Body>Completed</Body>
                 <Badge label="Applied" testID={`recovery-resolved-${entry.commandKey}`} />
@@ -196,19 +325,20 @@ export function InventoryRecoveryPanel({
               </View>
             ) : null}
             {status.kind === "unresolved" ? (
-              <PrimaryButton
-                label="Complete this operation"
-                testID={`recovery-replay-${entry.commandKey}`}
-                onPress={() => void replay(entry)}
-              />
+              <>
+                <Body>
+                  {status.sent
+                    ? "This operation was sent but not confirmed. It may already have been applied; completing it reuses the original request so it is never counted twice."
+                    : "This operation was prepared but not sent. Complete it to apply it safely."}
+                </Body>
+                <PrimaryButton
+                  label="Complete this operation"
+                  testID={`recovery-replay-${entry.commandKey}`}
+                  onPress={() => void replay(entry)}
+                />
+              </>
             ) : null}
             {status.kind === "replaying" ? <Body>Completing…</Body> : null}
-            {status.kind === "unresolved" ? (
-              <TextButton
-                label="Discard without completing"
-                onPress={() => void acknowledge(entry)}
-              />
-            ) : null}
           </View>
         );
       })}

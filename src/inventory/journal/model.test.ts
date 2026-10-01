@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isRecoverable,
+  isResolved,
   isUnresolved,
   normalizeAdjustPayload,
   normalizeReceivePayload,
@@ -108,10 +110,24 @@ describe("journal payload normalization", () => {
     expect(payloadIdentity(forward)).not.toBe(payloadIdentity(reverse));
   });
 
-  it("classifies which lifecycle states are unresolved", () => {
+  it("classifies lifecycle states: unresolved, resolved, and recoverable", () => {
     expect(isUnresolved("prepared")).toBe(true);
     expect(isUnresolved("sent")).toBe(true);
     expect(isUnresolved("accepted")).toBe(false);
+    expect(isUnresolved("rejected")).toBe(false);
     expect(isUnresolved("acknowledged")).toBe(false);
+
+    // Resolved = server outcome known, not yet acknowledged.
+    expect(isResolved("accepted")).toBe(true);
+    expect(isResolved("rejected")).toBe(true);
+    expect(isResolved("prepared")).toBe(false);
+    expect(isResolved("acknowledged")).toBe(false);
+
+    // Recoverable = anything that must survive a restart and be shown until acknowledged.
+    expect(isRecoverable("prepared")).toBe(true);
+    expect(isRecoverable("sent")).toBe(true);
+    expect(isRecoverable("accepted")).toBe(true);
+    expect(isRecoverable("rejected")).toBe(true);
+    expect(isRecoverable("acknowledged")).toBe(false);
   });
 });

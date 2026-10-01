@@ -1,144 +1,235 @@
 import type { IdempotencyKeyFactory } from "../idempotency";
 import {
+  isOwnedBy,
+  isRecoverable,
+  isResolved,
   isUnresolved,
   JournalConflictError,
+  JournalTransitionError,
   payloadIdentity,
   type JournalEntry,
+  type JournalOwner,
   type JournalPayload,
+  type JournalStatus,
 } from "./model";
 import type { JournalStore } from "./store";
 
 /**
  * The durable command journal for high-risk inventory mutations. It owns idempotency-key identity: a
  * key is minted once, at {@link prepare}, and persisted BEFORE any transport, so a lost response never
- * costs us the key. Every method is a read-modify-write over the whole document; concurrent inventory
- * writes on one device are already serialized by the UI (one operation in flight at a time), so the
- * simple whole-document swap is sufficient and keeps each change atomic.
+ * costs us the key.
+ *
+ * A journal instance is bound to a single {@link JournalOwner} (tenant + acting membership) — the same
+ * fingerprint the API scopes inventory idempotency to — so a command minted by one user can never be
+ * seen or replayed by a different user on the same device/tenant.
+ *
+ * Every transition is a read-modify-write over the whole document, and ALL of them run through one
+ * journal-wide mutex ({@link runExclusive}). This is essential: two overlapping forms (e.g. Receive and
+ * Adjust) that each read the document, mutate their own entry, and write it back would otherwise clobber
+ * each other and lose an entry — after which a mutation could be transported whose durable record had
+ * vanished. Serializing every write eliminates that lost-update window on the shared storage instance.
+ *
+ * Transitions are also guarded by invariants: the target entry must exist, be owned by this journal, and
+ * be in a status that permits the requested change. A transition against a missing/foreign/wrong-status
+ * entry FAILS ({@link JournalTransitionError}) rather than silently continuing or recreating a key.
  */
 export interface InventoryJournal {
   /**
    * Persist a command intent BEFORE transport and return its durable entry. If an equivalent command is
-   * already unresolved for this tenant, that existing entry is returned (its key is REUSED) rather than
+   * already unresolved for this owner, that existing entry is returned (its key is REUSED) rather than
    * minting a new one — this is what prevents a lost-response command from being duplicated. The
    * returned entry is always in `prepared`.
    */
-  prepare(tenantId: string, payload: JournalPayload): Promise<JournalEntry>;
-  /** Move a prepared command to `sent` at the instant the request is dispatched. */
+  prepare(payload: JournalPayload): Promise<JournalEntry>;
+  /** Move a prepared command to `sent` at the instant the request is dispatched (idempotent re-send). */
   markSent(commandKey: string): Promise<void>;
-  /** Record a definitive server result and move the command to `accepted`. */
+  /** Record a definitive server success and move the command to `accepted` (resolved, kept until ack). */
   recordAccepted(commandKey: string, result: unknown): Promise<void>;
   /**
-   * Remove a command the server DEFINITIVELY rejected without applying (a validation/business
-   * rejection). It mutated nothing, so there is nothing left to recover.
+   * Record a DEFINITIVE server rejection (validation/business/auth) that did not apply. The entry is
+   * kept in `rejected` (resolved, not terminal) so the operator sees the outcome and dismisses it
+   * deliberately — it is never silently deleted.
    */
-  discard(commandKey: string): Promise<void>;
-  /** Prune a resolved command once the operator has seen it (idempotent if already gone). */
+  recordRejected(commandKey: string): Promise<void>;
+  /**
+   * Acknowledge a RESOLVED command (accepted/rejected) once the operator has seen it, pruning it.
+   * Idempotent if the entry is already gone. Refuses to prune a still-unresolved command — an ambiguous
+   * command can never be discarded merely to dismiss it (that would delete the only durable idempotency
+   * identity for a command the server may already have committed).
+   */
   acknowledge(commandKey: string): Promise<void>;
   /**
-   * Prune every already-resolved (`accepted`/`acknowledged`) command for a tenant. Called when the
-   * Inventory surface loads so results left behind by a previous session — where the operator closed
-   * the app on a success screen — do not accumulate. Unresolved commands are never touched.
+   * Every not-yet-acknowledged command for this owner, oldest first: unresolved commands that still need
+   * completing AND resolved commands that still need acknowledging. This is the full recovery set that
+   * survives a restart. (Nothing is auto-pruned on load; accepted results are kept until acknowledged.)
    */
-  pruneResolved(tenantId: string): Promise<void>;
-  /** All still-unresolved commands for a tenant, oldest first. The recovery surface reads this. */
-  findUnresolved(tenantId: string): Promise<JournalEntry[]>;
-  /** The unresolved command equivalent to `payload` for this tenant, if any (same normalized identity). */
-  findEquivalentUnresolved(tenantId: string, payload: JournalPayload): Promise<JournalEntry | null>;
-  /** Look up one entry by its command key. */
+  findRecoverable(): Promise<JournalEntry[]>;
+  /** The unresolved command equivalent to `payload` for this owner, if any (same normalized identity). */
+  findEquivalentUnresolved(payload: JournalPayload): Promise<JournalEntry | null>;
+  /** Look up one entry by its command key (only within this owner's scope). */
   get(commandKey: string): Promise<JournalEntry | null>;
 }
 
+/** A minimal async mutex: chains work so only one critical section touches the store at a time. */
+function createMutex(): <T>(work: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(work: () => Promise<T>): Promise<T> => {
+    const run = tail.then(work, work);
+    // Keep the chain alive regardless of individual outcomes; never let a rejection break serialization.
+    tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
+}
+
+/** Which current statuses permit each transition. A transition from any other status is an invariant error. */
+const ALLOWED_FROM: Record<"markSent" | "recordAccepted" | "recordRejected", JournalStatus[]> = {
+  // Re-sending an already-`sent` command is legitimate (recovery replay), so `sent` is allowed too.
+  markSent: ["prepared", "sent"],
+  recordAccepted: ["prepared", "sent"],
+  recordRejected: ["prepared", "sent"],
+};
+
 export function createInventoryJournal(
   store: JournalStore,
+  owner: JournalOwner,
   generateKey: IdempotencyKeyFactory,
   now: () => string = () => new Date().toISOString(),
 ): InventoryJournal {
-  async function mutate(change: (entries: JournalEntry[]) => JournalEntry[]): Promise<void> {
-    const document = await store.read();
-    await store.write({ version: 1, entries: change(document.entries) });
+  const runExclusive = createMutex();
+
+  /** Locate an owned entry by key, or throw a transition error if it is missing or foreign. */
+  function requireOwned(entries: JournalEntry[], commandKey: string): JournalEntry {
+    const entry = entries.find((e) => e.commandKey === commandKey);
+    if (!entry) {
+      throw new JournalTransitionError(commandKey, "The journal entry no longer exists.");
+    }
+    if (!isOwnedBy(entry, owner)) {
+      throw new JournalTransitionError(
+        commandKey,
+        "The journal entry belongs to a different user.",
+      );
+    }
+    return entry;
+  }
+
+  /** Apply a status transition to one owned entry, enforcing the allowed-from invariant. */
+  function transition(
+    kind: "markSent" | "recordAccepted" | "recordRejected",
+    commandKey: string,
+    to: JournalStatus,
+    extra: Partial<JournalEntry> = {},
+  ): Promise<void> {
+    return runExclusive(async () => {
+      const document = await store.read();
+      const entry = requireOwned(document.entries, commandKey);
+      if (!ALLOWED_FROM[kind].includes(entry.status)) {
+        throw new JournalTransitionError(
+          commandKey,
+          `Cannot ${kind} a command in status "${entry.status}".`,
+        );
+      }
+      const entries = document.entries.map((e) =>
+        e.commandKey === commandKey ? { ...e, status: to, ...extra } : e,
+      );
+      await store.write({ version: 2, entries });
+    });
   }
 
   return {
-    prepare: async (tenantId, payload) => {
-      const identity = payloadIdentity(payload);
-      const document = await store.read();
-      const existing = document.entries.find(
-        (entry) =>
-          entry.tenantId === tenantId &&
-          isUnresolved(entry.status) &&
-          entry.operationType === payload.type &&
-          entry.payloadIdentity === identity,
-      );
-      if (existing) return existing;
-
-      const entry: JournalEntry = {
-        commandKey: generateKey(),
-        tenantId,
-        operationType: payload.type,
-        payload,
-        payloadIdentity: identity,
-        preparedAt: now(),
-        status: "prepared",
-      };
-      // Guard the (theoretical) key collision so a fresh key can never overwrite a stored command.
-      if (document.entries.some((e) => e.commandKey === entry.commandKey)) {
-        throw new JournalConflictError(entry.commandKey);
-      }
-      await store.write({ version: 1, entries: [...document.entries, entry] });
-      return entry;
-    },
-
-    markSent: (commandKey) =>
-      mutate((entries) =>
-        entries.map((entry) =>
-          entry.commandKey === commandKey && entry.status === "prepared"
-            ? { ...entry, status: "sent" }
-            : entry,
-        ),
-      ),
-
-    recordAccepted: (commandKey, result) =>
-      mutate((entries) =>
-        entries.map((entry) =>
-          entry.commandKey === commandKey ? { ...entry, status: "accepted", result } : entry,
-        ),
-      ),
-
-    discard: (commandKey) =>
-      mutate((entries) => entries.filter((entry) => entry.commandKey !== commandKey)),
-
-    acknowledge: (commandKey) =>
-      mutate((entries) => entries.filter((entry) => entry.commandKey !== commandKey)),
-
-    pruneResolved: (tenantId) =>
-      mutate((entries) =>
-        entries.filter((entry) => entry.tenantId !== tenantId || isUnresolved(entry.status)),
-      ),
-
-    findUnresolved: async (tenantId) => {
-      const document = await store.read();
-      return document.entries
-        .filter((entry) => entry.tenantId === tenantId && isUnresolved(entry.status))
-        .sort((a, b) => a.preparedAt.localeCompare(b.preparedAt));
-    },
-
-    findEquivalentUnresolved: async (tenantId, payload) => {
-      const identity = payloadIdentity(payload);
-      const document = await store.read();
-      return (
-        document.entries.find(
+    prepare: (payload) =>
+      runExclusive(async () => {
+        const identity = payloadIdentity(payload);
+        const document = await store.read();
+        const existing = document.entries.find(
           (entry) =>
-            entry.tenantId === tenantId &&
+            isOwnedBy(entry, owner) &&
             isUnresolved(entry.status) &&
             entry.operationType === payload.type &&
             entry.payloadIdentity === identity,
-        ) ?? null
-      );
-    },
+        );
+        if (existing) return existing;
 
-    get: async (commandKey) => {
-      const document = await store.read();
-      return document.entries.find((entry) => entry.commandKey === commandKey) ?? null;
-    },
+        const entry: JournalEntry = {
+          commandKey: generateKey(),
+          tenantId: owner.tenantId,
+          actorMembershipId: owner.membershipId,
+          operationType: payload.type,
+          payload,
+          payloadIdentity: identity,
+          preparedAt: now(),
+          status: "prepared",
+        };
+        // Guard the (theoretical) key collision so a fresh key can never overwrite a stored command.
+        if (document.entries.some((e) => e.commandKey === entry.commandKey)) {
+          throw new JournalConflictError(entry.commandKey);
+        }
+        await store.write({ version: 2, entries: [...document.entries, entry] });
+        return entry;
+      }),
+
+    markSent: (commandKey) => transition("markSent", commandKey, "sent"),
+
+    recordAccepted: (commandKey, result) =>
+      transition("recordAccepted", commandKey, "accepted", { result }),
+
+    recordRejected: (commandKey) => transition("recordRejected", commandKey, "rejected"),
+
+    acknowledge: (commandKey) =>
+      runExclusive(async () => {
+        const document = await store.read();
+        const entry = document.entries.find((e) => e.commandKey === commandKey);
+        if (!entry) return; // already pruned — idempotent
+        if (!isOwnedBy(entry, owner)) {
+          throw new JournalTransitionError(
+            commandKey,
+            "The journal entry belongs to a different user.",
+          );
+        }
+        // Refuse to discard an ambiguous/unresolved command: its durable key is the only identity we
+        // have for a mutation the server may already have committed. Only resolved entries are prunable.
+        if (!isResolved(entry.status)) {
+          throw new JournalTransitionError(
+            commandKey,
+            "An unresolved command cannot be discarded; it must be completed or reconciled first.",
+          );
+        }
+        await store.write({
+          version: 2,
+          entries: document.entries.filter((e) => e.commandKey !== commandKey),
+        });
+      }),
+
+    findRecoverable: () =>
+      runExclusive(async () => {
+        const document = await store.read();
+        return document.entries
+          .filter((entry) => isOwnedBy(entry, owner) && isRecoverable(entry.status))
+          .sort((a, b) => a.preparedAt.localeCompare(b.preparedAt));
+      }),
+
+    findEquivalentUnresolved: (payload) =>
+      runExclusive(async () => {
+        const identity = payloadIdentity(payload);
+        const document = await store.read();
+        return (
+          document.entries.find(
+            (entry) =>
+              isOwnedBy(entry, owner) &&
+              isUnresolved(entry.status) &&
+              entry.operationType === payload.type &&
+              entry.payloadIdentity === identity,
+          ) ?? null
+        );
+      }),
+
+    get: (commandKey) =>
+      runExclusive(async () => {
+        const document = await store.read();
+        const entry = document.entries.find((e) => e.commandKey === commandKey);
+        return entry && isOwnedBy(entry, owner) ? entry : null;
+      }),
   };
 }

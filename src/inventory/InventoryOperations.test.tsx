@@ -25,6 +25,8 @@ import { createMemoryJournalStore } from "./journal/store";
 import { rowKey } from "./operations";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
+const MEMBERSHIP = "33333333-3333-4333-8333-333333333333";
+const OWNER = { tenantId: TENANT, membershipId: MEMBERSHIP };
 
 const LOCATIONS = [
   { id: INVENTORY_LOCATION_A, name: "Flagship Stockroom", branchId: null },
@@ -66,7 +68,7 @@ function keyFactory(...keys: string[]) {
 // A fresh durable (memory-backed) journal seeded with a deterministic key sequence, for the direct
 // InventoryOperations renders that do not use the Harness.
 function journalWith(...keys: string[]) {
-  return createInventoryJournal(createMemoryJournalStore(), keyFactory(...keys));
+  return createInventoryJournal(createMemoryJournalStore(), OWNER, keyFactory(...keys));
 }
 
 interface HarnessProps {
@@ -90,7 +92,9 @@ function Harness({
   // A durable journal (memory-backed here) built with the deterministic key factory: it owns the
   // idempotency key exactly as production does, and — living above the keyed InventoryOperations —
   // it survives the concurrency remount, modelling real cross-remount durability.
-  const [journal] = useState(() => createInventoryJournal(createMemoryJournalStore(), generateKey));
+  const [journal] = useState(() =>
+    createInventoryJournal(createMemoryJournalStore(), OWNER, generateKey),
+  );
   return (
     <>
       {conflictCount > 0 ? (
@@ -102,7 +106,6 @@ function Harness({
         key={conflictCount}
         client={client}
         journal={journal}
-        tenantId={TENANT}
         locations={LOCATIONS}
         write={write}
         items={items}
@@ -518,7 +521,6 @@ describe("Phase 2N supplier receive integration", () => {
         client={{ receiveInventory: vi.fn(), adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
         journal={journalWith("K1")}
-        tenantId={TENANT}
       />,
     );
     fireEvent.click(screen.getByTestId("open-receive"));
@@ -534,7 +536,6 @@ describe("Phase 2N supplier receive integration", () => {
         client={{ receiveInventory, adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
         journal={journalWith("K1")}
-        tenantId={TENANT}
         receiveSuppliers={SUPPLIER_OPTIONS}
       />,
     );
@@ -569,7 +570,6 @@ describe("Phase 2N supplier receive integration", () => {
         client={{ receiveInventory, adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
         journal={journalWith("K1")}
-        tenantId={TENANT}
         receiveSuppliers={SUPPLIER_OPTIONS}
       />,
     );
@@ -601,7 +601,6 @@ describe("Phase 2N supplier receive integration", () => {
         client={{ receiveInventory: vi.fn(), adjustInventory: vi.fn(), transferInventory: vi.fn() }}
         onRefresh={vi.fn()}
         journal={journalWith("K1")}
-        tenantId={TENANT}
         receiveSuppliers={[SUPPLIER_OPTIONS[0]]}
       />,
     );
