@@ -7,6 +7,7 @@ import type { InventoryItem } from "../load";
 import type { InventoryLocationRef } from "../InventoryOperations";
 import { describeInventoryWriteError } from "../write-errors";
 import { runJournaledCommand, type JournaledInventoryClient } from "./command-runner";
+import { isCrossContextSafe } from "./coordinator";
 import type { InventoryJournal } from "./journal";
 import { JournalCorruptError, type JournalEntry, type JournalPayload } from "./model";
 
@@ -26,10 +27,18 @@ export interface InventoryRecoveryPanelProps {
   /** Archive (preserve, never delete) the legacy V1 journal so new mutations can resume. */
   quarantineLegacy?: () => Promise<void>;
   /**
-   * Report whether high-risk mutations may proceed. False while the journal is corrupt/unavailable or a
-   * legacy journal needs reconciliation — the parent hides the write forms but keeps read-only inventory.
+   * Report whether high-risk mutations may proceed. False while the journal is corrupt/unavailable, a
+   * legacy journal needs reconciliation, or the runtime cannot safely serialize journal writes across
+   * contexts (web without Web Locks) — the parent hides the write forms but keeps read-only inventory.
    */
   onAvailabilityChange?: (available: boolean) => void;
+  /**
+   * Whether journal writes can be safely serialized across every context sharing this device's durable
+   * journal (see {@link isCrossContextSafe}). Injectable for tests; defaults to the live capability. When
+   * false (web without Web Locks) the panel is READ-ONLY: pending operations are still listed so the
+   * operator can see them, but replay/acknowledge/archive are disabled and writes are reported blocked.
+   */
+  crossContextSafe?: boolean;
 }
 
 type RowStatus =
@@ -43,7 +52,9 @@ type Availability =
   | { kind: "loading" }
   | { kind: "available" }
   | { kind: "blocked"; reason: "corrupt" | "storage" }
-  | { kind: "legacy" };
+  | { kind: "legacy" }
+  // Web without Web Locks: the list is shown READ-ONLY (no safe way to write/replay across tabs).
+  | { kind: "incompatible" };
 
 interface PanelState {
   availability: Availability;
@@ -55,6 +66,7 @@ type PanelAction =
   | { type: "loaded"; entries: JournalEntry[] }
   | { type: "unavailable"; reason: "corrupt" | "storage" }
   | { type: "legacy" }
+  | { type: "incompatible"; entries: JournalEntry[] }
   | { type: "status"; key: string; status: RowStatus }
   | { type: "remove"; key: string };
 
@@ -83,6 +95,12 @@ function reducer(state: PanelState, action: PanelAction): PanelState {
       for (const entry of action.entries)
         statuses[entry.commandKey] = initialRowStatus(entry.status);
       return { availability: { kind: "available" }, entries: action.entries, statuses };
+    }
+    case "incompatible": {
+      const statuses: Record<string, RowStatus> = {};
+      for (const entry of action.entries)
+        statuses[entry.commandKey] = initialRowStatus(entry.status);
+      return { availability: { kind: "incompatible" }, entries: action.entries, statuses };
     }
     case "unavailable":
       return { ...state, availability: { kind: "blocked", reason: action.reason } };
@@ -126,6 +144,7 @@ export function InventoryRecoveryPanel({
   detectLegacy,
   quarantineLegacy,
   onAvailabilityChange,
+  crossContextSafe = isCrossContextSafe(),
 }: InventoryRecoveryPanelProps) {
   const [state, dispatch] = useReducer(reducer, {
     availability: { kind: "loading" },
@@ -149,7 +168,14 @@ export function InventoryRecoveryPanel({
           return { type: "legacy" as const };
         }
       }
+      // Reading the recoverable set is safe (no mutation) even without cross-context locking, so we
+      // still surface pending work. But WRITES are not safe without it, so report unavailable and keep
+      // the panel read-only (replay/acknowledge/archive disabled).
       const entries = await journal.findRecoverable();
+      if (!crossContextSafe) {
+        onAvailabilityRef.current?.(false);
+        return { type: "incompatible" as const, entries };
+      }
       onAvailabilityRef.current?.(true);
       return { type: "loaded" as const, entries };
     } catch (error) {
@@ -158,7 +184,7 @@ export function InventoryRecoveryPanel({
       onAvailabilityRef.current?.(false);
       return { type: "unavailable" as const, reason };
     }
-  }, [journal, detectLegacy]);
+  }, [journal, detectLegacy, crossContextSafe]);
 
   useEffect(() => {
     let active = true;
@@ -259,7 +285,16 @@ export function InventoryRecoveryPanel({
           attributed to your account automatically, so new inventory changes are paused until it is
           reviewed and archived. This never resends those operations on your behalf.
         </Body>
-        {quarantineLegacy ? (
+        {/* Archiving MUTATES storage. When cross-context locking is unavailable (web without Web
+            Locks) the evidence stays visible but the mutation action is NOT offered — archiving must
+            happen in the app or a supported browser with a single tab. */}
+        {!crossContextSafe ? (
+          <Body testID="recovery-legacy-incompatible">
+            This browser can&apos;t safely complete inventory recovery, so archiving is unavailable
+            here. Open the app (or a supported browser with a single tab) to review and archive it.
+            Nothing is changed on your behalf.
+          </Body>
+        ) : quarantineLegacy ? (
           <PrimaryButton
             label="Archive and continue"
             testID="recovery-legacy-archive"
@@ -270,17 +305,34 @@ export function InventoryRecoveryPanel({
     );
   }
 
-  if (state.entries.length === 0) return null;
+  // Web without Web Locks: writes cannot be safely serialized across tabs, so the panel is read-only.
+  const incompatible = state.availability.kind === "incompatible";
+  const writesEnabled = state.availability.kind === "available";
+
+  const compatibilityNotice = incompatible ? (
+    <View style={{ gap: 8 }} testID="inventory-recovery-incompatible">
+      <Divider />
+      <Title>Inventory changes aren&apos;t supported in this browser</Title>
+      <Body>
+        This browser can&apos;t safely coordinate inventory changes across tabs, so making or
+        completing inventory operations is disabled here. You can still view inventory and any
+        unfinished operations below. To make changes, use a supported browser (or the app) with a
+        single tab open. Your other Admin data is unaffected.
+      </Body>
+    </View>
+  ) : null;
+
+  if (state.entries.length === 0) return compatibilityNotice;
 
   return (
     <View style={{ gap: 12 }} testID="inventory-recovery">
+      {compatibilityNotice}
       <Divider />
       <Title>Unfinished inventory operations</Title>
       <Body>
-        These operations were started but their result was not confirmed, or are awaiting your
-        acknowledgement. Complete each unresolved one to apply it safely — this reuses the original
-        request, so it can never be counted twice. Start a new equivalent operation only after these
-        are resolved.
+        {writesEnabled
+          ? "These operations were started but their result was not confirmed, or are awaiting your acknowledgement. Complete each unresolved one to apply it safely — this reuses the original request, so it can never be counted twice. Start a new equivalent operation only after these are resolved."
+          : "These operations were started but their result was not confirmed. They cannot be completed in this browser; open the app (or a supported browser with a single tab) to finish them safely. Nothing is resent on your behalf."}
       </Body>
       {state.entries.map((entry) => {
         const status = state.statuses[entry.commandKey] ?? { kind: "unresolved", sent: true };
@@ -296,32 +348,38 @@ export function InventoryRecoveryPanel({
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Body>Completed</Body>
                 <Badge label="Applied" testID={`recovery-resolved-${entry.commandKey}`} />
-                <PrimaryButton
-                  label="Dismiss"
-                  testID={`recovery-ack-${entry.commandKey}`}
-                  onPress={() => void acknowledge(entry)}
-                />
+                {writesEnabled ? (
+                  <PrimaryButton
+                    label="Dismiss"
+                    testID={`recovery-ack-${entry.commandKey}`}
+                    onPress={() => void acknowledge(entry)}
+                  />
+                ) : null}
               </View>
             ) : null}
             {status.kind === "rejected" ? (
               <View style={{ gap: 8 }} testID={`recovery-rejected-${entry.commandKey}`}>
                 <Title>{status.heading}</Title>
                 <Body>{status.message}</Body>
-                <PrimaryButton
-                  label="Dismiss"
-                  testID={`recovery-ack-${entry.commandKey}`}
-                  onPress={() => void acknowledge(entry)}
-                />
+                {writesEnabled ? (
+                  <PrimaryButton
+                    label="Dismiss"
+                    testID={`recovery-ack-${entry.commandKey}`}
+                    onPress={() => void acknowledge(entry)}
+                  />
+                ) : null}
               </View>
             ) : null}
             {status.kind === "ambiguous" ? (
               <View style={{ gap: 8 }} testID={`recovery-ambiguous-${entry.commandKey}`}>
                 <Body>{status.message}</Body>
-                <PrimaryButton
-                  label="Try to complete again"
-                  testID={`recovery-replay-${entry.commandKey}`}
-                  onPress={() => void replay(entry)}
-                />
+                {writesEnabled ? (
+                  <PrimaryButton
+                    label="Try to complete again"
+                    testID={`recovery-replay-${entry.commandKey}`}
+                    onPress={() => void replay(entry)}
+                  />
+                ) : null}
               </View>
             ) : null}
             {status.kind === "unresolved" ? (
@@ -331,11 +389,13 @@ export function InventoryRecoveryPanel({
                     ? "This operation was sent but not confirmed. It may already have been applied; completing it reuses the original request so it is never counted twice."
                     : "This operation was prepared but not sent. Complete it to apply it safely."}
                 </Body>
-                <PrimaryButton
-                  label="Complete this operation"
-                  testID={`recovery-replay-${entry.commandKey}`}
-                  onPress={() => void replay(entry)}
-                />
+                {writesEnabled ? (
+                  <PrimaryButton
+                    label="Complete this operation"
+                    testID={`recovery-replay-${entry.commandKey}`}
+                    onPress={() => void replay(entry)}
+                  />
+                ) : null}
               </>
             ) : null}
             {status.kind === "replaying" ? <Body>Completing…</Body> : null}

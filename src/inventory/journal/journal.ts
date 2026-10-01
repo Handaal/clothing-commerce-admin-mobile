@@ -1,6 +1,7 @@
 import type { IdempotencyKeyFactory } from "../idempotency";
-import { getNamespaceCoordinator, type RunExclusive } from "./coordinator";
+import { getNamespaceCoordinator, isCrossContextSafe, type RunExclusive } from "./coordinator";
 import {
+  CrossContextLockUnavailableError,
   isOwnedBy,
   isRecoverable,
   isResolved,
@@ -90,8 +91,19 @@ export function createInventoryJournal(
   owner: JournalOwner,
   generateKey: IdempotencyKeyFactory,
   now: () => string = () => new Date().toISOString(),
+  // Capability gate for high-risk MUTATIONS (injectable for tests). On web without the Web Locks API
+  // this is false, and every mutating operation rejects BEFORE any persistent write — the fail-closed
+  // guarantee is enforced here at the journal boundary, not left to UI visibility. Reads never consult it.
+  crossContextSafe: () => boolean = isCrossContextSafe,
 ): InventoryJournal {
   const runExclusive: RunExclusive = getNamespaceCoordinator(owner);
+
+  /** Refuse a high-risk mutation when cross-context write serialization is unavailable (fail closed). */
+  function assertMutationAllowed(): void {
+    if (!crossContextSafe()) {
+      throw new CrossContextLockUnavailableError();
+    }
+  }
 
   /** Locate an owned entry by key, or throw a transition error if it is missing or foreign. */
   function requireOwned(
@@ -127,6 +139,7 @@ export function createInventoryJournal(
     extra: Partial<JournalEntry> = {},
   ): Promise<void> {
     return runExclusive(async () => {
+      assertMutationAllowed();
       const document = await store.read();
       const entry = requireOwned(document.entries, commandKey, expectedIdentity);
       if (!ALLOWED_FROM[kind].includes(entry.status)) {
@@ -145,6 +158,7 @@ export function createInventoryJournal(
   return {
     prepare: (payload) =>
       runExclusive(async () => {
+        assertMutationAllowed();
         const identity = payloadIdentity(payload);
         const document = await store.read();
         const existing = document.entries.find(
@@ -185,6 +199,7 @@ export function createInventoryJournal(
 
     acknowledge: (commandKey, expectedIdentity) =>
       runExclusive(async () => {
+        assertMutationAllowed();
         const document = await store.read();
         const entry = document.entries.find((e) => e.commandKey === commandKey);
         if (!entry) return; // already pruned — idempotent

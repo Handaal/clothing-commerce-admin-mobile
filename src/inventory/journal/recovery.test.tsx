@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("expo-crypto", () => ({ randomUUID: () => "unused-native-uuid" }));
+
+import { installWebLocks, removeWebLocks } from "../../test-support/web-locks";
 
 import {
   INVENTORY_LOCATION_A,
@@ -164,7 +166,12 @@ function renderOps(
   return { onRefresh };
 }
 
-afterEach(() => cleanup());
+// Component specs model a supported browser (Web Locks present) unless a test opts out via removeWebLocks.
+beforeEach(() => installWebLocks());
+afterEach(() => {
+  removeWebLocks();
+  cleanup();
+});
 
 describe("inventory mutation crash recovery", () => {
   it("recovers a receive whose response was lost and applies it exactly once (B10)", async () => {
@@ -488,6 +495,36 @@ describe("legacy V1 journal quarantine (P1 migration)", () => {
     fireEvent.click(screen.getByTestId("recovery-legacy-archive"));
     await screen.findByTestId("open-receive");
   });
+
+  it("without Web Locks: shows legacy evidence read-only — NO enabled Archive action (P1-1 / F10)", async () => {
+    const store: JournalStore = createMemoryJournalStore();
+    const api = fakeApi();
+    const journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
+    const detectLegacy = async (): Promise<JournalEntry[]> => [
+      {
+        commandKey: "LEGACY",
+        tenantId: TENANT,
+        actorMembershipId: "",
+        operationType: "receive",
+        payload: RECEIVE(1),
+        payloadIdentity: "legacy",
+        preparedAt: "1970-01-01T00:00:00.000Z",
+        status: "sent",
+      },
+    ];
+    const quarantineLegacy = vi.fn(async () => {});
+
+    removeWebLocks(); // unsupported browser
+    renderOps(journal, api.client, { detectLegacy, quarantineLegacy });
+
+    // Evidence is visible, but the mutating Archive action is NOT offered — only an explanation.
+    await screen.findByTestId("inventory-recovery-legacy");
+    await screen.findByTestId("recovery-legacy-incompatible");
+    expect(screen.queryByTestId("recovery-legacy-archive")).toBeNull();
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(quarantineLegacy).not.toHaveBeenCalled();
+    expect(api.client.receiveInventory).not.toHaveBeenCalled();
+  });
 });
 
 describe("durable storage failure (P1-2)", () => {
@@ -525,5 +562,43 @@ describe("fail-closed initialization (P1-4C)", () => {
 
     // Only after the checks report availability do the forms appear.
     await screen.findByTestId("open-receive");
+  });
+});
+
+describe("web without Web Locks fails closed (P1-3)", () => {
+  it("hides all write forms and shows a compatibility notice; the API is never called", async () => {
+    const store: JournalStore = createMemoryJournalStore();
+    const api = fakeApi();
+    const journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
+
+    removeWebLocks(); // simulate an unsupported browser (no cross-tab lock)
+    renderOps(journal, api.client);
+
+    await screen.findByTestId("inventory-recovery-incompatible");
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(screen.queryByTestId("open-adjust")).toBeNull();
+    expect(screen.queryByTestId("open-transfer")).toBeNull();
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it("still lists unfinished operations READ-ONLY (no replay/ack) and never transports", async () => {
+    const store: JournalStore = createMemoryJournalStore();
+    const api = fakeApi();
+
+    // Seed an unresolved command while Web Locks is available, then simulate the unsupported browser.
+    const seedJournal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
+    const prepared = await seedJournal.prepare(RECEIVE(2));
+    await seedJournal.markSent(prepared.commandKey);
+
+    removeWebLocks();
+    const journal = createInventoryJournal(store, OWNER_A, keyFactory("UNUSED"));
+    renderOps(journal, api.client);
+
+    // The pending operation is visible, but its write action is disabled and nothing is sent.
+    await screen.findByTestId("recovery-entry-K1");
+    await screen.findByTestId("inventory-recovery-incompatible");
+    expect(screen.queryByTestId("recovery-replay-K1")).toBeNull();
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(api.calls).toHaveLength(0);
   });
 });

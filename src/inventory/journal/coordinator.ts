@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 import type { JournalOwner } from "./model";
 
 /** Runs a critical section with exclusive access to one durable journal namespace. */
@@ -35,6 +37,21 @@ function createMutex(): RunExclusive {
 function resolveWebLocks(): WebLocks | null {
   const nav = (globalThis as { navigator?: { locks?: WebLocks } }).navigator;
   return nav?.locks && typeof nav.locks.request === "function" ? nav.locks : null;
+}
+
+/**
+ * Whether journal writes can be serialized across EVERY context that shares this device's durable
+ * journal state. On native there is a single JS runtime, so the in-process coordinator fully serializes
+ * writes and this is always true. On web the journal lives in a `localStorage` namespace shared by all
+ * tabs of the origin, so cross-context safety REQUIRES the Web Locks API — without it two tabs could
+ * race the same whole-document journal and lose an entry (and with it the only durable idempotency
+ * identity for an in-flight mutation). When this is false the caller MUST fail closed: high-risk
+ * inventory mutations and recovery replays are disabled; read-only inventory stays available. We never
+ * silently fall back to an in-process-only lock for durability on web.
+ */
+export function isCrossContextSafe(webLocks: WebLocks | null = resolveWebLocks()): boolean {
+  if (Platform.OS !== "web") return true;
+  return webLocks !== null;
 }
 
 /**

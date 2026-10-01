@@ -1,13 +1,19 @@
 // @vitest-environment jsdom
 import { ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { receiveResponse } from "../../test-support/fixtures";
+import { installWebLocks, removeWebLocks } from "../../test-support/web-locks";
 import { createInventoryJournal } from "./journal";
 import { JournalStorageError, normalizeReceivePayload, type JournalOwner } from "./model";
 import { createMemoryJournalStore, type JournalStore } from "./store";
 import { useJournaledInventoryMutation } from "./useJournaledInventoryMutation";
+
+// The hook performs high-risk journal mutations, which require cross-context locking: model a supported
+// browser (Web Locks present) for these tests.
+beforeEach(() => installWebLocks());
+afterEach(() => removeWebLocks());
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const MEMBER = "33333333-3333-4333-8333-333333333333";

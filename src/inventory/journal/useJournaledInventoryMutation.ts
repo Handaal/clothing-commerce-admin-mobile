@@ -5,6 +5,7 @@ import { describeInventoryWriteError } from "../write-errors";
 import { runJournaledCommand, type JournaledInventoryClient } from "./command-runner";
 import type { InventoryJournal } from "./journal";
 import {
+  CrossContextLockUnavailableError,
   JournalCorruptError,
   JournalStorageError,
   payloadIdentity,
@@ -73,7 +74,11 @@ export interface JournaledMutation<TResult> {
 
 /** True for the durability failures that must fail closed (never transport). */
 function isDurabilityFailure(error: unknown): boolean {
-  return error instanceof JournalStorageError || error instanceof JournalCorruptError;
+  return (
+    error instanceof JournalStorageError ||
+    error instanceof JournalCorruptError ||
+    error instanceof CrossContextLockUnavailableError
+  );
 }
 
 /**

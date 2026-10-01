@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { createInventoryJournal } from "./journal";
+import { createInventoryJournal as baseCreateInventoryJournal } from "./journal";
+
+// These unit tests exercise journal logic in a Node runtime (which looks like "web without Web Locks"
+// under react-native-web). Inject a safe cross-context capability so the fail-closed mutation guard does
+// not fire here; the guard itself is covered directly in fail-closed.test.ts.
+function createInventoryJournal(
+  ...args: Parameters<typeof baseCreateInventoryJournal>
+): ReturnType<typeof baseCreateInventoryJournal> {
+  const [store, owner, generateKey, now] = args;
+  return baseCreateInventoryJournal(store, owner, generateKey, now, () => true);
+}
 import {
   JournalTransitionError,
   normalizeAdjustPayload,

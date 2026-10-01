@@ -19,9 +19,11 @@ import {
   receiveResponse,
   transferResponse,
 } from "../test-support/fixtures";
+import { installWebLocks, removeWebLocks } from "../test-support/web-locks";
 import { InventoryOperations, type InventoryWriteAccess } from "./InventoryOperations";
 import { createInventoryJournal } from "./journal/journal";
-import { createMemoryJournalStore } from "./journal/store";
+import { JournalStorageError } from "./journal/model";
+import { createMemoryJournalStore, type JournalStore } from "./journal/store";
 import { rowKey } from "./operations";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -123,7 +125,11 @@ function typeInto(testID: string, value: string) {
   fireEvent.change(screen.getByTestId(testID), { target: { value } });
 }
 
-afterEach(() => cleanup());
+beforeEach(() => installWebLocks());
+afterEach(() => {
+  removeWebLocks();
+  cleanup();
+});
 
 describe("server-derived write capability UX", () => {
   const client = {
@@ -608,5 +614,49 @@ describe("Phase 2N supplier receive integration", () => {
     expect(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeTruthy();
     // A supplier the caller excluded (e.g. inactive) is never rendered as an option.
     expect(screen.queryByTestId(`receive-supplier-${SUPPLIER_B}`)).toBeNull();
+  });
+});
+
+describe("namespace-wide durability failure (P2-A)", () => {
+  it("a storage failure during submit hides ALL write forms, not just the active one", async () => {
+    // Reads succeed (so the forms become available), but every write fails durably.
+    const failingStore: JournalStore = {
+      read: async () => ({ version: 2, entries: [] }),
+      write: async () => {
+        throw new JournalStorageError("disk full");
+      },
+    };
+    const journal = createInventoryJournal(failingStore, OWNER, keyFactory("K1"));
+    const client = {
+      receiveInventory: vi.fn(),
+      adjustInventory: vi.fn(),
+      transferInventory: vi.fn(),
+    };
+
+    render(
+      <InventoryOperations
+        client={client}
+        journal={journal}
+        locations={LOCATIONS}
+        write={WRITE_ACCESS}
+        items={ITEMS}
+        onRefresh={vi.fn()}
+        onConcurrencyConflict={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByTestId("open-receive"));
+    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
+    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
+    fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("receive-submit"));
+
+    // The durability failure is namespace-wide: a single global notice appears and EVERY form is gone.
+    await screen.findByTestId("inventory-writes-unavailable");
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(screen.queryByTestId("open-adjust")).toBeNull();
+    expect(screen.queryByTestId("open-transfer")).toBeNull();
+    // Fail closed: the API was never called.
+    expect(client.receiveInventory).not.toHaveBeenCalled();
   });
 });

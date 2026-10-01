@@ -2,9 +2,11 @@ import {
   isResolved,
   isUnresolved,
   JournalCorruptError,
+  JournalGenerationExhaustedError,
   payloadIdentity,
   type JournalEntry,
   type JournalOperationType,
+  type JournalOwner,
   type JournalPayload,
   type JournalStatus,
 } from "./model";
@@ -25,6 +27,12 @@ const PERSISTED_STATUSES: readonly JournalStatus[] = ["prepared", "sent", "accep
 const OPERATION_TYPES: readonly JournalOperationType[] = ["receive", "adjust", "transfer"];
 
 export function serializePersisted(entries: JournalEntry[], generation: number): string {
+  if (!isSafeGeneration(generation)) {
+    // Guard the serializer too: a non-safe generation must never be written to disk/storage.
+    throw new JournalGenerationExhaustedError(
+      `Refusing to persist an unsafe generation ${String(generation)}.`,
+    );
+  }
   return JSON.stringify({ version: 2, generation, entries });
 }
 
@@ -39,13 +47,34 @@ export function safeGeneration(raw: string | null): number {
 }
 
 /**
- * STRICT whole-document parse. Any structural OR semantic defect — a bad version/generation, a malformed
- * or impossible entry, a duplicate key, or a payload whose recomputed identity does not match the stored
- * one — makes the ENTIRE document corrupt: we throw {@link JournalCorruptError} and never silently drop
- * entries (silent dropping would lose recovery evidence and could unblock a duplicate mutation). The
- * original bytes are preserved by the caller.
+ * The next monotonic generation after `current`. Generations are SAFE integers only: once `current`
+ * reaches {@link Number.MAX_SAFE_INTEGER} the counter is exhausted and we fail closed
+ * ({@link JournalGenerationExhaustedError}) rather than wrap or silently reuse a generation — a reused
+ * or wrapped generation could let a stale/partial copy outrank the authoritative one. `current` is
+ * clamped at 0 for a fresh (empty) store.
  */
-export function parsePersisted(raw: string): PersistedJournal {
+export function nextGeneration(current: number): number {
+  const base = isSafeGeneration(current) ? current : 0;
+  if (base >= Number.MAX_SAFE_INTEGER) {
+    throw new JournalGenerationExhaustedError();
+  }
+  return base + 1;
+}
+
+/**
+ * STRICT whole-document parse. Any structural OR semantic defect — a bad version/generation, a malformed
+ * or impossible entry, a duplicate key, an entry owned by a DIFFERENT (tenant, membership) than the one
+ * expected, or a payload whose recomputed identity does not match the stored one — makes the ENTIRE
+ * document corrupt: we throw {@link JournalCorruptError} and never silently drop entries (silent dropping
+ * would lose recovery evidence and could unblock a duplicate mutation). The original bytes are preserved
+ * by the caller.
+ *
+ * When `expectedOwner` is supplied, EVERY persisted entry must belong to exactly that owner. A
+ * foreign-owner entry (wrong tenant OR wrong membership) is corruption for this namespace — it is never
+ * parsed-then-filtered, because a namespace whose document carries another owner's command is not a
+ * trustworthy empty journal; it is a tampered/mis-scoped document and must fail closed.
+ */
+export function parsePersisted(raw: string, expectedOwner?: JournalOwner): PersistedJournal {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -54,10 +83,10 @@ export function parsePersisted(raw: string): PersistedJournal {
   }
   if (!isRecord(parsed)) throw corrupt("document is not an object");
   if (parsed.version !== 2) throw corrupt("unrecognized journal version");
-  if (!isNonNegativeInt(parsed.generation)) throw corrupt("missing or invalid generation");
+  if (!isSafeGeneration(parsed.generation)) throw corrupt("missing or invalid generation");
   if (!Array.isArray(parsed.entries)) throw corrupt("entries is not an array");
 
-  const entries = parsed.entries.map((entry, index) => validateEntry(entry, index));
+  const entries = parsed.entries.map((entry, index) => validateEntry(entry, index, expectedOwner));
 
   const keys = new Set<string>();
   for (const entry of entries) {
@@ -67,7 +96,7 @@ export function parsePersisted(raw: string): PersistedJournal {
   return { generation: parsed.generation, entries };
 }
 
-function validateEntry(value: unknown, index: number): JournalEntry {
+function validateEntry(value: unknown, index: number, expectedOwner?: JournalOwner): JournalEntry {
   if (!isRecord(value)) throw corrupt(`entry ${index} is not an object`);
 
   const {
@@ -84,6 +113,17 @@ function validateEntry(value: unknown, index: number): JournalEntry {
   if (!isNonEmptyString(commandKey)) throw corrupt(`entry ${index} has no command key`);
   if (!isNonEmptyString(tenantId)) throw corrupt(`entry ${commandKey} has no tenant`);
   if (!isNonEmptyString(actorMembershipId)) throw corrupt(`entry ${commandKey} has no membership`);
+  // Expected-owner check: a persisted document is strictly single-owner. Any entry whose tenant OR
+  // membership differs from the namespace's expected owner makes the whole document corrupt (never
+  // filtered away to a misleading empty journal).
+  if (expectedOwner !== undefined) {
+    if (tenantId !== expectedOwner.tenantId) {
+      throw corrupt(`entry ${commandKey} belongs to a different tenant`);
+    }
+    if (actorMembershipId !== expectedOwner.membershipId) {
+      throw corrupt(`entry ${commandKey} belongs to a different membership`);
+    }
+  }
   if (!isOperationType(operationType)) throw corrupt(`entry ${commandKey} has invalid operation`);
   if (!isPersistedStatus(status))
     throw corrupt(`entry ${commandKey} has invalid status "${String(status)}"`);
@@ -150,8 +190,13 @@ function validatePayload(
       if (value.supplierId !== undefined && !isNonEmptyString(value.supplierId)) {
         throw corrupt(`entry ${commandKey} receive payload has an invalid supplier`);
       }
-      if (value.supplierReference !== undefined && typeof value.supplierReference !== "string") {
-        throw corrupt(`entry ${commandKey} receive payload has an invalid supplier reference`);
+      // A supplier reference persists only when it carries meaningful text: `normalizeReceivePayload`
+      // drops a blank/whitespace reference entirely, so a stored empty (or whitespace-only) reference is
+      // not a shape the canonical normalizer would ever produce — it is corruption, not "no reference".
+      if (value.supplierReference !== undefined) {
+        if (typeof value.supplierReference !== "string" || value.supplierReference.trim() === "") {
+          throw corrupt(`entry ${commandKey} receive payload has an invalid supplier reference`);
+        }
       }
       return value as unknown as JournalPayload;
     }
@@ -194,12 +239,20 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+// Counts and versions are bounded integers: they must be SAFE integers, not merely integer-valued
+// floats. `Number.isInteger(1e308)` is true but 1e308 is not a safe integer — it cannot be incremented
+// or compared reliably — so such a value is rejected as corruption.
 function isPositiveInt(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 function isNonNegativeInt(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/** A storage generation must be a non-negative SAFE integer (never `1e308`, NaN, or fractional). */
+function isSafeGeneration(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isIsoTimestamp(value: unknown): value is string {
