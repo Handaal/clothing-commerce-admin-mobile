@@ -5,7 +5,7 @@ import type {
   TenantCommerceClient,
   TransferInventoryResponse,
 } from "@shifted/clothing-commerce-sdk";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 
 import {
@@ -22,7 +22,6 @@ import {
   TextField,
   Title,
 } from "../ui/components";
-import { type MutationState } from "../ui/useMutation";
 import type { InventoryItem } from "./load";
 import { InventoryRecoveryPanel } from "./journal/InventoryRecoveryPanel";
 import type { InventoryJournal } from "./journal/journal";
@@ -30,10 +29,12 @@ import {
   normalizeAdjustPayload,
   normalizeReceivePayload,
   normalizeTransferPayload,
+  type JournalEntry,
 } from "./journal/model";
 import {
   useJournaledInventoryMutation,
   type JournaledMutation,
+  type JournaledMutationState,
 } from "./journal/useJournaledInventoryMutation";
 import {
   distinctVariants,
@@ -62,12 +63,15 @@ export interface InventoryOperationsProps {
   /** Invalidate a stale adjustment and re-read authoritative inventory after a 409. */
   onConcurrencyConflict: () => void;
   /**
-   * Durable command journal for the high-risk inventory writes. It owns idempotency-key identity so a
-   * command whose response was lost survives a restart and is recovered rather than silently re-minted.
+   * Durable command journal for the high-risk inventory writes, bound to the active owner (tenant +
+   * membership). It owns idempotency-key identity so a command whose response was lost survives a
+   * restart and is recovered rather than silently re-minted.
    */
   journal: InventoryJournal;
-  /** Tenant/context the journaled commands belong to (scopes every journal read and write). */
-  tenantId: string;
+  /** Detect un-attributable released V1 journal entries for this tenant (quarantine, never auto-replay). */
+  detectLegacy?: () => Promise<JournalEntry[]>;
+  /** Archive (preserve) the released V1 journal so new mutations may resume. */
+  quarantineLegacy?: () => Promise<void>;
   /**
    * Phase 2N: OPTIONAL supplier linking for the Receive form. When provided, the form offers these
    * ACTIVE suppliers (the caller excludes inactive ones — they cannot back a new receipt) plus an
@@ -88,6 +92,14 @@ type OpKind = "receive" | "adjust" | "transfer";
  */
 export function InventoryOperations(props: InventoryOperationsProps) {
   const [activeOp, setActiveOp] = useState<OpKind | null>(null);
+  // Fail closed at startup: write forms stay hidden until the recovery panel has validated the durable
+  // V2 store AND completed the legacy V1 check and reported availability. There is deliberately NO window
+  // where a mutation could be submitted before those checks finish. Read-only inventory stays usable.
+  const [writesAvailable, setWritesAvailable] = useState(false);
+  const onAvailabilityChange = useCallback(
+    (available: boolean) => setWritesAvailable(available),
+    [],
+  );
 
   const variantOptions = useMemo<SelectOption[]>(
     () =>
@@ -130,55 +142,61 @@ export function InventoryOperations(props: InventoryOperationsProps) {
           here and completed by replaying its original idempotency key — never re-minted into a duplicate. */}
       <InventoryRecoveryPanel
         journal={props.journal}
-        tenantId={props.tenantId}
         client={props.client}
         items={props.items}
         locations={props.locations}
         onResolved={props.onRefresh}
+        detectLegacy={props.detectLegacy}
+        quarantineLegacy={props.quarantineLegacy}
+        onAvailabilityChange={onAvailabilityChange}
       />
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {props.write.canReceive ? (
-          <OpTab
-            label="Receive stock"
-            testID="open-receive"
-            active={activeOp === "receive"}
-            onPress={() => setActiveOp(activeOp === "receive" ? null : "receive")}
-          />
-        ) : null}
-        {props.write.canAdjust ? (
-          <OpTab
-            label="Adjust (reconcile)"
-            testID="open-adjust"
-            active={activeOp === "adjust"}
-            onPress={() => setActiveOp(activeOp === "adjust" ? null : "adjust")}
-          />
-        ) : null}
-        {props.write.canTransfer ? (
-          <OpTab
-            label="Transfer stock"
-            testID="open-transfer"
-            active={activeOp === "transfer"}
-            onPress={() => setActiveOp(activeOp === "transfer" ? null : "transfer")}
-          />
-        ) : null}
-      </View>
+      {writesAvailable ? (
+        <>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {props.write.canReceive ? (
+              <OpTab
+                label="Receive stock"
+                testID="open-receive"
+                active={activeOp === "receive"}
+                onPress={() => setActiveOp(activeOp === "receive" ? null : "receive")}
+              />
+            ) : null}
+            {props.write.canAdjust ? (
+              <OpTab
+                label="Adjust (reconcile)"
+                testID="open-adjust"
+                active={activeOp === "adjust"}
+                onPress={() => setActiveOp(activeOp === "adjust" ? null : "adjust")}
+              />
+            ) : null}
+            {props.write.canTransfer ? (
+              <OpTab
+                label="Transfer stock"
+                testID="open-transfer"
+                active={activeOp === "transfer"}
+                onPress={() => setActiveOp(activeOp === "transfer" ? null : "transfer")}
+              />
+            ) : null}
+          </View>
 
-      {activeOp === "receive" && props.write.canReceive ? (
-        <ReceiveForm
-          {...props}
-          variantOptions={variantOptions}
-          locationOptions={receiveLocationOptions}
-          supplierOptions={props.receiveSuppliers}
-        />
-      ) : null}
-      {activeOp === "adjust" && props.write.canAdjust ? <AdjustForm {...props} /> : null}
-      {activeOp === "transfer" && props.write.canTransfer ? (
-        <TransferForm
-          {...props}
-          variantOptions={variantOptions}
-          sourceOptions={transferSourceOptions}
-          destinationOptions={transferDestinationOptions}
-        />
+          {activeOp === "receive" && props.write.canReceive ? (
+            <ReceiveForm
+              {...props}
+              variantOptions={variantOptions}
+              locationOptions={receiveLocationOptions}
+              supplierOptions={props.receiveSuppliers}
+            />
+          ) : null}
+          {activeOp === "adjust" && props.write.canAdjust ? <AdjustForm {...props} /> : null}
+          {activeOp === "transfer" && props.write.canTransfer ? (
+            <TransferForm
+              {...props}
+              variantOptions={variantOptions}
+              sourceOptions={transferSourceOptions}
+              destinationOptions={transferDestinationOptions}
+            />
+          ) : null}
+        </>
       ) : null}
     </View>
   );
@@ -215,7 +233,10 @@ function supplierLabel(options: SelectOption[] | undefined, id: string): string 
  * On a write success (and only once per result), trigger an authoritative server refresh. Final
  * balances and future adjustment versions always come from the inventory list re-read.
  */
-function useRefreshOnSuccess<TResult>(state: MutationState<TResult>, onRefresh: () => void) {
+function useRefreshOnSuccess<TResult>(
+  state: JournaledMutationState<TResult>,
+  onRefresh: () => void,
+) {
   // Keep the latest callback behind a ref so the effect runs once for the mutation state transition,
   // not again merely because a parent callback identity changes.
   const latest = useRef(onRefresh);
@@ -244,7 +265,7 @@ function WriteError<TResult extends object>({
   state,
   mutation,
 }: {
-  state: Extract<MutationState<TResult>, { status: "error" }>;
+  state: Extract<JournaledMutationState<TResult>, { status: "error" }>;
   mutation: JournaledMutation<TResult>;
 }) {
   const described = describeInventoryWriteError(state.error);
@@ -266,6 +287,43 @@ function WriteError<TResult extends object>({
       {described.recovery === "none" ? (
         <TextButton label="Dismiss" onPress={() => mutation.reset()} />
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Shown when a submission was BLOCKED without transport: either durable persistence could not be
+ * secured (fail closed — no API request was issued) or an equivalent operation is already unresolved and
+ * must be resumed in the recovery panel above. Never exposes raw storage errors.
+ */
+function BlockedNotice<TResult extends object>({
+  reason,
+  mutation,
+}: {
+  reason: "storage-unavailable" | "pending-equivalent";
+  mutation: JournaledMutation<TResult>;
+}) {
+  if (reason === "pending-equivalent") {
+    return (
+      <View style={{ gap: 8 }} testID="write-blocked-equivalent">
+        <Title>This operation is already in progress</Title>
+        <Body>
+          A matching operation is already waiting in the unfinished operations above. Resume it
+          there to complete it safely — it reuses the original request, so it can never be counted
+          twice.
+        </Body>
+        <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+      </View>
+    );
+  }
+  return (
+    <View style={{ gap: 8 }} testID="write-blocked-storage">
+      <Title>Inventory changes temporarily unavailable</Title>
+      <Body>
+        This change could not be saved to the recovery journal, so it was not sent. No inventory was
+        changed. Try again; if it keeps happening, the recovery journal needs attention.
+      </Body>
+      <TextButton label="Dismiss" onPress={() => mutation.reset()} />
     </View>
   );
 }
@@ -303,7 +361,6 @@ function ReceiveForm(
   const mutation = useJournaledInventoryMutation<ReceiveInventoryResponse>({
     client: props.client,
     journal: props.journal,
-    tenantId: props.tenantId,
   });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
@@ -421,6 +478,9 @@ function ReceiveForm(
       {mutation.state.status === "error" ? (
         <WriteError state={mutation.state} mutation={mutation} />
       ) : null}
+      {mutation.state.status === "blocked" ? (
+        <BlockedNotice reason={mutation.state.reason} mutation={mutation} />
+      ) : null}
       <PrimaryButton
         label={mutation.state.status === "submitting" ? "Receiving…" : "Receive stock"}
         testID="receive-submit"
@@ -461,7 +521,6 @@ function AdjustForm(props: InventoryOperationsProps) {
   const mutation = useJournaledInventoryMutation<AdjustInventoryResponse>({
     client: props.client,
     journal: props.journal,
-    tenantId: props.tenantId,
   });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
@@ -558,6 +617,9 @@ function AdjustForm(props: InventoryOperationsProps) {
           {mutation.state.status === "error" && !isConcurrencyConflict ? (
             <WriteError state={mutation.state} mutation={mutation} />
           ) : null}
+          {mutation.state.status === "blocked" ? (
+            <BlockedNotice reason={mutation.state.reason} mutation={mutation} />
+          ) : null}
           <PrimaryButton
             label={mutation.state.status === "submitting" ? "Reconciling…" : "Reconcile to count"}
             testID="adjust-submit"
@@ -591,7 +653,6 @@ function TransferForm(
   const mutation = useJournaledInventoryMutation<TransferInventoryResponse>({
     client: props.client,
     journal: props.journal,
-    tenantId: props.tenantId,
   });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
@@ -693,6 +754,9 @@ function TransferForm(
       {localError ? <Body>{localError}</Body> : null}
       {mutation.state.status === "error" ? (
         <WriteError state={mutation.state} mutation={mutation} />
+      ) : null}
+      {mutation.state.status === "blocked" ? (
+        <BlockedNotice reason={mutation.state.reason} mutation={mutation} />
       ) : null}
       <PrimaryButton
         label={mutation.state.status === "submitting" ? "Transferring…" : "Transfer stock"}

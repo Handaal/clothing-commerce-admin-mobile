@@ -260,16 +260,18 @@ Design (`src/inventory/journal/`):
 1. **Durable journal, not refs.** `InventoryJournal` (over a `JournalStore`) is the source of truth for
    in-flight command identity. The device backend is `localStorage` on web and a JSON file in the
    persistent document directory on native (`createDurableJournalStore`), both surviving an app/process
-   restart; a memory store backs tests and is the last-resort fallback. `InventoryScreen` creates the
-   journal once and passes it to `InventoryOperations`.
+   restart; a memory store backs tests only. (Phase 2S-F4 makes storage fail-closed: there is no
+   production memory fallback.) `InventoryScreen` creates the journal once and passes it to
+   `InventoryOperations`.
 2. **Persist before transport.** `useJournaledInventoryMutation` writes the command — normalized payload,
    idempotency key, tenant/context, prepared timestamp, lifecycle status — to the journal (`prepared`)
    _before_ any request, moves it to `sent` at dispatch, then to `accepted` (with the canonical server
    response) once resolved. The key is minted once, in the journal, and reused verbatim on every replay.
 3. **Result classification.** An ambiguous outcome (transport/5xx → the write-error `retry` recovery)
    leaves the command unresolved so it can be replayed; every definitive rejection (validation, business,
-   auth, stale-version) did not apply and is discarded. A command is `acknowledged` (pruned) once the
-   operator has seen its resolution.
+   auth, stale-version) did not apply. (Phase 2S-F4 keeps a rejection as a `rejected` entry shown until
+   dismissed, rather than deleting it.) A command is `acknowledged` (pruned) only once the operator has
+   explicitly acknowledged its resolution.
 4. **Equivalence dedupe.** `prepare` reuses the existing key for an equivalent, still-unresolved command
    (same normalized payload identity) rather than minting a second key — so a repeated equivalent intent
    can never become a second mutation. A recount against a new `expectedVersion` is a genuinely new
@@ -283,8 +285,120 @@ Design (`src/inventory/journal/`):
    `supplierId`/`supplierReference` in the persisted payload — no parallel system — and that metadata is
    replayed verbatim on recovery.
 
-Tenant isolation: every journal read/write is filtered by `tenantId`, so one tenant's unresolved
-commands are never visible to, or replayable in, another.
+Tenant isolation: every journal read/write is filtered by owner (see Phase 2S-F4), so one owner's
+unresolved commands are never visible to, or replayable in, another.
+
+## Phase 2S-F4 inventory recovery journal hardening
+
+Phase 2S-F4 closes four confirmed P1 defects in the merged F2 journal. The journal format is bumped to
+**v2** (membership-scoped, owner-namespaced storage); the released v1 journal is never silently adopted.
+
+1. **Accepted survives until acknowledged (lifecycle).** The lifecycle is now
+   `prepared → sent → (accepted | rejected) → acknowledged`. `accepted` is _resolved but not terminal_:
+   it survives a restart and stays visible in the recovery surface until the operator explicitly
+   acknowledges it — there is no startup auto-prune of accepted results (`findRecoverable` returns every
+   not-yet-acknowledged entry; nothing is pruned on load). A definitive rejection becomes `rejected`
+   (kept, shown, dismissed deliberately) rather than being deleted, so nothing silently vanishes. Only an
+   explicit acknowledgement deletes an entry, and the journal **refuses to acknowledge an unresolved
+   command** — removing the old unsafe "Discard without completing", since an ambiguous command's durable
+   key is the only identity for a mutation the server may already have committed.
+
+2. **Fail-closed durable storage.** `createDurableJournalStore` never degrades to memory. A failed write
+   (quota, disabled storage, native I/O) throws `JournalStorageError`; unreadable/corrupt content throws
+   `JournalCorruptError` and is **preserved** (web: original key intact plus a `.corrupt` copy; native: a
+   `.corrupt` sibling copy) — corruption is never coerced into an empty journal. The write hook persists
+   `prepared` _before_ transport and treats any durability failure as a blocking state: **the API is
+   never called** when the durable prepare could not be secured. The in-memory store remains available
+   only for tests/explicit DI.
+
+3. **Crash-safe native write.** The native file is written through a temp copy before replacing the live
+   file. (Phase 2S-F6 replaces this with a three-generation protocol — see below — because an Expo
+   overwrite-move is **not** atomic: it deletes the destination first, so a crash mid-move could erase
+   the only copy.)
+
+4. **Serialized journal transitions.** Every write — `prepare`, `markSent`, `recordAccepted`,
+   `recordRejected`, `acknowledge`, and recovery-panel replays — runs through a shared async mutex,
+   eliminating the lost-update window where two overlapping forms (Receive + Adjust, Transfer + Supplier
+   Receive, or a recovery replay overlapping a new prepare) could clobber each other's whole-document
+   write and lose an entry. (Phase 2S-F6 lifts this lock above the journal instance so it is shared
+   per-namespace across remounts and browser tabs — see below.)
+
+5. **Transition invariants.** Each transition verifies the target entry exists, is owned by this journal
+   (tenant **and** membership), and is in a status that permits the change; otherwise it throws
+   `JournalTransitionError`. Transport never continues if the durable record unexpectedly disappeared,
+   and a missing entry is never silently reconstructed under a new key.
+
+6. **Membership-scoped ownership.** Journal ownership is `{ tenantId, membershipId }`, using the
+   canonical `/me/context` `membership.id` — the same actor fingerprint the API scopes inventory
+   idempotency to (never email/display name). Storage is owner-namespaced: web key
+   `admin-mobile.inventory-journal.v2.<tenant>.<membership>`, native file
+   `inventory-journal.v2.<tenant>.<membership>.json`. On a user switch the journal is recreated for the
+   new owner, so one user never sees, replays, acknowledges, or deletes another's unresolved commands,
+   and the originating user recovers them on return.
+
+7. **V1 quarantine.** The released v1 journal (no membership owner) is detected per tenant
+   (`readLegacyV1Unresolved`) and **never auto-claimed or replayed**. Unresolved v1 entries block new
+   inventory mutations behind a non-destructive notice until the operator explicitly archives them
+   (`quarantineLegacyV1` preserves the v1 data under a `.quarantined` key/path, never deleting it).
+
+8. **Equivalent-intent UX.** Submitting a form whose normalized intent matches an already-unresolved
+   command does not look like a fresh send: it is blocked (`pending-equivalent`) and the operator is
+   pointed at the existing recovery entry. No second key is ever minted.
+
+9. **Recovery / storage UX.** `InventoryRecoveryPanel` distinguishes prepared vs sent/ambiguous (exact
+   retry only), accepted (confirmed — shows "Applied", awaiting acknowledgement), and rejected (kept
+   until dismissed). Corruption/storage failures and legacy quarantine render blocking, non-destructive
+   notices and hide the write forms (via `onAvailabilityChange`) while read-only inventory stays usable;
+   raw filesystem/localStorage errors are never shown (dev-only logging).
+
+## Phase 2S-F6 journal durability — generation protocol, namespace locking, strict validation
+
+Phase 2S-F6 closes four follow-up P1s that an independent verification found in F4.
+
+1. **Native generation protocol (not atomic move).** An Expo overwrite-move deletes its destination
+   first, so the F4 temp→move promotion had a crash window that could erase the only journal. The native
+   store (`createGenerationStore`, over an injectable `GenerationFs` seam) now keeps **three physical
+   generations** — `main`, `backup`, `temp` — each a complete copy carrying a monotonic `generation`.
+   Write (new generation `G = max valid generation + 1`): (1) write the full new content to `temp`;
+   (2) validate `temp`; (3) if `main` is valid, copy it to `backup` _before_ `main` is touched;
+   (4) write the new content over `main`; (5) validate `main`; (6) only then remove the now-stale `temp`
+   and `backup`. The invariant is that **at every interruption point at least one complete, valid
+   generation survives** (a crash between 4 and 5 leaves `temp` = G and `backup` = G-1). Startup recovery
+   independently validates every surviving generation and returns the one with the **highest generation**
+   (ties: `main` > `temp` > `backup`); reads NEVER delete anything (a stale `temp` is never removed before
+   a valid generation is chosen), and if files exist but none is valid the bytes are preserved and
+   `JournalCorruptError` is thrown — never an empty journal.
+
+2. **Namespace-scoped coordinator (+ web cross-tab).** Serialization is lifted above the `InventoryJournal`
+   instance into a module-level registry keyed by `(tenant, membership)` (`getNamespaceCoordinator`), so a
+   screen that remounts a brand-new journal over the same namespace shares one effective lock with the
+   old instance. On web each critical section is additionally wrapped in a `navigator.locks` request named
+   per namespace, serializing two browser tabs; where Web Locks is unavailable the in-process mutex still
+   protects a single runtime (cross-tab coordination is simply not offered, never silently faked).
+
+3. **Strict whole-document validation.** The persisted parser (`parsePersisted`) is strict: any single
+   defect — bad `version`/`generation`, a malformed or impossible entry (unknown status/operation, missing
+   tenant/membership/key, bad timestamp, invalid quantity/version, wrong payload shape), a duplicate key,
+   an illegal status/result combination (`accepted` without a result, `prepared` carrying one), or a
+   payload whose **recomputed identity** does not match the stored `payloadIdentity` — makes the WHOLE
+   document corrupt (`JournalCorruptError`). Entries are never silently filtered out. Recomputing the
+   identity from the stored payload prevents a damaged payload from being replayed under a stale key.
+
+4. **V1 blocks on all non-terminal evidence + fail-closed init.** Legacy V1 detection now blocks on any
+   non-acknowledged V1 entry for the tenant — including `accepted` (a committed, un-acknowledged legacy
+   mutation) and unknown statuses — and treats an unreadable or malformed V1 journal as blocking evidence
+   (never "no journal"). The Inventory write surface starts with writes **unavailable** and only enables
+   the forms after the V2 store has validated AND the V1 check has completed with no blocking state, so
+   there is no startup window in which a mutation could be submitted. A storage-unavailable namespace
+   hides ALL write forms for that owner (read-only inventory stays usable).
+
+5. **Transition identity (P2).** The lifecycle is strict `prepared → sent → (accepted | rejected)` — a
+   result is only recorded for a command that was actually dispatched. Transitions additionally accept an
+   `expectedIdentity` (the caller's payload fingerprint); a mismatch fails the transition, so a transition
+   can never mutate a row whose stored payload has diverged.
+
+6. **`supplierReference` (P2).** `normalizeReceivePayload` now keeps a document reference whenever
+   provided, independent of `supplierId`, matching the canonical API input (the UI is unchanged).
 
 ## Phase 2S-F2 Settings topology error UX
 

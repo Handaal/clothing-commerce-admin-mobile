@@ -23,8 +23,13 @@ import {
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
 import { InventoryOperations } from "./InventoryOperations";
-import { createDurableJournalStore } from "./journal/durable-store";
+import {
+  createDurableJournalStore,
+  quarantineLegacyV1,
+  readLegacyV1Unresolved,
+} from "./journal/durable-store";
 import { createInventoryJournal } from "./journal/journal";
+import type { JournalOwner } from "./journal/model";
 import { secureIdempotencyKey } from "./idempotency";
 import { loadAllInventory, type InventoryItem } from "./load";
 
@@ -60,12 +65,21 @@ export function InventoryScreen({ tenantId, context, onBack }: InventoryScreenPr
 function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
-  // The durable inventory-mutation journal: device-backed so a high-risk command whose response is lost
-  // survives an app restart and is recovered rather than silently re-minted. Created once per screen.
-  const journal = useMemo(
-    () => createInventoryJournal(createDurableJournalStore(), secureIdempotencyKey),
-    [],
+  // Journal ownership is scoped to tenant AND acting membership — the same actor fingerprint the API
+  // scopes inventory idempotency to — using the canonical `/me/context` membership id. One user's
+  // unresolved commands are therefore never visible to, or replayable by, another on the same device.
+  const owner = useMemo<JournalOwner>(
+    () => ({ tenantId, membershipId: context.membership.id }),
+    [tenantId, context.membership.id],
   );
+  // The durable inventory-mutation journal: membership-scoped, device-backed so a high-risk command
+  // whose response is lost survives an app restart and is recovered rather than silently re-minted.
+  // Recreated when the owner changes, so a user switch loads that user's own journal (not another's).
+  const journal = useMemo(
+    () => createInventoryJournal(createDurableJournalStore(owner), owner, secureIdempotencyKey),
+    [owner],
+  );
+  const detectLegacy = useCallback(() => readLegacyV1Unresolved(owner), [owner]);
   // One bounded producer that follows the server cursor across all pages (see loadAllInventory).
   const load = useCallback(() => loadAllInventory(client), [client]);
   const { state, reload } = useAsync<InventoryItem[]>(load);
@@ -132,13 +146,14 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
         <InventoryOperations
           client={client}
           journal={journal}
-          tenantId={tenantId}
           locations={context.access.inventory.locations}
           write={context.access.inventory.write}
           items={state.data}
           onRefresh={reload}
           onConcurrencyConflict={refreshAfterConcurrency}
           receiveSuppliers={receiveSuppliers}
+          detectLegacy={detectLegacy}
+          quarantineLegacy={quarantineLegacyV1}
         />
       ) : null}
       {state.status === "success" ? <Divider /> : null}

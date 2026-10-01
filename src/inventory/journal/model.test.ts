@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isRecoverable,
+  isResolved,
   isUnresolved,
   normalizeAdjustPayload,
   normalizeReceivePayload,
@@ -30,7 +32,7 @@ describe("journal payload normalization", () => {
     expect(payloadIdentity(a)).toBe(payloadIdentity(b));
   });
 
-  it("keeps a supplier reference only alongside a supplier", () => {
+  it("keeps a supplier reference whenever provided, independent of a supplier", () => {
     const linked = normalizeReceivePayload({
       variantId: VARIANT,
       inventoryLocationId: LOCATION,
@@ -40,15 +42,24 @@ describe("journal payload normalization", () => {
     });
     expect(linked).toMatchObject({ supplierId: SUPPLIER, supplierReference: "GRN-1" });
 
-    // A reference without a supplier is dropped entirely (a legacy no-supplier receipt).
-    const unlinked = normalizeReceivePayload({
+    // The API permits a document reference without a supplier, so a reference-only receipt keeps the
+    // reference (and still omits the supplier). A blank reference is still dropped.
+    const referenceOnly = normalizeReceivePayload({
       variantId: VARIANT,
       inventoryLocationId: LOCATION,
       quantity: 2,
       supplierReference: "GRN-1",
     });
-    expect(unlinked).not.toHaveProperty("supplierId");
-    expect(unlinked).not.toHaveProperty("supplierReference");
+    expect(referenceOnly).not.toHaveProperty("supplierId");
+    expect(referenceOnly).toMatchObject({ supplierReference: "GRN-1" });
+
+    const blankReference = normalizeReceivePayload({
+      variantId: VARIANT,
+      inventoryLocationId: LOCATION,
+      quantity: 2,
+      supplierReference: "   ",
+    });
+    expect(blankReference).not.toHaveProperty("supplierReference");
   });
 
   it("gives a stable identity independent of key order but sensitive to real differences", () => {
@@ -108,10 +119,24 @@ describe("journal payload normalization", () => {
     expect(payloadIdentity(forward)).not.toBe(payloadIdentity(reverse));
   });
 
-  it("classifies which lifecycle states are unresolved", () => {
+  it("classifies lifecycle states: unresolved, resolved, and recoverable", () => {
     expect(isUnresolved("prepared")).toBe(true);
     expect(isUnresolved("sent")).toBe(true);
     expect(isUnresolved("accepted")).toBe(false);
+    expect(isUnresolved("rejected")).toBe(false);
     expect(isUnresolved("acknowledged")).toBe(false);
+
+    // Resolved = server outcome known, not yet acknowledged.
+    expect(isResolved("accepted")).toBe(true);
+    expect(isResolved("rejected")).toBe(true);
+    expect(isResolved("prepared")).toBe(false);
+    expect(isResolved("acknowledged")).toBe(false);
+
+    // Recoverable = anything that must survive a restart and be shown until acknowledged.
+    expect(isRecoverable("prepared")).toBe(true);
+    expect(isRecoverable("sent")).toBe(true);
+    expect(isRecoverable("accepted")).toBe(true);
+    expect(isRecoverable("rejected")).toBe(true);
+    expect(isRecoverable("acknowledged")).toBe(false);
   });
 });
