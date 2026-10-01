@@ -8,7 +8,7 @@ import {
   type JournalOwner,
 } from "./model";
 import type { JournalStore } from "./store";
-import { parsePersisted, safeGeneration, serializePersisted } from "./validation";
+import { nextGeneration, parsePersisted, safeGeneration, serializePersisted } from "./validation";
 
 // Durable storage is OWNERSHIP-AWARE: each (tenant, membership) pair gets its own namespace so one
 // user's unresolved commands are never loaded into — or replayable by — another user on the same device,
@@ -63,7 +63,9 @@ export function createWebJournalStore(owner: JournalOwner): JournalStore {
       }
       if (raw === null) return emptyJournalDocument();
       try {
-        return { version: 2, entries: parsePersisted(raw).entries };
+        // Validate against the EXPECTED owner: a foreign-owner document for this key is corruption for
+        // this namespace, never a silently-empty journal.
+        return { version: 2, entries: parsePersisted(raw, owner).entries };
       } catch (cause) {
         quarantineWeb(store, key, raw);
         throw cause instanceof JournalCorruptError ? cause : asCorrupt(cause);
@@ -71,14 +73,16 @@ export function createWebJournalStore(owner: JournalOwner): JournalStore {
     },
     write: async (document) => {
       const store = requireWebStorage();
-      let generation = 0;
+      let current: number;
       try {
-        generation = safeGeneration(store.getItem(key)) + 1;
+        current = safeGeneration(store.getItem(key));
       } catch (cause) {
         throw new JournalStorageError("Could not read the inventory recovery journal.", cause);
       }
+      // Advance the monotonic generation with safe-integer / exhaustion guards (fail closed, never wrap).
+      const serialized = serializePersisted(document.entries, nextGeneration(current));
       try {
-        store.setItem(key, serializePersisted(document.entries, generation));
+        store.setItem(key, serialized);
       } catch (cause) {
         throw new JournalStorageError("Could not save the inventory recovery journal.", cause);
       }
@@ -135,30 +139,47 @@ function generationNames(base: string): GenerationNames {
   return { main: base, backup: `${base}.bak`, temp: `${base}.tmp`, corrupt: `${base}.corrupt` };
 }
 
+/** One validated generation found in a slot during inspection. */
+interface GenerationCandidate {
+  slot: keyof GenerationNames;
+  priority: number;
+  generation: number;
+  entries: JournalEntry[];
+}
+
 /**
  * A crash-recoverable whole-document store over three physical generations — `main`, `backup`, `temp` —
  * each a complete, independently-validated copy tagged with a monotonic `generation`. It does NOT rely
  * on any single filesystem operation being atomic (in particular, an Expo overwrite-move deletes its
- * destination first, so a crash mid-move could erase the only copy). Instead it maintains the invariant
- * that **at every interruption point at least one complete, valid generation survives**:
+ * destination first, and a write may truncate-then-fail, so a crash mid-operation could erase a copy).
+ * Instead it maintains the invariant that **at every individual filesystem-operation boundary at least
+ * one complete, valid generation survives**, regardless of which slot currently holds authority.
  *
- * Write (new generation G = max existing valid generation + 1):
- *   1. write the full new content to `temp`; 2. validate `temp`;
- *   3. if `main` is currently valid, copy it to `backup` (a known-good older generation) BEFORE touching
- *      `main`; 4. write the new content over `main`; 5. validate `main`;
- *   6. only after `main` is confirmed valid, remove the now-stale `temp` and `backup`.
- *   A crash between 4 and 5 can leave `main` absent/partial, but `temp` (gen G) and `backup` (gen G-1)
- *   remain valid, so nothing is lost.
+ * Write is AUTHORITATIVE-SLOT-AWARE. Before anything is written it inspects and validates every slot and
+ * identifies the authoritative (highest-generation) valid copy. It then:
+ *   1. preserves the authoritative copy in `backup` BEFORE disturbing the slot that holds it (skipped
+ *      when authority already is `backup`), so a known-good copy always exists off the staging/publish
+ *      path — this is what stops a "temp is the only valid copy" situation from being destroyed by the
+ *      next write;
+ *   2. stages the new generation into `temp` and validates it;
+ *   3. publishes the new generation into `main` and validates it;
+ *   4. only then removes the now-stale `temp` and `backup`.
+ * At step 3 both `temp` (= new generation) and `backup` (= old authority) are valid, so a crash that
+ * truncates/partially-writes `main` loses nothing. If authority was `temp`, step 1 copied it into
+ * `backup` first, so overwriting `temp` in step 2 cannot erase the only valid copy.
  *
- * Read (startup recovery): independently validate every surviving generation and return the one with the
- * highest generation (ties resolved by slot priority main > temp > backup). Reads NEVER delete anything —
- * in particular a stale `temp` is never removed before a valid generation is chosen. If files are present
- * but none is valid, the corrupt bytes are preserved and {@link JournalCorruptError} is thrown; if no
- * files exist at all, the journal is genuinely empty.
+ * Read (startup recovery): independently validate every surviving generation (against the expected
+ * `owner`) and return the authoritative one — the highest generation, ties broken by slot priority
+ * main > temp > backup. If two or more valid slots share the HIGHEST generation but their contents
+ * DIVERGE, that is interrupted/corrupt persistence and we FAIL CLOSED ({@link JournalCorruptError})
+ * rather than arbitrarily choosing one. Reads NEVER delete anything (a stale `temp` is never removed
+ * before a valid generation is chosen). If files are present but none is valid, the corrupt bytes are
+ * preserved and {@link JournalCorruptError} is thrown; if no files exist at all, the journal is empty.
  */
 export function createGenerationStore(
   getFs: () => Promise<GenerationFs>,
   base: string,
+  owner?: JournalOwner,
 ): JournalStore {
   const names = generationNames(base);
   const slots: [keyof GenerationNames, number][] = [
@@ -167,33 +188,42 @@ export function createGenerationStore(
     ["backup", 1],
   ];
 
+  /** Read and validate every slot. Throws {@link JournalStorageError} only on a genuine FS read error. */
+  async function inspect(fs: GenerationFs): Promise<{
+    anyPresent: boolean;
+    corruptSample: string | null;
+    candidates: GenerationCandidate[];
+  }> {
+    let anyPresent = false;
+    let corruptSample: string | null = null;
+    const candidates: GenerationCandidate[] = [];
+    for (const [slot, priority] of slots) {
+      let raw: string | null;
+      try {
+        raw = await fs.read(names[slot]);
+      } catch (cause) {
+        throw new JournalStorageError("Could not read the inventory recovery journal.", cause);
+      }
+      if (raw === null) continue;
+      anyPresent = true;
+      try {
+        const parsed = parsePersisted(raw, owner);
+        candidates.push({ slot, priority, generation: parsed.generation, entries: parsed.entries });
+      } catch {
+        if (slot === "main") corruptSample = raw;
+        corruptSample ??= raw;
+      }
+    }
+    return { anyPresent, corruptSample, candidates };
+  }
+
   return {
     read: async () => {
       const fs = await getFs();
-      let anyPresent = false;
-      let corruptSample: string | null = null;
-      const valid: { priority: number; generation: number; entries: JournalEntry[] }[] = [];
-
-      for (const [slot, priority] of slots) {
-        let raw: string | null;
-        try {
-          raw = await fs.read(names[slot]);
-        } catch (cause) {
-          throw new JournalStorageError("Could not read the inventory recovery journal.", cause);
-        }
-        if (raw === null) continue;
-        anyPresent = true;
-        try {
-          const parsed = parsePersisted(raw);
-          valid.push({ priority, generation: parsed.generation, entries: parsed.entries });
-        } catch {
-          if (slot === "main") corruptSample = raw;
-          corruptSample ??= raw;
-        }
-      }
+      const { anyPresent, corruptSample, candidates } = await inspect(fs);
 
       if (!anyPresent) return emptyJournalDocument();
-      if (valid.length === 0) {
+      if (candidates.length === 0) {
         // Every surviving generation is corrupt: preserve evidence and fail closed (never empty).
         if (corruptSample !== null) {
           try {
@@ -206,55 +236,95 @@ export function createGenerationStore(
         throw new JournalCorruptError("Every inventory recovery journal generation is corrupt.");
       }
 
-      valid.sort((a, b) => b.generation - a.generation || b.priority - a.priority);
-      return { version: 2, entries: valid[0].entries };
+      // May throw JournalCorruptError if the highest generation is held by divergent copies.
+      return { version: 2, entries: selectAuthoritative(candidates).entries };
     },
 
     write: async (document) => {
       const fs = await getFs();
+      // Inspect BEFORE writing so staging is authoritative-slot-aware. A read I/O error surfaces as a
+      // JournalStorageError here; a divergent equal-generation state surfaces as a JournalCorruptError
+      // from selectAuthoritative — both fail closed and neither is wrapped/hidden below.
+      const { candidates } = await inspect(fs);
+      const authoritative = candidates.length > 0 ? selectAuthoritative(candidates) : null;
+      // Advance the monotonic generation with safe-integer / exhaustion guards (fail closed, never wrap).
+      const content = serializePersisted(
+        document.entries,
+        nextGeneration(authoritative?.generation ?? 0),
+      );
+
       try {
-        let maxGeneration = 0;
-        for (const [slot] of slots) {
-          maxGeneration = Math.max(maxGeneration, safeGeneration(await fs.read(names[slot])));
+        // 1. Preserve the current authority in `backup` BEFORE disturbing the slot that holds it (unless
+        //    authority already IS backup). This keeps a known-good copy off the staging/publish path.
+        if (authoritative && authoritative.slot !== "backup") {
+          const authRaw = await fs.read(names[authoritative.slot]);
+          if (authRaw !== null && isValid(authRaw, owner)) {
+            await fs.write(names.backup, authRaw);
+            assertReadback(await fs.read(names.backup), owner);
+          }
         }
-        const content = serializePersisted(document.entries, maxGeneration + 1);
 
-        // 1-2. Write and validate the new generation into temp (never touching main yet).
+        // 2. Stage the new generation into `temp` and validate it (main/backup untouched so far).
         await fs.write(names.temp, content);
-        parsePersisted((await fs.read(names.temp)) ?? "");
+        assertReadback(await fs.read(names.temp), owner);
 
-        // 3. Preserve the current known-good main as a backup BEFORE main is disturbed.
-        const mainRaw = await fs.read(names.main);
-        if (mainRaw !== null && isValid(mainRaw)) {
-          await fs.write(names.backup, mainRaw);
-        }
-
-        // 4-5. Promote into main and validate it.
+        // 3. Publish the new generation into `main` and validate it. Throughout this write `temp`
+        //    (= new generation) and `backup` (= old authority) remain valid, so a crash loses nothing.
         await fs.write(names.main, content);
-        parsePersisted((await fs.read(names.main)) ?? "");
+        assertReadback(await fs.read(names.main), owner);
 
-        // 6. Main is the newest valid copy — remove the now-stale temp/backup.
+        // 4. `main` is now the sole newest valid copy — remove the now-stale staging/backup copies.
         await fs.remove(names.temp);
         await fs.remove(names.backup);
       } catch (cause) {
+        if (cause instanceof JournalStorageError) throw cause;
         throw new JournalStorageError("Could not save the inventory recovery journal.", cause);
       }
     },
   };
 }
 
-function isValid(raw: string): boolean {
+/**
+ * Pick the authoritative generation: the highest generation, ties broken by slot priority. If the
+ * highest generation is shared by two or more valid copies whose CONTENTS differ, that indicates
+ * interrupted/corrupt persistence and we fail closed rather than arbitrarily preferring one slot.
+ * Identical copies at the same generation (the benign aftermath of a crash between publish and cleanup)
+ * are accepted and resolved deterministically by slot priority.
+ */
+function selectAuthoritative(candidates: GenerationCandidate[]): GenerationCandidate {
+  const maxGeneration = candidates.reduce((max, c) => Math.max(max, c.generation), 0);
+  const top = candidates.filter((c) => c.generation === maxGeneration);
+  if (top.length > 1) {
+    const canonical = JSON.stringify(top[0].entries);
+    if (top.some((c) => JSON.stringify(c.entries) !== canonical)) {
+      throw new JournalCorruptError(
+        `Inventory recovery journal generation ${maxGeneration} is held by divergent copies.`,
+      );
+    }
+  }
+  return [...top].sort((a, b) => b.priority - a.priority)[0];
+}
+
+function isValid(raw: string, owner?: JournalOwner): boolean {
   try {
-    parsePersisted(raw);
+    parsePersisted(raw, owner);
     return true;
   } catch {
     return false;
   }
 }
 
+/** Validate a just-written copy that was read back; a bad read-back means the write did not persist. */
+function assertReadback(raw: string | null, owner?: JournalOwner): void {
+  if (raw === null) {
+    throw new JournalStorageError("A journal copy could not be read back after writing.");
+  }
+  parsePersisted(raw, owner);
+}
+
 /** Native: the generation protocol over real Expo files in the persistent document directory. */
 export function createNativeJournalStore(owner: JournalOwner): JournalStore {
-  return createGenerationStore(expoGenerationFs, nativeBaseName(owner));
+  return createGenerationStore(expoGenerationFs, nativeBaseName(owner), owner);
 }
 
 async function expoGenerationFs(): Promise<GenerationFs> {
@@ -290,13 +360,23 @@ async function expoGenerationFs(): Promise<GenerationFs> {
 
 type LegacyRaw = { kind: "absent" } | { kind: "error" } | { kind: "present"; raw: string };
 
+/** V1 lifecycle statuses that are provably safe to ignore (the operator already saw the outcome). */
+const V1_SAFE_STATUSES = new Set(["acknowledged"]);
+
 /**
  * Detect V1 journal evidence for this owner's tenant that is NOT provably safe to ignore. Because V1
  * entries carry no membership, they cannot be attributed to the current membership; the caller surfaces
  * any result as a quarantine that blocks new mutations until reconciled, and never replays them
- * automatically. A V1 journal that is present but unreadable/malformed, or that holds ANY non-terminal
- * entry for this tenant (`prepared`, `sent`, `accepted`, or an unknown status), BLOCKS — it is never
- * interpreted as "no legacy journal". Returns an empty array only when there is genuinely nothing unsafe.
+ * automatically.
+ *
+ * Parsing is STRICT. The document must be an object with the EXACT V1 `version` and an `entries` array;
+ * anything else (unreadable, malformed JSON, missing/wrong version, wrong shape) is blocking evidence,
+ * never "no legacy journal". Each entry is validated structurally (a non-empty string `commandKey`,
+ * non-empty string `tenantId`, and a non-empty string `status`); a malformed/non-attributable entry
+ * BLOCKS regardless of tenant. For a well-formed entry belonging to THIS tenant, only a provably safe
+ * status (`acknowledged`) is non-blocking — every other status, including `prepared`/`sent`/`accepted`/
+ * `rejected` and any unknown status, BLOCKS. Returns an empty array only when there is genuinely nothing
+ * unsafe for this tenant.
  */
 export async function readLegacyV1Unresolved(owner: JournalOwner): Promise<JournalEntry[]> {
   const legacy = await readLegacyV1Raw();
@@ -309,28 +389,40 @@ export async function readLegacyV1Unresolved(owner: JournalOwner): Promise<Journ
   } catch {
     return [legacyMarker(owner)]; // malformed → block
   }
-  const entries = (parsed as { entries?: unknown })?.entries;
+  // STRICT shape + exact version. A V1 document missing/with the wrong version is unreadable evidence.
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return [legacyMarker(owner)];
+  }
+  if ((parsed as { version?: unknown }).version !== 1) return [legacyMarker(owner)];
+  const entries = (parsed as { entries?: unknown }).entries;
   if (!Array.isArray(entries)) return [legacyMarker(owner)]; // malformed shape → block
 
   const blocking: JournalEntry[] = [];
   for (const candidate of entries) {
-    if (
-      typeof candidate !== "object" ||
-      candidate === null ||
-      typeof (candidate as { status?: unknown }).status !== "string" ||
-      typeof (candidate as { tenantId?: unknown }).tenantId !== "string"
-    ) {
-      blocking.push(legacyMarker(owner)); // a malformed entry is non-attributable → block
-      continue;
-    }
-    const record = candidate as { status: string; tenantId: string; commandKey?: unknown };
-    if (record.tenantId === owner.tenantId && record.status !== "acknowledged") {
-      blocking.push(
-        legacyMarker(owner, typeof record.commandKey === "string" ? record.commandKey : undefined),
-      );
-    }
+    const marker = classifyLegacyV1Entry(candidate, owner);
+    if (marker) blocking.push(marker);
   }
   return blocking;
+}
+
+/**
+ * Classify one V1 entry: return a blocking marker if it is unsafe/non-attributable for this owner's
+ * tenant, or `null` if it is provably safe to ignore. A structurally malformed entry (missing/empty
+ * key, tenant, or status) can never be proven safe, so it blocks regardless of which tenant it claims.
+ */
+function classifyLegacyV1Entry(candidate: unknown, owner: JournalOwner): JournalEntry | null {
+  if (typeof candidate !== "object" || candidate === null) return legacyMarker(owner);
+  const record = candidate as { status?: unknown; tenantId?: unknown; commandKey?: unknown };
+  const { status, tenantId, commandKey } = record;
+  if (typeof status !== "string" || status === "") return legacyMarker(owner);
+  if (typeof tenantId !== "string" || tenantId === "") return legacyMarker(owner);
+  if (typeof commandKey !== "string" || commandKey === "") return legacyMarker(owner);
+
+  // A well-formed entry for another tenant cannot affect this owner's tenant.
+  if (tenantId !== owner.tenantId) return null;
+  // For this tenant only a provably safe status is ignorable; everything else blocks.
+  if (V1_SAFE_STATUSES.has(status)) return null;
+  return legacyMarker(owner, commandKey);
 }
 
 /** Move the released V1 journal aside (preserving it) so it is deliberately quarantined, never deleted. */
@@ -363,14 +455,14 @@ export async function quarantineLegacyV1(): Promise<void> {
 
 async function readLegacyV1Raw(): Promise<LegacyRaw> {
   if (Platform.OS === "web") {
-    let store: Storage;
     try {
-      store = requireWebStorage();
+      const store = requireWebStorage();
+      const raw = store.getItem(V1_WEB_KEY);
+      return raw === null ? { kind: "absent" } : { kind: "present", raw };
     } catch {
-      return { kind: "error" }; // storage disabled while V1 may exist → block conservatively
+      // Storage disabled, or getItem threw, while a V1 journal may exist → block conservatively.
+      return { kind: "error" };
     }
-    const raw = store.getItem(V1_WEB_KEY);
-    return raw === null ? { kind: "absent" } : { kind: "present", raw };
   }
   try {
     const { File, Paths } = await import("expo-file-system");

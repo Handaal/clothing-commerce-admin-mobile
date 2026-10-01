@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("expo-crypto", () => ({ randomUUID: () => "unused-native-uuid" }));
+
+import { installWebLocks, removeWebLocks } from "../../test-support/web-locks";
 
 import {
   INVENTORY_LOCATION_A,
@@ -164,7 +166,12 @@ function renderOps(
   return { onRefresh };
 }
 
-afterEach(() => cleanup());
+// Component specs model a supported browser (Web Locks present) unless a test opts out via removeWebLocks.
+beforeEach(() => installWebLocks());
+afterEach(() => {
+  removeWebLocks();
+  cleanup();
+});
 
 describe("inventory mutation crash recovery", () => {
   it("recovers a receive whose response was lost and applies it exactly once (B10)", async () => {
@@ -525,5 +532,43 @@ describe("fail-closed initialization (P1-4C)", () => {
 
     // Only after the checks report availability do the forms appear.
     await screen.findByTestId("open-receive");
+  });
+});
+
+describe("web without Web Locks fails closed (P1-3)", () => {
+  it("hides all write forms and shows a compatibility notice; the API is never called", async () => {
+    const store: JournalStore = createMemoryJournalStore();
+    const api = fakeApi();
+    const journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
+
+    removeWebLocks(); // simulate an unsupported browser (no cross-tab lock)
+    renderOps(journal, api.client);
+
+    await screen.findByTestId("inventory-recovery-incompatible");
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(screen.queryByTestId("open-adjust")).toBeNull();
+    expect(screen.queryByTestId("open-transfer")).toBeNull();
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it("still lists unfinished operations READ-ONLY (no replay/ack) and never transports", async () => {
+    const store: JournalStore = createMemoryJournalStore();
+    const api = fakeApi();
+
+    // Seed an unresolved command while Web Locks is available, then simulate the unsupported browser.
+    const seedJournal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
+    const prepared = await seedJournal.prepare(RECEIVE(2));
+    await seedJournal.markSent(prepared.commandKey);
+
+    removeWebLocks();
+    const journal = createInventoryJournal(store, OWNER_A, keyFactory("UNUSED"));
+    renderOps(journal, api.client);
+
+    // The pending operation is visible, but its write action is disabled and nothing is sent.
+    await screen.findByTestId("recovery-entry-K1");
+    await screen.findByTestId("inventory-recovery-incompatible");
+    expect(screen.queryByTestId("recovery-replay-K1")).toBeNull();
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(api.calls).toHaveLength(0);
   });
 });

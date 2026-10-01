@@ -17,6 +17,7 @@ import {
   sdkSupplierSummary,
   tenant,
 } from "../test-support/fixtures";
+import { installWebLocks, removeWebLocks } from "../test-support/web-locks";
 import { createMemoryTenantStorage } from "../tenant/storage";
 import { InventoryScreen } from "./InventoryScreen";
 
@@ -116,6 +117,7 @@ function renderInventory() {
 }
 
 beforeEach(() => {
+  installWebLocks();
   vi.clearAllMocks();
   mocks.getMyTenants.mockResolvedValue([tenant(TENANT_A, "Acme", MEMBERSHIP_A)]);
   mocks.getContext.mockResolvedValue(meContext(TENANT_A, READABLE_INVENTORY));
@@ -129,6 +131,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  removeWebLocks();
   // The screen now wires the real web durable store (localStorage); clear it so a journal written by
   // one test never bleeds into the next and blocks its write forms.
   localStorage.clear();

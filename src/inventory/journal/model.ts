@@ -145,6 +145,19 @@ export class JournalCorruptError extends Error {
 }
 
 /**
+ * Raised when the monotonic storage generation counter can no longer be advanced within the safe-integer
+ * range (`generation >= Number.MAX_SAFE_INTEGER`). We fail closed rather than wrap or silently reuse a
+ * generation — a reused/wrapped generation could let a half-written copy outrank or masquerade as the
+ * authoritative one. This is a durability failure: high-risk mutations block, never transport.
+ */
+export class JournalGenerationExhaustedError extends Error {
+  constructor(message = "The inventory recovery journal generation counter is exhausted.") {
+    super(message);
+    this.name = "JournalGenerationExhaustedError";
+  }
+}
+
+/**
  * Raised when a lifecycle transition cannot be applied safely: the target entry disappeared, its owner
  * does not match, or its current status does not permit the requested transition. The caller MUST fail
  * (never silently continue transport or recreate the entry under a new key).

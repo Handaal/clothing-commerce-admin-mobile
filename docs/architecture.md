@@ -400,6 +400,67 @@ Phase 2S-F6 closes four follow-up P1s that an independent verification found in 
 6. **`supplierReference` (P2).** `normalizeReceivePayload` now keeps a document reference whenever
    provided, independent of `supplierId`, matching the canonical API input (the UI is unchanged).
 
+## Phase 2S-F8 journal durability — authoritative-slot writes, safe generations, cross-context safety
+
+Phase 2S-F8 closes five follow-up P1s an independent verification found in the merged F6 hardening, plus
+the cheap adjacent P2s. It does **not** claim any single filesystem operation is atomic; every guarantee
+below holds across truncate-then-fail, partial-write, and delete-then-fail interruptions (the fault
+injection the fake `GenerationFs` now models).
+
+1. **Authoritative-slot-aware native writes (P1-1).** The F6 write always staged into `temp` first, so
+   when `temp` was the _only_ valid generation (main missing/corrupt) the very next write overwrote the
+   only good copy. The native `createGenerationStore` write now **inspects and validates every slot
+   first**, identifies the authoritative (highest-generation) valid copy, and preserves it in `backup`
+   _before_ disturbing whichever slot holds it — only then does it stage into `temp` and publish into
+   `main`. The invariant is strengthened to hold **at every individual filesystem-operation boundary, at
+   least one complete valid copy (the old authority or the new generation) survives**, regardless of which
+   slot was authoritative. In particular a temp-only authority is copied to `backup` before `temp` is
+   ever overwritten, so the "next write destroys the only copy" window is gone.
+
+2. **Safe-integer generation rules (P1-2).** A persisted `generation` must be a non-negative
+   `Number.isSafeInteger`; `1e308`, `NaN`, negative, and fractional values are corruption. The counter is
+   advanced through `nextGeneration`, which **fails closed** with `JournalGenerationExhaustedError` at
+   `Number.MAX_SAFE_INTEGER` rather than wrapping or silently reusing a generation (a reused/wrapped
+   generation could let a stale or half-written copy outrank or masquerade as the authoritative one).
+   `serializePersisted` also refuses to write an unsafe generation. Payload counts/versions
+   (`quantity`, `countedQuantity`, `expectedVersion`) likewise require safe integers (P2-B).
+
+3. **Equal-generation divergence fails closed (P1-2/§3a).** When two or more valid slots share the
+   _highest_ generation, identical contents are accepted and resolved deterministically by slot priority
+   (`main` > `temp` > `backup`) — the benign aftermath of a crash between publish and cleanup. But if the
+   contents **differ**, that is interrupted/corrupt persistence and the read fails closed
+   (`JournalCorruptError`) instead of arbitrarily preferring `main`.
+
+4. **Web Locks required for web inventory mutation (P1-3).** On web the journal lives in a `localStorage`
+   namespace shared by every tab, so safe serialization of whole-document writes **requires the Web Locks
+   API**. `isCrossContextSafe()` reports the capability (always true on native — one JS runtime). When it
+   is false (web without Web Locks) the app **fails closed**: high-risk mutations and recovery
+   replays/acknowledgements are disabled behind an actionable compatibility notice, while read-only
+   inventory — and a read-only listing of unfinished operations — stay available. There is no silent
+   fallback to an in-process-only lock for durability on web.
+
+5. **V2 namespace-owner validation (P1-4).** `parsePersisted` now takes the expected `{ tenantId,
+membershipId }` owner and requires **every** persisted entry to match it exactly. A foreign-owner entry
+   makes the whole document corrupt for that namespace (fail closed); it is never parsed-then-filtered to a
+   misleading empty journal. The web store and every native slot read validate against the expected owner.
+
+6. **Strict V1 semantic blocking (P1-5).** Legacy V1 detection parses strictly: the document must be an
+   object with the exact `version` 1 and an `entries` array (missing/wrong version, unreadable, or a
+   `getItem` that throws all block). Each entry needs a non-empty string `commandKey`, `tenantId`, and
+   `status`; a malformed/non-attributable entry blocks regardless of tenant. For a well-formed entry of
+   this tenant, only a provably safe status (`acknowledged`) is non-blocking — `prepared`/`sent`/
+   `accepted`/`rejected` and any unknown status block. Malformed evidence is never discarded.
+
+7. **Namespace-wide post-init failure UX (P2-A).** A durability failure proven _during_ a submit (not just
+   at startup) is namespace-wide: `InventoryOperations` hides **all** write forms behind one global notice
+   (not merely the form in use), while read-only inventory stays usable. Combined with the fail-closed
+   startup gate, there is never a frame in which a mutation can be submitted against an unsecured journal.
+
+8. **Adjacent P2s.** Transfer still rejects an identical source/destination client-side
+   (`validateTransferLocations`, matching the API's `SAME_TRANSFER_LOCATION`); a persisted
+   `supplierReference` must be meaningful text (a blank/whitespace value — which the normalizer would omit
+   — is corruption, P2-D).
+
 ## Phase 2S-F2 Settings topology error UX
 
 The Settings write boundary in the Commerce API now returns four stable operational-topology conflict

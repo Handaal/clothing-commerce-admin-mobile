@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWebJournalStore, quarantineLegacyV1, readLegacyV1Unresolved } from "./durable-store";
 import {
   JournalCorruptError,
+  JournalGenerationExhaustedError,
   JournalStorageError,
   normalizeReceivePayload,
   payloadIdentity,
@@ -108,6 +109,24 @@ describe("web durable journal store", () => {
     const second = JSON.parse(localStorage.getItem(KEY) as string).generation;
     expect(second).toBe(first + 1);
   });
+
+  it("FAILS CLOSED on a foreign MEMBERSHIP in the stored document (P1-4)", async () => {
+    seed([entry("K1", { actorMembershipId: "99999999-9999-4999-8999-999999999999" })]);
+    await expect(createWebJournalStore(OWNER).read()).rejects.toBeInstanceOf(JournalCorruptError);
+    expect(localStorage.getItem(KEY)).not.toBeNull(); // evidence preserved, not filtered to empty
+  });
+
+  it("FAILS CLOSED on a foreign TENANT in the stored document (P1-4)", async () => {
+    seed([entry("K1", { tenantId: "22222222-2222-4222-8222-222222222222" })]);
+    await expect(createWebJournalStore(OWNER).read()).rejects.toBeInstanceOf(JournalCorruptError);
+  });
+
+  it("FAILS CLOSED (generation exhausted) rather than wrapping at MAX_SAFE_INTEGER (P1-2)", async () => {
+    seed([entry("K1")], Number.MAX_SAFE_INTEGER);
+    await expect(
+      createWebJournalStore(OWNER).write({ version: 2, entries: [entry("K1")] }),
+    ).rejects.toBeInstanceOf(JournalGenerationExhaustedError);
+  });
 });
 
 describe("legacy V1 journal handling (P1-4 quarantine, blocks on all non-terminal evidence)", () => {
@@ -163,6 +182,70 @@ describe("legacy V1 journal handling (P1-4 quarantine, blocks on all non-termina
 
   it("returns nothing when there is no V1 journal", async () => {
     expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(0);
+  });
+
+  it("blocks on a MISSING version (P1-5)", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({ entries: [{ commandKey: "L", tenantId: TENANT, status: "acknowledged" }] }),
+    );
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("blocks on a WRONG version (P1-5)", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({
+        version: 2,
+        entries: [{ commandKey: "L", tenantId: TENANT, status: "acknowledged" }],
+      }),
+    );
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("blocks on an empty tenant (P1-5)", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({ version: 1, entries: [{ commandKey: "L", tenantId: "", status: "sent" }] }),
+    );
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("blocks on an empty command key (P1-5)", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({
+        version: 1,
+        entries: [{ commandKey: "", tenantId: TENANT, status: "sent" }],
+      }),
+    );
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("blocks on a non-string (malformed) status (P1-5)", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({ version: 1, entries: [{ commandKey: "L", tenantId: TENANT, status: 7 }] }),
+    );
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("blocks when a malformed entry sits among otherwise-safe entries (P1-5)", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({
+        version: 1,
+        entries: [{ commandKey: "OK", tenantId: TENANT, status: "acknowledged" }, { nope: true }],
+      }),
+    );
+    expect((await readLegacyV1Unresolved(OWNER)).length).toBeGreaterThan(0);
+  });
+
+  it("blocks when getItem itself throws (never assumes 'no journal') (P1-5)", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("denied", "SecurityError");
+    });
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
   });
 
   it("quarantines by preserving the V1 doc under an archive key and clearing the live key", async () => {

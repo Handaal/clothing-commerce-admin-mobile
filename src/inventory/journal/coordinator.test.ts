@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createNamespaceCoordinator,
   getNamespaceCoordinator,
+  isCrossContextSafe,
   lockName,
   namespaceKey,
   resetNamespaceCoordinators,
@@ -92,5 +93,18 @@ describe("web cross-context coordinator", () => {
     await Promise.all([a(async () => 1), b(async () => 2)]);
     expect(requested).toEqual(expect.arrayContaining([lockName(OWNER_A), lockName(OWNER_B)]));
     expect(lockName(OWNER_A)).not.toBe(lockName(OWNER_B));
+  });
+});
+
+describe("cross-context safety capability (P1-3)", () => {
+  // These run under react-native-web where Platform.OS === "web", so the capability depends on whether
+  // the Web Locks API is present — exactly the web gate inventory writes rely on.
+  it("is SAFE when Web Locks is present", () => {
+    const webLocks: WebLocks = { request: (_name, cb) => cb() };
+    expect(isCrossContextSafe(webLocks)).toBe(true);
+  });
+
+  it("is UNSAFE on web when Web Locks is unavailable (fail closed, no silent fallback)", () => {
+    expect(isCrossContextSafe(null)).toBe(false);
   });
 });

@@ -96,10 +96,17 @@ export function InventoryOperations(props: InventoryOperationsProps) {
   // V2 store AND completed the legacy V1 check and reported availability. There is deliberately NO window
   // where a mutation could be submitted before those checks finish. Read-only inventory stays usable.
   const [writesAvailable, setWritesAvailable] = useState(false);
-  const onAvailabilityChange = useCallback(
-    (available: boolean) => setWritesAvailable(available),
-    [],
-  );
+  // A durability failure proven DURING a submit (not just at startup) is namespace-wide: the recovery
+  // journal for this owner could not be secured, so EVERY write form is hidden — not just the one the
+  // operator happened to be using — behind a single global notice. Read-only inventory stays usable.
+  const [storageFailedPostInit, setStorageFailedPostInit] = useState(false);
+  const onAvailabilityChange = useCallback((available: boolean) => {
+    setWritesAvailable(available);
+    // A fresh clean availability report (e.g. after recovery) clears a prior post-init failure.
+    if (available) setStorageFailedPostInit(false);
+  }, []);
+  const onStorageUnavailable = useCallback(() => setStorageFailedPostInit(true), []);
+  const formsVisible = writesAvailable && !storageFailedPostInit;
 
   const variantOptions = useMemo<SelectOption[]>(
     () =>
@@ -150,7 +157,18 @@ export function InventoryOperations(props: InventoryOperationsProps) {
         quarantineLegacy={props.quarantineLegacy}
         onAvailabilityChange={onAvailabilityChange}
       />
-      {writesAvailable ? (
+      {storageFailedPostInit ? (
+        <View style={{ gap: 8 }} testID="inventory-writes-unavailable">
+          <Divider />
+          <Title>Inventory changes temporarily unavailable</Title>
+          <Body>
+            A recent change could not be saved to the recovery journal, so inventory changes are
+            paused and no inventory was changed. Reload to try again; if it keeps happening, the
+            recovery journal needs attention. Your other Admin data is unaffected.
+          </Body>
+        </View>
+      ) : null}
+      {formsVisible ? (
         <>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {props.write.canReceive ? (
@@ -185,15 +203,19 @@ export function InventoryOperations(props: InventoryOperationsProps) {
               variantOptions={variantOptions}
               locationOptions={receiveLocationOptions}
               supplierOptions={props.receiveSuppliers}
+              onStorageUnavailable={onStorageUnavailable}
             />
           ) : null}
-          {activeOp === "adjust" && props.write.canAdjust ? <AdjustForm {...props} /> : null}
+          {activeOp === "adjust" && props.write.canAdjust ? (
+            <AdjustForm {...props} onStorageUnavailable={onStorageUnavailable} />
+          ) : null}
           {activeOp === "transfer" && props.write.canTransfer ? (
             <TransferForm
               {...props}
               variantOptions={variantOptions}
               sourceOptions={transferSourceOptions}
               destinationOptions={transferDestinationOptions}
+              onStorageUnavailable={onStorageUnavailable}
             />
           ) : null}
         </>
@@ -246,6 +268,24 @@ function useRefreshOnSuccess<TResult>(
   useEffect(() => {
     if (state.status !== "success") return;
     latest.current();
+  }, [state]);
+}
+
+/**
+ * Report a namespace-wide durability failure to the parent the moment a submit is blocked by
+ * `storage-unavailable`. The journal for this owner could not be secured, so the parent hides ALL write
+ * forms (not merely the one in use). Fires once per transition into the blocked-storage state.
+ */
+function useReportStorageUnavailable<TResult>(
+  state: JournaledMutationState<TResult>,
+  onStorageUnavailable: (() => void) | undefined,
+) {
+  const latest = useRef(onStorageUnavailable);
+  useEffect(() => {
+    latest.current = onStorageUnavailable;
+  });
+  useEffect(() => {
+    if (state.status === "blocked" && state.reason === "storage-unavailable") latest.current?.();
   }, [state]);
 }
 
@@ -340,6 +380,7 @@ function ReceiveForm(
     variantOptions: SelectOption[];
     locationOptions: SelectOption[];
     supplierOptions?: SelectOption[];
+    onStorageUnavailable?: () => void;
   },
 ) {
   const [variantId, setVariantId] = useState<string | null>(null);
@@ -364,6 +405,7 @@ function ReceiveForm(
   });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
+  useReportStorageUnavailable(mutation.state, props.onStorageUnavailable);
 
   function onSubmit() {
     const qty = Number(quantity);
@@ -495,7 +537,7 @@ function ReceiveForm(
 // Adjust (reconcile to an absolute physical count)
 // ---------------------------------------------------------------------------------------------------
 
-function AdjustForm(props: InventoryOperationsProps) {
+function AdjustForm(props: InventoryOperationsProps & { onStorageUnavailable?: () => void }) {
   const adjustableLocationIds = useMemo(
     () =>
       new Set(
@@ -524,6 +566,7 @@ function AdjustForm(props: InventoryOperationsProps) {
   });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
+  useReportStorageUnavailable(mutation.state, props.onStorageUnavailable);
 
   const isConcurrencyConflict =
     mutation.state.status === "error" &&
@@ -641,6 +684,7 @@ function TransferForm(
     variantOptions: SelectOption[];
     sourceOptions: SelectOption[];
     destinationOptions: SelectOption[];
+    onStorageUnavailable?: () => void;
   },
 ) {
   const [variantId, setVariantId] = useState<string | null>(null);
@@ -656,6 +700,7 @@ function TransferForm(
   });
 
   useRefreshOnSuccess(mutation.state, props.onRefresh);
+  useReportStorageUnavailable(mutation.state, props.onStorageUnavailable);
 
   // Prevent the obviously invalid source == destination locally by disabling the chosen source in the
   // destination list (the API also rejects it with SAME_TRANSFER_LOCATION).
