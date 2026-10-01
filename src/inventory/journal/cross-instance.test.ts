@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { resetNamespaceCoordinators } from "./coordinator";
-import { createInventoryJournal } from "./journal";
+import { createInventoryJournal as baseCreateInventoryJournal } from "./journal";
 import { normalizeReceivePayload, type JournalOwner, type JournalPayload } from "./model";
 import { createMemoryJournalStore, type JournalStore } from "./store";
 
@@ -14,6 +14,15 @@ const LOCATION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 const receive = (quantity: number): JournalPayload =>
   normalizeReceivePayload({ variantId: VARIANT, inventoryLocationId: LOCATION, quantity });
+
+// Node runtime (no Web Locks): inject a safe cross-context capability so the fail-closed mutation guard
+// does not fire. The guard is covered directly in fail-closed.test.ts.
+function createInventoryJournal(
+  ...args: Parameters<typeof baseCreateInventoryJournal>
+): ReturnType<typeof baseCreateInventoryJournal> {
+  const [store, owner, generateKey, now] = args;
+  return baseCreateInventoryJournal(store, owner, generateKey, now, () => true);
+}
 
 function keyFactory(...keys: string[]) {
   let i = 0;

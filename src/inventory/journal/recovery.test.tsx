@@ -495,6 +495,36 @@ describe("legacy V1 journal quarantine (P1 migration)", () => {
     fireEvent.click(screen.getByTestId("recovery-legacy-archive"));
     await screen.findByTestId("open-receive");
   });
+
+  it("without Web Locks: shows legacy evidence read-only — NO enabled Archive action (P1-1 / F10)", async () => {
+    const store: JournalStore = createMemoryJournalStore();
+    const api = fakeApi();
+    const journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
+    const detectLegacy = async (): Promise<JournalEntry[]> => [
+      {
+        commandKey: "LEGACY",
+        tenantId: TENANT,
+        actorMembershipId: "",
+        operationType: "receive",
+        payload: RECEIVE(1),
+        payloadIdentity: "legacy",
+        preparedAt: "1970-01-01T00:00:00.000Z",
+        status: "sent",
+      },
+    ];
+    const quarantineLegacy = vi.fn(async () => {});
+
+    removeWebLocks(); // unsupported browser
+    renderOps(journal, api.client, { detectLegacy, quarantineLegacy });
+
+    // Evidence is visible, but the mutating Archive action is NOT offered — only an explanation.
+    await screen.findByTestId("inventory-recovery-legacy");
+    await screen.findByTestId("recovery-legacy-incompatible");
+    expect(screen.queryByTestId("recovery-legacy-archive")).toBeNull();
+    expect(screen.queryByTestId("open-receive")).toBeNull();
+    expect(quarantineLegacy).not.toHaveBeenCalled();
+    expect(api.client.receiveInventory).not.toHaveBeenCalled();
+  });
 });
 
 describe("durable storage failure (P1-2)", () => {

@@ -285,7 +285,16 @@ export function InventoryRecoveryPanel({
           attributed to your account automatically, so new inventory changes are paused until it is
           reviewed and archived. This never resends those operations on your behalf.
         </Body>
-        {quarantineLegacy ? (
+        {/* Archiving MUTATES storage. When cross-context locking is unavailable (web without Web
+            Locks) the evidence stays visible but the mutation action is NOT offered — archiving must
+            happen in the app or a supported browser with a single tab. */}
+        {!crossContextSafe ? (
+          <Body testID="recovery-legacy-incompatible">
+            This browser can&apos;t safely complete inventory recovery, so archiving is unavailable
+            here. Open the app (or a supported browser with a single tab) to review and archive it.
+            Nothing is changed on your behalf.
+          </Body>
+        ) : quarantineLegacy ? (
           <PrimaryButton
             label="Archive and continue"
             testID="recovery-legacy-archive"

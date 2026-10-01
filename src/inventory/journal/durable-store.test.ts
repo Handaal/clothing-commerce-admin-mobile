@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { installWebLocks, removeWebLocks } from "../../test-support/web-locks";
 import { createWebJournalStore, quarantineLegacyV1, readLegacyV1Unresolved } from "./durable-store";
 import {
+  CrossContextLockUnavailableError,
   JournalCorruptError,
   JournalGenerationExhaustedError,
   JournalStorageError,
@@ -45,7 +47,11 @@ function seed(entries: JournalEntry[], generation = 1) {
   localStorage.setItem(KEY, serializePersisted(entries, generation));
 }
 
+// Default to a supported browser (Web Locks present) so quarantine's mutation guard allows it; the
+// no-Web-Locks fail-closed path is exercised explicitly below with removeWebLocks().
+beforeEach(() => installWebLocks());
 afterEach(() => {
+  removeWebLocks();
   localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -254,5 +260,89 @@ describe("legacy V1 journal handling (P1-4 quarantine, blocks on all non-termina
     expect(localStorage.getItem(V1_KEY)).toBeNull();
     expect(localStorage.getItem(`${V1_KEY}.quarantined`)).not.toBeNull();
     expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(0);
+  });
+});
+
+describe("strict V1 validation precedes tenant routing (P1-2 / F10)", () => {
+  const v1entry = (entry: Record<string, unknown>) =>
+    localStorage.setItem(V1_KEY, JSON.stringify({ version: 1, entries: [entry] }));
+
+  it("1. blocks a whitespace-only tenantId (trimmed emptiness, not routed away)", async () => {
+    v1entry({ commandKey: "L", tenantId: "   ", status: "sent" });
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("2. blocks a whitespace-only commandKey", async () => {
+    v1entry({ commandKey: "   ", tenantId: TENANT, status: "sent" });
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("3. blocks a whitespace-only status", async () => {
+    v1entry({ commandKey: "L", tenantId: TENANT, status: "   " });
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("4. blocks an unknown status for the CURRENT tenant", async () => {
+    v1entry({ commandKey: "L", tenantId: TENANT, status: "quantum" });
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("5. blocks an unknown status even when it claims a FOREIGN tenant", async () => {
+    v1entry({ commandKey: "L", tenantId: "some-other-tenant", status: "quantum" });
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("6. blocks a malformed entry even when it claims a FOREIGN tenant", async () => {
+    v1entry({ tenantId: "some-other-tenant" }); // no key, no status
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("7. blocks on a wrong/missing version regardless of entry contents", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({ entries: [{ commandKey: "L", tenantId: TENANT, status: "acknowledged" }] }),
+    );
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(1);
+  });
+
+  it("8. a current-tenant acknowledged-only V1 is safe (frozen terminal state)", async () => {
+    v1entry({ commandKey: "L", tenantId: TENANT, status: "acknowledged" });
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(0);
+  });
+
+  it("9. a well-formed FOREIGN-tenant acknowledged entry is ignored", async () => {
+    v1entry({ commandKey: "L", tenantId: "some-other-tenant", status: "acknowledged" });
+    expect(await readLegacyV1Unresolved(OWNER)).toHaveLength(0);
+  });
+
+  it("10. a mix with any malformed/unknown evidence never yields an empty blocking set", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({
+        version: 1,
+        entries: [
+          { commandKey: "OK", tenantId: "some-other-tenant", status: "acknowledged" },
+          { commandKey: "BAD", tenantId: "some-other-tenant", status: "quantum" },
+        ],
+      }),
+    );
+    expect((await readLegacyV1Unresolved(OWNER)).length).toBeGreaterThan(0);
+  });
+});
+
+describe("legacy archive is fail-closed without Web Locks (P1-1 / F10)", () => {
+  it("quarantineLegacyV1 REJECTS on web without Web Locks and leaves the live journal intact", async () => {
+    localStorage.setItem(
+      V1_KEY,
+      JSON.stringify({
+        version: 1,
+        entries: [{ commandKey: "L", tenantId: TENANT, status: "sent" }],
+      }),
+    );
+    removeWebLocks(); // simulate an unsupported browser
+    await expect(quarantineLegacyV1()).rejects.toBeInstanceOf(CrossContextLockUnavailableError);
+    // No mutation occurred: the live V1 key is untouched and nothing was archived.
+    expect(localStorage.getItem(V1_KEY)).not.toBeNull();
+    expect(localStorage.getItem(`${V1_KEY}.quarantined`)).toBeNull();
   });
 });

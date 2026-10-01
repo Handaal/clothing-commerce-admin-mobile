@@ -461,6 +461,37 @@ membershipId }` owner and requires **every** persisted entry to match it exactly
    `supplierReference` must be meaningful text (a blank/whitespace value — which the normalizer would omit
    — is corruption, P2-D).
 
+## Phase 2S-F10 journal fail-closed enforcement at the boundary
+
+Phase 2S-F10 closes the final two P1s: the earlier no-Web-Locks protection was only UI-deep, and V1
+parsing still had a whitespace/tenant-routing fail-open. No accepted area (generation protocol,
+safe-generation arithmetic, equal-generation handling, V2 owner validation, lifecycle, payload identity,
+`supplierReference` contract) is redesigned.
+
+1. **Capability enforced at the journal boundary, not the UI (P1-1).** On web the journal lives in a
+   shared `localStorage` namespace, so without the Web Locks API two tabs could race the whole-document
+   journal. `createInventoryJournal` now takes an injected `crossContextSafe` (default
+   `isCrossContextSafe`) and **every mutating operation — `prepare`, `markSent`, `recordAccepted`,
+   `recordRejected`, `acknowledge` — rejects with `CrossContextLockUnavailableError` before any persistent
+   write** when it is false. `quarantineLegacyV1` is gated the same way. Read-only operations (`read`,
+   `findRecoverable`, `findEquivalentUnresolved`, `get`, legacy detection) are never gated. Native (one JS
+   runtime) is unaffected. The UI visibility check is now secondary defence; `isDurabilityFailure` treats
+   the new error as a fail-closed durability failure. The recovery panel's **legacy branch** no longer
+   renders an enabled "Archive and continue" when Web Locks are unavailable — it shows the evidence
+   read-only with an explanation, fixing the branch-ordering bypass.
+
+2. **Strict V1 validation precedes tenant routing (P1-2).** `classifyLegacyV1Entry` validates the entire
+   entry on **trimmed** values (a whitespace-only `commandKey`/`tenantId`/`status` is malformed, not a
+   sneaky "different tenant") and classifies the status against the frozen V1 lifecycle **before** any
+   tenant comparison. Malformed or unknown-status evidence is non-attributable and **blocks regardless of
+   the tenant it claims**; only a well-formed, known-status entry is routed by tenant, and for this tenant
+   only `acknowledged` is safe. Malformed evidence can therefore never produce an empty blocking set.
+
+(Deferred P2: a storage failure _during_ `recordAccepted`/`recordRejected`/`acknowledge` — i.e. after a
+successful transport — is still best-effort logged rather than flipping the namespace unavailable, because
+doing so safely without hiding a genuine success needs more than a local callback; the pre-transport
+paths already fail closed namespace-wide.)
+
 ## Phase 2S-F2 Settings topology error UX
 
 The Settings write boundary in the Commerce API now returns four stable operational-topology conflict

@@ -145,6 +145,22 @@ export class JournalCorruptError extends Error {
 }
 
 /**
+ * Raised when a high-risk journal MUTATION is attempted but cross-context write serialization is not
+ * available for this runtime (web without the Web Locks API). The durable journal lives in a storage
+ * namespace shared by every browser tab, so without a cross-tab lock two tabs could race the same
+ * whole-document journal and lose an entry — therefore mutation is refused at the journal boundary, not
+ * merely hidden in the UI. Read-only operations remain available. Native (one JS runtime) is unaffected.
+ */
+export class CrossContextLockUnavailableError extends Error {
+  constructor(
+    message = "Inventory changes are unavailable in this runtime: cross-tab locking is not supported.",
+  ) {
+    super(message);
+    this.name = "CrossContextLockUnavailableError";
+  }
+}
+
+/**
  * Raised when the monotonic storage generation counter can no longer be advanced within the safe-integer
  * range (`generation >= Number.MAX_SAFE_INTEGER`). We fail closed rather than wrap or silently reuse a
  * generation — a reused/wrapped generation could let a half-written copy outrank or masquerade as the

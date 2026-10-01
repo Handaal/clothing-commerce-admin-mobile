@@ -1,6 +1,8 @@
 import { Platform } from "react-native";
 
+import { isCrossContextSafe } from "./coordinator";
 import {
+  CrossContextLockUnavailableError,
   emptyJournalDocument,
   JournalCorruptError,
   JournalStorageError,
@@ -360,7 +362,10 @@ async function expoGenerationFs(): Promise<GenerationFs> {
 
 type LegacyRaw = { kind: "absent" } | { kind: "error" } | { kind: "present"; raw: string };
 
-/** V1 lifecycle statuses that are provably safe to ignore (the operator already saw the outcome). */
+// The FROZEN V1 lifecycle. Any status outside this set is unknown — and therefore non-attributable and
+// blocking. `acknowledged` is the only terminal state the operator provably already saw, so it is the
+// only safe-to-ignore status; prepared/sent/accepted/rejected are all unresolved-or-uncertain and block.
+const V1_KNOWN_STATUSES = new Set(["prepared", "sent", "accepted", "rejected", "acknowledged"]);
 const V1_SAFE_STATUSES = new Set(["acknowledged"]);
 
 /**
@@ -406,27 +411,47 @@ export async function readLegacyV1Unresolved(owner: JournalOwner): Promise<Journ
 }
 
 /**
- * Classify one V1 entry: return a blocking marker if it is unsafe/non-attributable for this owner's
- * tenant, or `null` if it is provably safe to ignore. A structurally malformed entry (missing/empty
- * key, tenant, or status) can never be proven safe, so it blocks regardless of which tenant it claims.
+ * Classify one V1 entry: return a blocking marker if it is unsafe/non-attributable, or `null` if it is
+ * provably safe to ignore.
+ *
+ * The ENTIRE semantic structure is validated BEFORE any tenant routing, because malformed or ambiguous
+ * evidence cannot be trusted to belong to any particular tenant: it is non-attributable and therefore
+ * blocks regardless of the tenant it claims. Emptiness is checked on the TRIMMED value, so a
+ * whitespace-only key/tenant/status (e.g. `"   "`) is malformed, never a sneaky "different tenant".
+ * Only after an entry is proven well-formed with a KNOWN status do we route by tenant; a well-formed,
+ * known-status entry for another tenant cannot affect this owner and is ignored. For this tenant, only a
+ * provably safe status (`acknowledged`) is ignorable.
  */
 function classifyLegacyV1Entry(candidate: unknown, owner: JournalOwner): JournalEntry | null {
   if (typeof candidate !== "object" || candidate === null) return legacyMarker(owner);
   const record = candidate as { status?: unknown; tenantId?: unknown; commandKey?: unknown };
   const { status, tenantId, commandKey } = record;
-  if (typeof status !== "string" || status === "") return legacyMarker(owner);
-  if (typeof tenantId !== "string" || tenantId === "") return legacyMarker(owner);
-  if (typeof commandKey !== "string" || commandKey === "") return legacyMarker(owner);
 
-  // A well-formed entry for another tenant cannot affect this owner's tenant.
-  if (tenantId !== owner.tenantId) return null;
-  // For this tenant only a provably safe status is ignorable; everything else blocks.
-  if (V1_SAFE_STATUSES.has(status)) return null;
-  return legacyMarker(owner, commandKey);
+  // 1. Structural validity on TRIMMED values (whitespace-only is malformed) — non-attributable → block.
+  if (typeof commandKey !== "string" || commandKey.trim() === "") return legacyMarker(owner);
+  if (typeof tenantId !== "string" || tenantId.trim() === "") return legacyMarker(owner);
+  if (typeof status !== "string" || status.trim() === "") return legacyMarker(owner);
+  const key = commandKey.trim();
+  const normalizedStatus = status.trim();
+
+  // 2. Classify the status against the frozen V1 lifecycle BEFORE tenant routing. An unknown status is
+  //    non-attributable and blocks regardless of the tenant it claims.
+  if (!V1_KNOWN_STATUSES.has(normalizedStatus)) return legacyMarker(owner, key);
+
+  // 3. Well-formed, known status: now route by tenant. Another tenant's entry cannot affect this owner.
+  if (tenantId.trim() !== owner.tenantId) return null;
+  // 4. For this tenant, only a provably safe status is ignorable; everything else blocks.
+  if (V1_SAFE_STATUSES.has(normalizedStatus)) return null;
+  return legacyMarker(owner, key);
 }
 
 /** Move the released V1 journal aside (preserving it) so it is deliberately quarantined, never deleted. */
 export async function quarantineLegacyV1(): Promise<void> {
+  // Archiving MUTATES durable storage, so it is gated by the same cross-context capability as every other
+  // high-risk journal write: on web without Web Locks it fails closed rather than racing another tab.
+  if (!isCrossContextSafe()) {
+    throw new CrossContextLockUnavailableError();
+  }
   if (Platform.OS === "web") {
     const store = requireWebStorage();
     const raw = store.getItem(V1_WEB_KEY);
