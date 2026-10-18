@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from "react";
-import { View } from "react-native";
 
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import { errorHeading, isRetryable } from "../products/display";
@@ -7,15 +6,15 @@ import {
   Badge,
   Body,
   ConfirmButton,
-  Divider,
-  Eyebrow,
+  FormSection,
   InfoRow,
   LoadingBlock,
+  Notice,
   PageHeader,
   PrimaryButton,
   ScrollScreen,
+  Surface,
   TextButton,
-  Title,
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
 import { useMutation } from "../ui/useMutation";
@@ -99,8 +98,12 @@ function SupplierDetailContent({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Suppliers" title="Supplier" onBack={onBack} />
-        <Divider />
+        <PageHeader
+          eyebrow="Suppliers"
+          title="Supplier"
+          icon="truck-delivery-outline"
+          onBack={onBack}
+        />
         <LoadingBlock label="Loading supplier…" />
       </ScrollScreen>
     );
@@ -109,12 +112,21 @@ function SupplierDetailContent({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Suppliers" title={errorHeading(state.error.kind)} onBack={onBack} />
-        <Divider />
-        <Body>{state.error.message}</Body>
-        {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
-        ) : null}
+        <PageHeader
+          eyebrow="Suppliers"
+          title={errorHeading(state.error.kind)}
+          icon="alert-circle-outline"
+          onBack={onBack}
+        />
+        <Notice
+          tone="danger"
+          message={state.error.message}
+          action={
+            isRetryable(state.error.kind) ? (
+              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+            ) : undefined
+          }
+        />
       </ScrollScreen>
     );
   }
@@ -126,35 +138,53 @@ function SupplierDetailContent({
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Suppliers" title={supplier.name} onBack={onBack} />
-      <View style={{ flexDirection: "row", gap: 8 }}>
+      <PageHeader
+        eyebrow="Supplier record"
+        title={supplier.name}
+        description="Contact details, lifecycle and receiving history."
+        icon="truck-delivery-outline"
+        onBack={onBack}
+      />
+      <Surface tone="brand">
         <Badge label={supplierStatusLabel(supplier.status)} testID="supplier-detail-status" />
-      </View>
-      <Body>{describeSupplierStatus(supplier.status)}</Body>
+        <Body>{describeSupplierStatus(supplier.status)}</Body>
+      </Surface>
       {canManage ? (
-        <PrimaryButton
-          label="Edit supplier"
-          testID="supplier-edit"
-          onPress={() => onEdit(supplier.id)}
-        />
+        <Surface>
+          <PrimaryButton
+            label="Edit supplier"
+            icon="pencil-outline"
+            testID="supplier-edit"
+            onPress={() => onEdit(supplier.id)}
+          />
+        </Surface>
+      ) : (
+        <Notice message="Read-only access · supplier management actions are hidden." />
+      )}
+
+      <FormSection title="Supplier profile" icon="account-box-outline">
+        {supplier.referenceCode ? (
+          <InfoRow label="Reference" value={supplier.referenceCode} />
+        ) : null}
+        {supplier.contactPerson ? <InfoRow label="Contact" value={supplier.contactPerson} /> : null}
+        {supplier.phone ? <InfoRow label="Phone" value={supplier.phone} /> : null}
+        {supplier.email ? <InfoRow label="Email" value={supplier.email} /> : null}
+      </FormSection>
+      {supplier.address || supplier.notes ? (
+        <FormSection title="Address & notes" icon="map-marker-outline">
+          {supplier.address ? <InfoRow label="Address" value={supplier.address} /> : null}
+          {supplier.notes ? <InfoRow label="Notes" value={supplier.notes} /> : null}
+        </FormSection>
       ) : null}
-      <Divider />
-
-      <Eyebrow>Supplier record</Eyebrow>
-      {supplier.referenceCode ? <InfoRow label="Reference" value={supplier.referenceCode} /> : null}
-      {supplier.contactPerson ? <InfoRow label="Contact" value={supplier.contactPerson} /> : null}
-      {supplier.phone ? <InfoRow label="Phone" value={supplier.phone} /> : null}
-      {supplier.email ? <InfoRow label="Email" value={supplier.email} /> : null}
-      {supplier.address ? <InfoRow label="Address" value={supplier.address} /> : null}
-      {supplier.notes ? <InfoRow label="Notes" value={supplier.notes} /> : null}
-      {supplier.createdAt ? <InfoRow label="Created" value={supplier.createdAt} /> : null}
-      {supplier.updatedAt ? <InfoRow label="Updated" value={supplier.updatedAt} /> : null}
-      <InfoRow label="Supplier id" value={supplier.id} />
+      {supplier.createdAt || supplier.updatedAt ? (
+        <FormSection title="Record timeline" icon="clock-outline">
+          {supplier.createdAt ? <InfoRow label="Created" value={supplier.createdAt} /> : null}
+          {supplier.updatedAt ? <InfoRow label="Updated" value={supplier.updatedAt} /> : null}
+        </FormSection>
+      ) : null}
 
       {canManage ? (
-        <>
-          <Divider />
-          <Eyebrow>Status</Eyebrow>
+        <FormSection title="Lifecycle control" icon="sync">
           <Body>
             Marking a supplier inactive keeps it and its history; it is never deleted. An inactive
             supplier cannot be chosen for new receipts, but its past receipts remain visible.
@@ -173,7 +203,7 @@ function SupplierDetailContent({
               onDismiss={() => statusMutation.reset()}
             />
           ) : null}
-        </>
+        </FormSection>
       ) : null}
 
       {/* Historical receiving records — clearly separated from the editable supplier data above. */}
@@ -192,14 +222,23 @@ function StatusError({
   onDismiss: () => void;
 }) {
   return (
-    <View style={{ gap: 8 }} testID="supplier-status-error">
-      <Title>{described.heading}</Title>
-      <Body>{described.message}</Body>
-      {described.recovery === "retry" ? (
-        <PrimaryButton label="Retry" testID="supplier-status-retry" onPress={onRetry} />
-      ) : (
-        <TextButton label="Dismiss" onPress={onDismiss} />
-      )}
-    </View>
+    <Notice
+      testID="supplier-status-error"
+      tone="danger"
+      title={described.heading}
+      message={described.message}
+      action={
+        described.recovery === "retry" ? (
+          <PrimaryButton
+            label="Retry"
+            icon="refresh"
+            testID="supplier-status-retry"
+            onPress={onRetry}
+          />
+        ) : (
+          <TextButton label="Dismiss" onPress={onDismiss} />
+        )
+      }
+    />
   );
 }

@@ -1,8 +1,7 @@
 import type { MeContextResponse } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useMemo, useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-// Feature-agnostic Commerce-error display helpers, shared with the Products read surface.
 import { errorHeading, isRetryable } from "../products/display";
 import { useSession } from "../session/SessionProvider";
 import { resolveSupplierAdapter } from "../suppliers/adapter";
@@ -11,16 +10,23 @@ import type { SupplierSummary } from "../suppliers/model";
 import {
   Badge,
   Body,
-  Divider,
+  EmptyState,
   InfoRow,
   LoadingBlock,
+  MetricCard,
+  Notice,
   PageHeader,
   PrimaryButton,
   ScrollScreen,
+  SearchField,
+  SectionHeading,
   type SelectOption,
+  Surface,
   SurfaceRow,
-  Title,
+  TextButton,
 } from "../ui/components";
+import { AppIcon } from "../ui/Icon";
+import { colors, radius, spacing } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
 import { InventoryOperations } from "./InventoryOperations";
 import {
@@ -39,22 +45,23 @@ export interface InventoryScreenProps {
   onBack: () => void;
 }
 
-/**
- * Read-only Inventory list for the active tenant. It reads inventory access from `/me/context` only
- * for UX, but the server stays authoritative: a real `GET /inventory` that is denied surfaces as a
- * classified error (never a silent empty list). The write panel uses server-derived capability
- * guidance for UX while the API remains authoritative for every mutation.
- */
+/** Inventory visibility and the three explicitly authorized management operations. */
 export function InventoryScreen({ tenantId, context, onBack }: InventoryScreenProps) {
-  // Context-driven UX gate, checked before any fetch is issued. This is not authorization — the API
-  // enforces that — but there is no point calling `/inventory` for a caller known to lack read
-  // access. Rendering a distinct component means the fetch hook below never runs in this case.
   if (!context.access.inventory.canRead) {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Inventory" title="Inventory" onBack={onBack} />
-        <Divider />
-        <Body>You do not have read access to inventory. Ask an owner or administrator.</Body>
+        <PageHeader
+          eyebrow="Operations"
+          title="Inventory"
+          description="Review stock availability across the locations assigned to your account."
+          icon="warehouse"
+          onBack={onBack}
+        />
+        <Notice
+          tone="warning"
+          title="Inventory access required"
+          message="You do not have read access to inventory. Ask an owner or administrator."
+        />
       </ScrollScreen>
     );
   }
@@ -65,29 +72,18 @@ export function InventoryScreen({ tenantId, context, onBack }: InventoryScreenPr
 function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
-  // Journal ownership is scoped to tenant AND acting membership — the same actor fingerprint the API
-  // scopes inventory idempotency to — using the canonical `/me/context` membership id. One user's
-  // unresolved commands are therefore never visible to, or replayable by, another on the same device.
   const owner = useMemo<JournalOwner>(
     () => ({ tenantId, membershipId: context.membership.id }),
     [tenantId, context.membership.id],
   );
-  // The durable inventory-mutation journal: membership-scoped, device-backed so a high-risk command
-  // whose response is lost survives an app restart and is recovered rather than silently re-minted.
-  // Recreated when the owner changes, so a user switch loads that user's own journal (not another's).
   const journal = useMemo(
     () => createInventoryJournal(createDurableJournalStore(owner), owner, secureIdempotencyKey),
     [owner],
   );
   const detectLegacy = useCallback(() => readLegacyV1Unresolved(owner), [owner]);
-  // One bounded producer that follows the server cursor across all pages (see loadAllInventory).
   const load = useCallback(() => loadAllInventory(client), [client]);
   const { state, reload } = useAsync<InventoryItem[]>(load);
 
-  // Phase 2N: load ACTIVE suppliers to offer for optional receipt linking, only when the caller has
-  // supplier read access. This is best-effort — supplier linking is optional, so a failed or in-flight
-  // supplier load never blocks receiving: the Receive form simply falls back to a legacy no-supplier
-  // receipt. Inactive suppliers are excluded server-side (status filter) so they are never selectable.
   const supplierAdapter = useMemo(
     () => (context.access.suppliers?.canRead ? resolveSupplierAdapter(client) : null),
     [client, context.access.suppliers?.canRead],
@@ -103,100 +99,205 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
   const receiveSuppliers = useMemo<SelectOption[] | undefined>(
     () =>
       suppliers.state.status === "success"
-        ? suppliers.state.data.map((s) => ({
-            value: s.id,
-            label: s.referenceCode ? `${s.name} · ${s.referenceCode}` : s.name,
+        ? suppliers.state.data.map((supplier) => ({
+            value: supplier.id,
+            label: supplier.referenceCode
+              ? `${supplier.name} · ${supplier.referenceCode}`
+              : supplier.name,
           }))
         : undefined,
     [suppliers.state],
   );
 
-  // The inventory item carries only a location id; the human name comes from /me/context access,
-  // mirroring how Products resolves brand names. Locations not present in access simply show their
-  // id — the quantity is never hidden or altered because a name is missing.
   const locationNameById = useMemo(
-    () => new Map(context.access.inventory.locations.map((loc) => [loc.id, loc.name])),
-    [context],
+    () =>
+      new Map(context.access.inventory.locations.map((location) => [location.id, location.name])),
+    [context.access.inventory.locations],
   );
-
   const [concurrencyNotice, setConcurrencyNotice] = useState(false);
+  const [search, setSearch] = useState("");
   const refreshAfterConcurrency = useCallback(() => {
     setConcurrencyNotice(true);
     reload();
   }, [reload]);
 
+  const visibleItems = useMemo(() => {
+    if (state.status !== "success") return [];
+    const term = search.trim().toLowerCase();
+    if (!term) return state.data;
+    return state.data.filter((item) => {
+      const locationName =
+        locationNameById.get(item.inventoryLocationId) ?? item.inventoryLocationId;
+      return [item.productName, item.sku, locationName].some((value) =>
+        value.toLowerCase().includes(term),
+      );
+    });
+  }, [locationNameById, search, state]);
+
+  const visibleLocationCount = useMemo(
+    () => new Set(visibleItems.map((item) => item.inventoryLocationId)).size,
+    [visibleItems],
+  );
+
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Inventory" title="Inventory" onBack={onBack} />
-      <Divider />
+      <PageHeader
+        eyebrow="Operations"
+        title="Inventory"
+        description="Monitor stock and safely record physical inventory changes."
+        icon="warehouse"
+        action={
+          state.status === "success" ? (
+            <TextButton label="Refresh" icon="refresh" onPress={reload} />
+          ) : undefined
+        }
+        onBack={onBack}
+      />
+
       {concurrencyNotice ? (
-        <View style={{ gap: 8 }} testID="inventory-concurrency-notice">
-          <Title>Inventory changed</Title>
-          <Body>
-            Inventory was refreshed from the server. Review the current on-hand quantity, then
-            select the row and enter the physical count again before submitting a new adjustment.
-          </Body>
-          <PrimaryButton
-            label="Review refreshed inventory"
-            onPress={() => setConcurrencyNotice(false)}
-          />
-        </View>
-      ) : null}
-      {state.status === "success" ? (
-        <InventoryOperations
-          client={client}
-          journal={journal}
-          locations={context.access.inventory.locations}
-          write={context.access.inventory.write}
-          items={state.data}
-          onRefresh={reload}
-          onConcurrencyConflict={refreshAfterConcurrency}
-          receiveSuppliers={receiveSuppliers}
-          detectLegacy={detectLegacy}
-          quarantineLegacy={quarantineLegacyV1}
+        <Notice
+          testID="inventory-concurrency-notice"
+          tone="warning"
+          title="Inventory changed"
+          message="Inventory was refreshed from the server. Review the current on-hand quantity, then select the row and enter the physical count again before submitting a new adjustment."
+          action={
+            <PrimaryButton
+              label="Review refreshed inventory"
+              icon="refresh"
+              variant="secondary"
+              onPress={() => setConcurrencyNotice(false)}
+            />
+          }
         />
       ) : null}
-      {state.status === "success" ? <Divider /> : null}
+
+      {state.status === "success" ? (
+        <Surface tone="accent">
+          <InventoryOperations
+            client={client}
+            journal={journal}
+            locations={context.access.inventory.locations}
+            write={context.access.inventory.write}
+            items={state.data}
+            onRefresh={reload}
+            onConcurrencyConflict={refreshAfterConcurrency}
+            receiveSuppliers={receiveSuppliers}
+            detectLegacy={detectLegacy}
+            quarantineLegacy={quarantineLegacyV1}
+          />
+        </Surface>
+      ) : null}
+
       {state.status === "loading" ? <LoadingBlock label="Loading inventory…" /> : null}
       {state.status === "error" ? (
-        <>
-          <Title>{errorHeading(state.error.kind)}</Title>
-          <Body>{state.error.message}</Body>
-          {isRetryable(state.error.kind) ? (
-            <PrimaryButton label="Try again" onPress={reload} />
-          ) : null}
-        </>
+        <Notice
+          tone="danger"
+          title={errorHeading(state.error.kind)}
+          message={state.error.message}
+          action={
+            isRetryable(state.error.kind) ? (
+              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+            ) : undefined
+          }
+        />
       ) : null}
       {state.status === "success" && state.data.length === 0 ? (
-        <Body>No inventory yet. Stock counted in this business will appear here.</Body>
+        <EmptyState
+          icon="package-variant-closed"
+          title="Stock is empty"
+          message="No inventory yet. Stock counted in this business will appear here."
+        />
       ) : null}
       {state.status === "success" && state.data.length > 0 ? (
-        <View style={{ gap: 12 }}>
-          {state.data.map((item) => {
-            const rowKey = `${item.inventoryLocationId}:${item.variantId}`;
-            const locationName =
-              locationNameById.get(item.inventoryLocationId) ?? item.inventoryLocationId;
-            return (
-              <SurfaceRow key={rowKey} testID={`inventory-row-${rowKey}`}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  <Title>{item.productName}</Title>
-                  {/* On-hand is shown exactly as returned; zero renders honestly as "0". */}
-                  <Badge label={String(item.onHand)} testID={`inventory-onhand-${rowKey}`} />
-                </View>
-                <InfoRow label="SKU" value={item.sku} />
-                <InfoRow label="Location" value={locationName} />
-              </SurfaceRow>
-            );
-          })}
-        </View>
+        <>
+          <View style={inventoryStyles.metrics}>
+            <MetricCard
+              label="Stock rows"
+              value={String(state.data.length)}
+              icon="format-list-bulleted"
+            />
+            <MetricCard
+              label="Locations shown"
+              value={String(visibleLocationCount)}
+              icon="map-marker-outline"
+              tone="accent"
+            />
+          </View>
+
+          <View style={inventoryStyles.catalogHeader}>
+            <SectionHeading title="Stock overview" detail={`${visibleItems.length} shown`} />
+            <SearchField
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search product, SKU or location"
+              testID="inventory-search"
+            />
+          </View>
+
+          {visibleItems.length === 0 ? (
+            <EmptyState
+              icon="magnify"
+              title="No matching stock"
+              message="Try a different product, SKU or location."
+            />
+          ) : (
+            <View style={inventoryStyles.list}>
+              {visibleItems.map((item) => {
+                const itemKey = `${item.inventoryLocationId}:${item.variantId}`;
+                const locationName =
+                  locationNameById.get(item.inventoryLocationId) ?? item.inventoryLocationId;
+                return (
+                  <SurfaceRow key={itemKey} testID={`inventory-row-${itemKey}`}>
+                    <View style={inventoryStyles.stockIcon}>
+                      <AppIcon name="hanger" size={22} color={colors.brand} />
+                    </View>
+                    <View style={inventoryStyles.stockCopy}>
+                      <View style={inventoryStyles.stockTitleRow}>
+                        <Text style={inventoryStyles.stockName}>{item.productName}</Text>
+                        <Badge
+                          label={String(item.onHand)}
+                          tone={
+                            item.onHand === 0 ? "danger" : item.onHand <= 5 ? "warning" : "success"
+                          }
+                          testID={`inventory-onhand-${itemKey}`}
+                        />
+                      </View>
+                      <InfoRow label="SKU" value={item.sku} />
+                      <View style={inventoryStyles.locationRow}>
+                        <AppIcon name="map-marker-outline" size={17} color={colors.inkSubtle} />
+                        <Body>{locationName}</Body>
+                      </View>
+                    </View>
+                  </SurfaceRow>
+                );
+              })}
+            </View>
+          )}
+        </>
       ) : null}
     </ScrollScreen>
   );
 }
+
+const inventoryStyles = StyleSheet.create({
+  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  catalogHeader: { gap: spacing.md },
+  list: { gap: spacing.md },
+  stockIcon: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.md,
+    backgroundColor: colors.brandSoft,
+  },
+  stockCopy: { flex: 1, gap: spacing.xs },
+  stockName: { flex: 1, color: colors.ink, fontSize: 18, lineHeight: 24, fontWeight: "800" },
+  stockTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+});

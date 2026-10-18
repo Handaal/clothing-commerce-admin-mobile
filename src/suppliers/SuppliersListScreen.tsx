@@ -1,23 +1,25 @@
-import { useCallback, useMemo, useState } from "react";
-import { View } from "react-native";
+import { useCallback, useState } from "react";
+import { Text, View } from "react-native";
 
 import { errorHeading, isRetryable } from "../products/display";
 import {
   Badge,
   Body,
-  Divider,
-  Eyebrow,
+  EmptyState,
+  FilterChips,
   InfoRow,
   LoadingBlock,
+  MetricCard,
+  Notice,
   PageHeader,
   PressableRow,
   PrimaryButton,
   ScrollScreen,
-  SelectField,
-  type SelectOption,
-  TextField,
-  Title,
+  SearchField,
+  SectionHeading,
+  Surface,
 } from "../ui/components";
+import { colors } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
 import type { SupplierAdapter } from "./adapter";
 import { loadAllSuppliers } from "./load";
@@ -25,7 +27,6 @@ import type { SupplierSummary } from "./model";
 import {
   buildSupplierListQuery,
   EMPTY_SUPPLIER_SEARCH,
-  isEmptySupplierSearch,
   type SupplierListQuery,
   type SupplierSearchState,
   type SupplierStatusFilter,
@@ -34,9 +35,7 @@ import { statusFilterLabel, supplierStatusLabel } from "./status";
 import { SupplierUnavailable } from "./SupplierUnavailable";
 
 export interface SuppliersListScreenProps {
-  /** The Supplier integration seam. `null` renders an explicit unavailable state (tests/safety net). */
   adapter: SupplierAdapter | null;
-  /** Server-derived: whether this caller may create suppliers (UX affordance only). */
   canManage: boolean;
   onOpenSupplier: (supplierId: string) => void;
   onCreateSupplier: () => void;
@@ -45,12 +44,6 @@ export interface SuppliersListScreenProps {
 
 const STATUS_FILTERS: SupplierStatusFilter[] = ["all", "active", "inactive"];
 
-/**
- * Supplier list with server-side search. When no adapter is present (no Supplier API yet), it shows an
- * explicit unavailable state — it NEVER renders fabricated supplier rows. With an adapter, it follows
- * the same read discipline as the other lists: loading / empty / classified-error / populated, and the
- * search/status constraints round-trip to the server (no client-side filtering of a fake dataset).
- */
 export function SuppliersListScreen({
   adapter,
   canManage,
@@ -83,87 +76,124 @@ function SuppliersListContent({
   onCreateSupplier,
   onBack,
 }: SuppliersListScreenProps & { adapter: SupplierAdapter }) {
-  // Draft search state the user edits, and the committed query the loader actually runs. Committing on
-  // an explicit action (not each keystroke) keeps this a server round-trip, never a live local filter.
   const [search, setSearch] = useState<SupplierSearchState>(EMPTY_SUPPLIER_SEARCH);
   const [query, setQuery] = useState<SupplierListQuery>(() =>
     buildSupplierListQuery(EMPTY_SUPPLIER_SEARCH),
   );
-  const isFiltered = !isEmptySupplierSearch(search) || Object.keys(query).length > 0;
-
+  const isFiltered = Object.keys(query).length > 0;
   const load = useCallback(() => loadAllSuppliers(adapter, query), [adapter, query]);
   const { state, reload } = useAsync<SupplierSummary[]>(load);
 
-  const statusOptions = useMemo<SelectOption[]>(
-    () => STATUS_FILTERS.map((value) => ({ value, label: statusFilterLabel(value) })),
-    [],
-  );
-
-  function applySearch() {
-    setQuery(buildSupplierListQuery(search));
-  }
-
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Suppliers" title="Suppliers" onBack={onBack} />
-      {/* Create is offered only when /me/context grants supplier management. The API remains the sole
-          authority and still authorizes the write — a real 403 surfaces on submit even if shown. */}
-      {canManage ? (
-        <PrimaryButton label="Add supplier" testID="create-supplier" onPress={onCreateSupplier} />
-      ) : null}
-      <Divider />
-
-      <TextField
-        label="Search"
-        value={search.term}
-        onChangeText={(term) => setSearch((prev) => ({ ...prev, term }))}
-        placeholder="Name, reference, phone or email"
-        testID="supplier-search-term"
-        autoCapitalize="none"
+      <PageHeader
+        eyebrow="Partners"
+        title="Suppliers"
+        description="Manage supplier records and review canonical receiving history."
+        icon="truck-delivery-outline"
+        onBack={onBack}
       />
-      <SelectField
-        label="Status"
-        options={statusOptions}
-        selected={search.status}
-        onSelect={(value) =>
-          setSearch((prev) => ({ ...prev, status: value as SupplierStatusFilter }))
-        }
-        testIDPrefix="supplier-status-filter"
-      />
-      <PrimaryButton
-        label="Search suppliers"
-        testID="supplier-search-submit"
-        onPress={applySearch}
-      />
-      <Divider />
-
+      <Surface tone="accent">
+        <SectionHeading title="Supplier workspace" detail="Management only" />
+        <Body>
+          Supplier status controls future receiving choices while preserving every historical
+          receipt.
+        </Body>
+        {canManage ? (
+          <PrimaryButton
+            label="Add supplier"
+            icon="account-plus-outline"
+            testID="create-supplier"
+            onPress={onCreateSupplier}
+          />
+        ) : (
+          <Notice
+            testID="suppliers-read-only"
+            message="Read-only access · supplier management actions are hidden."
+          />
+        )}
+      </Surface>
+      <Surface>
+        <SearchField
+          value={search.term}
+          onChangeText={(term) => setSearch((current) => ({ ...current, term }))}
+          placeholder="Name, reference, phone or email"
+          testID="supplier-search-term"
+        />
+        <FilterChips
+          options={STATUS_FILTERS.map((value) => ({
+            value,
+            label: statusFilterLabel(value),
+            icon:
+              value === "active"
+                ? "check-circle-outline"
+                : value === "inactive"
+                  ? "pause-circle-outline"
+                  : "view-grid-outline",
+          }))}
+          selected={search.status}
+          onSelect={(status) => setSearch((current) => ({ ...current, status }))}
+          testIDPrefix="supplier-status-filter"
+        />
+        <PrimaryButton
+          label="Search suppliers"
+          icon="magnify"
+          testID="supplier-search-submit"
+          onPress={() => setQuery(buildSupplierListQuery(search))}
+        />
+      </Surface>
       {state.status === "loading" ? <LoadingBlock label="Loading suppliers…" /> : null}
       {state.status === "error" ? (
-        <>
-          <Title>{errorHeading(state.error.kind)}</Title>
-          <Body>{state.error.message}</Body>
-          {isRetryable(state.error.kind) ? (
-            <PrimaryButton label="Try again" onPress={reload} />
-          ) : null}
-        </>
+        <Notice
+          tone="danger"
+          title={errorHeading(state.error.kind)}
+          message={state.error.message}
+          action={
+            isRetryable(state.error.kind) ? (
+              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+            ) : undefined
+          }
+        />
       ) : null}
       {state.status === "success" && state.data.length === 0 ? (
-        <Body testID="supplier-empty">
-          {isFiltered
-            ? "No suppliers match your search."
-            : "No suppliers yet. Add your first supplier to get started."}
-        </Body>
+        <View testID="supplier-empty">
+          <EmptyState
+            icon="truck-outline"
+            title={isFiltered ? "No matching suppliers" : "Your supplier directory is empty"}
+            message={
+              isFiltered
+                ? "No suppliers match your search."
+                : "No suppliers yet. Add your first supplier to get started."
+            }
+          />
+        </View>
       ) : null}
       {state.status === "success" && state.data.length > 0 ? (
-        <View style={{ gap: 12 }}>
-          {state.data.map((supplier) => (
-            <SupplierRow
-              key={supplier.id}
-              supplier={supplier}
-              onOpen={() => onOpenSupplier(supplier.id)}
+        <>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+            <MetricCard
+              label="Loaded suppliers"
+              value={String(state.data.length)}
+              icon="truck-outline"
             />
-          ))}
-        </View>
+            <MetricCard
+              label="Active"
+              value={String(state.data.filter((supplier) => supplier.status === "active").length)}
+              icon="check-circle-outline"
+              tone="accent"
+            />
+          </View>
+          <SectionHeading title="Supplier directory" detail={`${state.data.length} loaded`} />
+          <View style={{ gap: 12 }}>
+            {state.data.map((supplier) => (
+              <SupplierRow
+                key={supplier.id}
+                supplier={supplier}
+                onOpen={() => onOpenSupplier(supplier.id)}
+              />
+            ))}
+          </View>
+        </>
       ) : null}
     </ScrollScreen>
   );
@@ -180,7 +210,9 @@ function SupplierRow({ supplier, onOpen }: { supplier: SupplierSummary; onOpen: 
           gap: 12,
         }}
       >
-        <Title>{supplier.name}</Title>
+        <Text style={{ flex: 1, color: colors.ink, fontSize: 18, fontWeight: "800" }}>
+          {supplier.name}
+        </Text>
         <Badge
           label={supplierStatusLabel(supplier.status)}
           testID={`supplier-status-${supplier.id}`}
@@ -189,8 +221,7 @@ function SupplierRow({ supplier, onOpen }: { supplier: SupplierSummary; onOpen: 
       {supplier.referenceCode ? <InfoRow label="Reference" value={supplier.referenceCode} /> : null}
       {supplier.contactPerson ? <InfoRow label="Contact" value={supplier.contactPerson} /> : null}
       {supplier.phone ? <InfoRow label="Phone" value={supplier.phone} /> : null}
-      {/* Inactive suppliers stay listed — they are retained history, never hidden as if deleted. */}
-      {supplier.status === "inactive" ? <Eyebrow>Inactive — retained, not deleted</Eyebrow> : null}
+      {supplier.status === "inactive" ? <Body>Inactive · retained, not deleted</Body> : null}
     </PressableRow>
   );
 }

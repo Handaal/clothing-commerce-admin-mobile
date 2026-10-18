@@ -38,7 +38,7 @@ All pricing, eligibility, authorization, redemption counts, and post-redemption 
 server-authoritative.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.14.0)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.19.0)
   → GET /me/tenants → tenant selection → GET /me/context
   → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
   → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
@@ -243,6 +243,26 @@ create/edit/lifecycle/code affordance is withheld. The API independently authori
 
 See [Phase 2P validation](docs/phase-2p-validation.md).
 
+## Mobile management shell
+
+Authenticated management routes share a persistent phone navigation bar with Home, Orders,
+Inventory, Products, and More. Items backed by Commerce API data are shown only when the
+server-returned context advertises read access; this is navigation guidance and never replaces API
+authorization. More is the complete management directory for Promotions & vouchers, Suppliers,
+Staff, Reports, Settings, and future domains.
+
+Customers and Activity are labelled as planned and have no routes because no canonical management
+contract exists for them. Storefront has a reserved, intentionally blank route for future website
+management. It contains no customer shopping, checkout, or visual page-layout editor. The mobile
+shell has no POS/Sell destination.
+
+The shared visual foundation lives in `src/ui/theme.ts`, `src/ui/Icon.tsx`, and
+`src/ui/components.tsx`. New screens should use the semantic palette, spacing/radius tokens, Expo
+vector icons, shared page/card/form primitives, and the persistent management shell rather than
+introducing one-off colors or navigation patterns. The palette uses deep ink and indigo for primary
+hierarchy, warm neutral surfaces, teal for the Storefront/future-facing accent, and semantic
+success/warning/danger tones.
+
 ## Separate-repo architecture
 
 This repository is fully standalone. It talks to the Commerce API **only** through a versioned,
@@ -262,18 +282,18 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.14.0**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.14.0.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.14.0.tgz`
-- SHA-256: `f6a666241c135c302829d78f22e601deaffc963e102570db0ee667703b4bf69a`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.19.0**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.19.0.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.19.0.tgz`
+- SHA-256: `78ca20340b19364ccba6936c048492e05fc2d7d6c444a2ee0ef52380e38f3c30`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.14.0.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.19.0.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.14.0.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.19.0.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
@@ -281,8 +301,8 @@ relative `file:` spec, and byte-for-byte SHA-256).
 
 ### Update the SDK artifact
 
-1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.14.0.tgz`).
-2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.14.0.tgz"`.
+1. Drop the new packed tarball into `vendor/` (e.g. `...-sdk-0.19.0.tgz`).
+2. Point the dependency at it: `"@shifted/clothing-commerce-sdk": "file:vendor/shifted-clothing-commerce-sdk-0.19.0.tgz"`.
 3. `pnpm install` to update `pnpm-lock.yaml`.
 4. Update the SHA-256 above and in `src/sdk-artifact.test.ts` expectations, then remove the old
    tarball once nothing references it.

@@ -3,6 +3,8 @@ import { useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Body, Eyebrow, PrimaryButton, Screen, Title } from "./components";
+import { AppIcon } from "./Icon";
+import { colors, radius, spacing } from "./theme";
 
 /**
  * Minimal real Clerk email/password sign-in using the Clerk core-3 signals API. This drives the
@@ -43,8 +45,11 @@ export function SignInScreen() {
 
   return (
     <Screen>
-      <Eyebrow>Authorized management channel</Eyebrow>
-      <Title>Sign in</Title>
+      <View style={styles.brandMark}>
+        <AppIcon name="briefcase-variant-outline" size={26} color={colors.white} />
+      </View>
+      <Eyebrow>Commerce management</Eyebrow>
+      <Title>Welcome back</Title>
       <Body>Sign in with your manager account to continue.</Body>
 
       <View style={styles.field}>
@@ -58,7 +63,7 @@ export function SignInScreen() {
           value={emailAddress}
           onChangeText={setEmailAddress}
           placeholder="you@business.com"
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={colors.inkSubtle}
         />
       </View>
 
@@ -72,7 +77,7 @@ export function SignInScreen() {
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={colors.inkSubtle}
         />
       </View>
 
@@ -81,6 +86,7 @@ export function SignInScreen() {
       <PrimaryButton
         testID="sign-in-submit"
         label={submitting ? "Signing in…" : "Sign in"}
+        icon="login"
         onPress={onSubmit}
         disabled={submitting}
       />
@@ -101,17 +107,35 @@ function clerkErrorMessage(error: unknown): string {
 }
 
 const styles = StyleSheet.create({
-  field: { gap: 6 },
-  label: { color: "#4b5563", fontSize: 13, fontWeight: "700" },
+  brandMark: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.lg,
+    backgroundColor: colors.brand,
+    marginBottom: spacing.sm,
+  },
+  field: { gap: spacing.sm },
+  label: { color: colors.ink, fontSize: 13, fontWeight: "700" },
   input: {
+    minHeight: 50,
     borderWidth: 1,
-    borderColor: "#ddd6fe",
-    borderRadius: 12,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#111827",
-    backgroundColor: "#faf5ff",
+    color: colors.ink,
+    backgroundColor: colors.surface,
   },
-  error: { color: "#dc2626", fontSize: 14, fontWeight: "600" },
+  error: {
+    color: colors.danger,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerSoft,
+    padding: spacing.md,
+  },
 });

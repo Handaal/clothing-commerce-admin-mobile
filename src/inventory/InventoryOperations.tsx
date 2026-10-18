@@ -9,19 +9,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 
 import {
+  AccordionTrigger,
   Badge,
   Body,
-  Divider,
-  Eyebrow,
+  FormSection,
   InfoRow,
+  Notice,
   NumberField,
   PrimaryButton,
+  SectionHeading,
   SelectField,
   type SelectOption,
+  Surface,
   TextButton,
   TextField,
   Title,
 } from "../ui/components";
+import type { AppIconName } from "../ui/Icon";
 import type { InventoryItem } from "./load";
 import { InventoryRecoveryPanel } from "./journal/InventoryRecoveryPanel";
 import type { InventoryJournal } from "./journal/journal";
@@ -92,6 +96,7 @@ type OpKind = "receive" | "adjust" | "transfer";
  */
 export function InventoryOperations(props: InventoryOperationsProps) {
   const [activeOp, setActiveOp] = useState<OpKind | null>(null);
+  const hasWriteAction = props.write.canReceive || props.write.canAdjust || props.write.canTransfer;
   // Fail closed at startup: write forms stay hidden until the recovery panel has validated the durable
   // V2 store AND completed the legacy V1 check and reported availability. There is deliberately NO window
   // where a mutation could be submitted before those checks finish. Read-only inventory stays usable.
@@ -140,11 +145,17 @@ export function InventoryOperations(props: InventoryOperationsProps) {
 
   return (
     <View style={{ gap: 12 }}>
-      <Eyebrow>Inventory operations</Eyebrow>
-      <Body>
-        These operations are authorized by the Commerce API. Role names grant nothing here; a denied
-        write is shown as an explicit access-denied state, never silently ignored.
-      </Body>
+      <SectionHeading
+        title="Inventory operations"
+        detail={hasWriteAction ? "Choose an action" : "Read-only access"}
+      />
+      <Notice
+        message={
+          hasWriteAction
+            ? "Receive deliveries, reconcile a physical count, or move stock between authorized locations. Every change is verified by the Commerce API."
+            : "You can review current stock, but no inventory-change operations are available to this account."
+        }
+      />
       {/* Restart/remount recovery: any inventory command whose result was never confirmed is surfaced
           here and completed by replaying its original idempotency key — never re-minted into a duplicate. */}
       <InventoryRecoveryPanel
@@ -158,22 +169,21 @@ export function InventoryOperations(props: InventoryOperationsProps) {
         onAvailabilityChange={onAvailabilityChange}
       />
       {storageFailedPostInit ? (
-        <View style={{ gap: 8 }} testID="inventory-writes-unavailable">
-          <Divider />
-          <Title>Inventory changes temporarily unavailable</Title>
-          <Body>
-            A recent change could not be saved to the recovery journal, so inventory changes are
-            paused and no inventory was changed. Reload to try again; if it keeps happening, the
-            recovery journal needs attention. Your other Admin data is unaffected.
-          </Body>
-        </View>
+        <Notice
+          testID="inventory-writes-unavailable"
+          tone="danger"
+          title="Inventory changes temporarily unavailable"
+          message="A recent change could not be saved to the recovery journal, so inventory changes are paused and no inventory was changed. Reload to try again; if it keeps happening, the recovery journal needs attention. Your other Admin data is unaffected."
+        />
       ) : null}
       {formsVisible ? (
         <>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <View style={{ gap: 8 }}>
             {props.write.canReceive ? (
               <OpTab
                 label="Receive stock"
+                description="Record stock arriving at a location"
+                icon="package-down"
                 testID="open-receive"
                 active={activeOp === "receive"}
                 onPress={() => setActiveOp(activeOp === "receive" ? null : "receive")}
@@ -182,6 +192,8 @@ export function InventoryOperations(props: InventoryOperationsProps) {
             {props.write.canAdjust ? (
               <OpTab
                 label="Adjust (reconcile)"
+                description="Match the system to a physical count"
+                icon="clipboard-check-outline"
                 testID="open-adjust"
                 active={activeOp === "adjust"}
                 onPress={() => setActiveOp(activeOp === "adjust" ? null : "adjust")}
@@ -190,6 +202,8 @@ export function InventoryOperations(props: InventoryOperationsProps) {
             {props.write.canTransfer ? (
               <OpTab
                 label="Transfer stock"
+                description="Move units between locations"
+                icon="swap-horizontal"
                 testID="open-transfer"
                 active={activeOp === "transfer"}
                 onPress={() => setActiveOp(activeOp === "transfer" ? null : "transfer")}
@@ -226,19 +240,28 @@ export function InventoryOperations(props: InventoryOperationsProps) {
 
 function OpTab({
   label,
+  description,
+  icon,
   testID,
   active,
   onPress,
 }: {
   label: string;
+  description: string;
+  icon: AppIconName;
   testID: string;
   active: boolean;
   onPress: () => void;
 }) {
   return (
-    <View style={{ flexGrow: 1, minWidth: 150 }}>
-      <PrimaryButton label={active ? `▾ ${label}` : label} testID={testID} onPress={onPress} />
-    </View>
+    <AccordionTrigger
+      title={label}
+      description={description}
+      icon={icon}
+      expanded={active}
+      testID={testID}
+      onPress={onPress}
+    />
   );
 }
 
@@ -310,24 +333,25 @@ function WriteError<TResult extends object>({
 }) {
   const described = describeInventoryWriteError(state.error);
   return (
-    <View style={{ gap: 8 }} testID="write-error">
-      <Title>{described.heading}</Title>
-      <Body>{described.message}</Body>
-      {described.recovery === "retry" ? (
-        // AMBIGUOUS outcome: retry reuses the SAME idempotency key (at-most-once).
-        <PrimaryButton label="Retry" testID="write-retry" onPress={() => mutation.retry()} />
-      ) : null}
-      {described.recovery === "edit" ? (
-        <PrimaryButton
-          label="Edit and try again"
-          testID="write-edit"
-          onPress={() => mutation.reset()}
-        />
-      ) : null}
-      {described.recovery === "none" ? (
-        <TextButton label="Dismiss" onPress={() => mutation.reset()} />
-      ) : null}
-    </View>
+    <Notice
+      testID="write-error"
+      tone="danger"
+      title={described.heading}
+      message={described.message}
+      action={
+        described.recovery === "retry" ? (
+          <PrimaryButton label="Retry" testID="write-retry" onPress={() => mutation.retry()} />
+        ) : described.recovery === "edit" ? (
+          <PrimaryButton
+            label="Edit and try again"
+            testID="write-edit"
+            onPress={() => mutation.reset()}
+          />
+        ) : (
+          <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+        )
+      }
+    />
   );
 }
 
@@ -827,12 +851,9 @@ function FormShell({
   children: React.ReactNode;
 }) {
   return (
-    <View style={{ gap: 12 }}>
-      <Divider />
-      <Title>{title}</Title>
-      <Body>{hint}</Body>
+    <FormSection title={title} description={hint} icon="clipboard-edit-outline">
       {children}
-    </View>
+    </FormSection>
   );
 }
 
@@ -848,11 +869,10 @@ function SuccessPanel({
   children: React.ReactNode;
 }) {
   return (
-    <View style={{ gap: 12 }} testID={testID}>
-      <Divider />
+    <Surface tone="brand" testID={testID}>
       {children}
-      <Body>Inventory has been refreshed from the server below.</Body>
-      <PrimaryButton label={resetLabel} onPress={onReset} />
-    </View>
+      <Notice tone="success" message="Inventory has been refreshed from the server below." />
+      <PrimaryButton label={resetLabel} icon="plus" onPress={onReset} />
+    </Surface>
   );
 }

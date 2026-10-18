@@ -7,12 +7,15 @@ import {
   Badge,
   Body,
   ConfirmButton,
+  EmptyState,
   InfoRow,
+  Notice,
   PrimaryButton,
+  SectionHeading,
   SelectField,
+  Surface,
   SurfaceRow,
   TextField,
-  Title,
 } from "../ui/components";
 import { useMutation } from "../ui/useMutation";
 import type { PromotionClient } from "./client";
@@ -92,13 +95,19 @@ export function PromotionCodes({
 
   return (
     <View style={{ gap: 12 }}>
-      {promotion.codes.length === 0 ? <Body>No codes created.</Body> : null}
+      {promotion.codes.length === 0 ? (
+        <EmptyState
+          icon="ticket-outline"
+          title="No codes created"
+          message="Add a voucher code to make this Promotion redeemable by code."
+        />
+      ) : null}
       {promotion.codes.map((item) => (
         <SurfaceRow key={item.id} testID={`promotion-code-${item.id}`}>
           <View
             style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}
           >
-            <Title>{item.code}</Title>
+            <Body>{item.code}</Body>
             <Badge label={item.status} testID={`promotion-code-status-${item.id}`} />
           </View>
           <InfoRow
@@ -135,8 +144,8 @@ export function PromotionCodes({
       ) : null}
 
       {canManage ? (
-        <View style={{ gap: 12 }}>
-          <Title>Create code</Title>
+        <Surface>
+          <SectionHeading title="Create code" detail="Voucher access" />
           <TextField
             label="Code"
             value={code}
@@ -173,10 +182,11 @@ export function PromotionCodes({
           <PrimaryButton
             label={createMutation.state.status === "submitting" ? "Creating…" : "Create code"}
             testID="promotion-create-code"
+            icon="ticket-confirmation-outline"
             disabled={createMutation.state.status === "submitting"}
             onPress={submitCode}
           />
-        </View>
+        </Surface>
       ) : null}
     </View>
   );
@@ -190,12 +200,15 @@ function MutationError({
   onRetry: () => void;
 }) {
   return (
-    <View style={{ gap: 8 }}>
-      <Title>{described.heading}</Title>
-      <Body>{described.message}</Body>
-      {described.recovery === "retry" ? (
-        <PrimaryButton label="Retry safely" onPress={onRetry} />
-      ) : null}
-    </View>
+    <Notice
+      tone="danger"
+      title={described.heading}
+      message={described.message}
+      action={
+        described.recovery === "retry" ? (
+          <PrimaryButton label="Retry safely" icon="refresh" onPress={onRetry} />
+        ) : undefined
+      }
+    />
   );
 }

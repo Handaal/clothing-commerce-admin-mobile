@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 
 import { clerkTokenCache } from "../src/auth/token-cache";
 import { getClerkPublishableKey } from "../src/config/env";
+import { ManagementShell } from "../src/navigation/ManagementShell";
 import { SessionProvider } from "../src/session/SessionProvider";
 import { Body, Eyebrow, Screen, Title } from "../src/ui/components";
 
@@ -28,7 +29,10 @@ export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={clerkTokenCache}>
       <SessionProvider>
-        <Stack screenOptions={{ headerShown: false }} />
+        <StatusBar style="dark" />
+        <ManagementShell>
+          <Stack screenOptions={{ headerShown: false }} />
+        </ManagementShell>
       </SessionProvider>
     </ClerkProvider>
   );

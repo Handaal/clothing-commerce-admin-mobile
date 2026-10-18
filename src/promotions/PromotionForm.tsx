@@ -5,22 +5,22 @@ import type {
   UpdatePromotionRequest,
 } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useMemo, useState } from "react";
-import { View } from "react-native";
 
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import {
   Body,
-  Divider,
-  Eyebrow,
+  EmptyState,
+  FormSection,
   InfoRow,
+  Notice,
   PageHeader,
   PrimaryButton,
   ScrollScreen,
   SelectField,
   TextField,
-  Title,
   type SelectOption,
 } from "../ui/components";
+import type { AppIconName } from "../ui/Icon";
 import { useMutation } from "../ui/useMutation";
 import type { PromotionClient } from "./client";
 import { activationLabel, benefitLabel, channelLabel, targetTypeLabel } from "./display";
@@ -83,8 +83,13 @@ export function PromotionForm({
   if (!canManage) {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Promotions" title="Read-only access" onBack={onBack} />
-        <Body>You can read Promotions, but management actions are not available.</Body>
+        <PageHeader
+          eyebrow="Promotions"
+          title="Read-only access"
+          icon="ticket-percent-outline"
+          onBack={onBack}
+        />
+        <Notice message="You can read Promotions, but management actions are not available." />
       </ScrollScreen>
     );
   }
@@ -100,11 +105,17 @@ export function PromotionForm({
         <PageHeader
           eyebrow="Promotions"
           title={mode === "create" ? "Promotion created" : "Promotion updated"}
+          icon="check-circle-outline"
           onBack={onBack}
         />
-        <Body>The Commerce API accepted the change.</Body>
+        <EmptyState
+          icon="check-circle-outline"
+          title={mode === "create" ? "Promotion created" : "Promotion updated"}
+          message="The Commerce API accepted the change."
+        />
         <PrimaryButton
           label="Continue"
+          icon="arrow-right"
           testID="promotion-saved-continue"
           onPress={() => onSaved(savedPromotion)}
         />
@@ -143,6 +154,8 @@ export function PromotionForm({
       <PageHeader
         eyebrow="Promotions"
         title={mode === "create" ? "Create Promotion" : "Edit Promotion"}
+        description="Define the offer, eligibility, usage controls and schedule."
+        icon={mode === "create" ? "ticket-confirmation-outline" : "pencil-outline"}
         onBack={onBack}
       />
 
@@ -210,11 +223,12 @@ export function PromotionForm({
           <InfoRow label="Discount type" value={benefitLabel(initial as PromotionDetail)} />
         )}
         {economicsLocked ? (
-          <Body testID="promotion-economics-locked">
-            Discount economics are locked because this Promotion has been redeemed. You can still
-            edit its name, description, and schedule. Deactivate it and create a new Promotion to
-            change the discount.
-          </Body>
+          <Notice
+            testID="promotion-economics-locked"
+            tone="warning"
+            title="Promotion already used"
+            message="Discount economics are locked because this Promotion has been redeemed. You can still edit its name, description, and schedule. Deactivate this Promotion and create a new one to change the discount."
+          />
         ) : (
           <>
             <TextField
@@ -412,24 +426,28 @@ export function PromotionForm({
       </Section>
 
       {describedError ? (
-        <View style={{ gap: 8 }}>
-          <Title>{describedError.heading}</Title>
-          <Body>{describedError.message}</Body>
-          {describedError.recovery === "retry" ? (
-            <PrimaryButton
-              label="Retry safely"
-              testID="promotion-submit-retry"
-              onPress={mutation.retry}
-            />
-          ) : null}
-          {describedError.recovery === "edit" || describedError.recovery === "replace" ? (
-            <PrimaryButton
-              label="Edit details"
-              testID="promotion-submit-edit"
-              onPress={mutation.reset}
-            />
-          ) : null}
-        </View>
+        <Notice
+          tone="danger"
+          title={describedError.heading}
+          message={describedError.message}
+          action={
+            describedError.recovery === "retry" ? (
+              <PrimaryButton
+                label="Retry safely"
+                icon="refresh"
+                testID="promotion-submit-retry"
+                onPress={mutation.retry}
+              />
+            ) : describedError.recovery === "edit" || describedError.recovery === "replace" ? (
+              <PrimaryButton
+                label="Edit details"
+                icon="pencil-outline"
+                testID="promotion-submit-edit"
+                onPress={mutation.reset}
+              />
+            ) : undefined
+          }
+        />
       ) : null}
       <PrimaryButton
         label={
@@ -440,6 +458,7 @@ export function PromotionForm({
               : "Save changes"
         }
         testID="promotion-submit"
+        icon={mode === "create" ? "ticket-confirmation-outline" : "content-save-outline"}
         disabled={mutation.state.status === "submitting"}
         onPress={submit}
       />
@@ -449,12 +468,27 @@ export function PromotionForm({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={{ gap: 12 }}>
-      <Divider />
-      <Eyebrow>{title}</Eyebrow>
+    <FormSection title={title} icon={sectionIcon(title)}>
       {children}
-    </View>
+    </FormSection>
   );
+}
+
+function sectionIcon(title: string): AppIconName {
+  switch (title) {
+    case "Basics":
+      return "information-outline";
+    case "Benefit":
+      return "sale-outline";
+    case "Eligibility":
+      return "target";
+    case "Usage":
+      return "counter";
+    case "Schedule":
+      return "calendar-clock-outline";
+    default:
+      return "clipboard-check-outline";
+  }
 }
 
 function FieldError({ value, testID }: { value?: string; testID?: string }) {
