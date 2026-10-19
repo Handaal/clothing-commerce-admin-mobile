@@ -1,9 +1,11 @@
 import { ClerkProvider } from "@clerk/expo";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { clerkTokenCache } from "../src/auth/token-cache";
 import { getClerkPublishableKey } from "../src/config/env";
+import { ManagementShell } from "../src/navigation/ManagementShell";
 import { SessionProvider } from "../src/session/SessionProvider";
 import { Body, Eyebrow, Screen, Title } from "../src/ui/components";
 
@@ -26,10 +28,15 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={clerkTokenCache}>
-      <SessionProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-      </SessionProvider>
-    </ClerkProvider>
+    <SafeAreaProvider>
+      <ClerkProvider publishableKey={publishableKey} tokenCache={clerkTokenCache}>
+        <SessionProvider>
+          <StatusBar style="dark" />
+          <ManagementShell>
+            <Stack screenOptions={{ headerShown: false }} />
+          </ManagementShell>
+        </SessionProvider>
+      </ClerkProvider>
+    </SafeAreaProvider>
   );
 }

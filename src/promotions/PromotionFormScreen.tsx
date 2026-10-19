@@ -2,14 +2,7 @@ import type { MeContextResponse, PromotionDetail } from "@shifted/clothing-comme
 import { useCallback } from "react";
 
 import { errorHeading, isRetryable } from "../products/display";
-import {
-  Body,
-  Divider,
-  LoadingBlock,
-  PageHeader,
-  PrimaryButton,
-  ScrollScreen,
-} from "../ui/components";
+import { LoadingBlock, Notice, PageHeader, PrimaryButton, ScrollScreen } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
 import type { IdempotencyKeyFactory } from "../inventory/idempotency";
 import type { PromotionClient } from "./client";
@@ -84,15 +77,25 @@ function EditPromotionLoader({
   if (!canManage) {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Promotions" title="Read-only access" onBack={onBack} />
-        <Body>You can read this Promotion, but editing is not available.</Body>
+        <PageHeader
+          eyebrow="Promotions"
+          title="Read-only access"
+          icon="ticket-percent-outline"
+          onBack={onBack}
+        />
+        <Notice message="You can read this Promotion, but editing is not available." />
       </ScrollScreen>
     );
   }
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Promotions" title="Edit Promotion" onBack={onBack} />
+        <PageHeader
+          eyebrow="Promotions"
+          title="Edit Promotion"
+          icon="pencil-outline"
+          onBack={onBack}
+        />
         <LoadingBlock label="Loading Promotion…" />
       </ScrollScreen>
     );
@@ -100,12 +103,21 @@ function EditPromotionLoader({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Promotions" title={errorHeading(state.error.kind)} onBack={onBack} />
-        <Divider />
-        <Body>{state.error.message}</Body>
-        {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
-        ) : null}
+        <PageHeader
+          eyebrow="Promotions"
+          title={errorHeading(state.error.kind)}
+          icon="alert-circle-outline"
+          onBack={onBack}
+        />
+        <Notice
+          tone="danger"
+          message={state.error.message}
+          action={
+            isRetryable(state.error.kind) ? (
+              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+            ) : undefined
+          }
+        />
       </ScrollScreen>
     );
   }

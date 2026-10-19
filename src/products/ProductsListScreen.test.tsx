@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -177,6 +177,16 @@ describe("ProductsListScreen", () => {
     renderProducts();
     fireEvent.click(await screen.findByTestId("create-product"));
     expect(onCreateProduct).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the canonical server-side status filter", async () => {
+    mocks.listProducts.mockResolvedValue(productList([productListItem(PRODUCT_A, "Linen Shirt")]));
+    renderProducts();
+    await screen.findByText("Linen Shirt");
+
+    fireEvent.click(screen.getByTestId("product-status-filter-draft"));
+
+    await waitFor(() => expect(mocks.listProducts).toHaveBeenLastCalledWith({ status: "draft" }));
   });
 
   it("hides Create product when no brand is accessible (never guesses a brand id)", async () => {

@@ -3,14 +3,13 @@ import { View } from "react-native";
 
 import { errorHeading, isRetryable } from "../products/display";
 import {
-  Body,
-  Divider,
-  Eyebrow,
+  FormSection,
   InfoRow,
   LoadingBlock,
+  Notice,
+  SectionHeading,
   SurfaceRow,
   TextButton,
-  Title,
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
 import type { SupplierAdapter } from "./adapter";
@@ -37,15 +36,13 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
   const { state, reload } = useAsync<SupplierReceipt[]>(load);
 
   return (
-    <>
-      <Divider />
-      <Eyebrow>Receiving history</Eyebrow>
-      <Body>
-        Stock received from this supplier. This is a read-only view of the canonical inventory
-        receipts — it is not editable here.
-      </Body>
+    <FormSection
+      title="Receiving history"
+      description="Read-only canonical inventory receipts from this supplier."
+      icon="package-variant-closed-check"
+    >
       {renderBody()}
-    </>
+    </FormSection>
   );
 
   function renderBody() {
@@ -55,22 +52,34 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
 
     if (state.status === "error") {
       if (state.error.kind === "forbidden") {
-        return <Body>You do not have access to this supplier’s receiving history.</Body>;
+        return (
+          <Notice
+            tone="warning"
+            message="You do not have access to this supplier’s receiving history."
+          />
+        );
       }
       return (
-        <View style={{ gap: 8 }}>
-          <Body>{`${errorHeading(state.error.kind)}: ${state.error.message}`}</Body>
-          {isRetryable(state.error.kind) ? <TextButton label="Try again" onPress={reload} /> : null}
-        </View>
+        <Notice
+          tone="danger"
+          title={errorHeading(state.error.kind)}
+          message={state.error.message}
+          action={
+            isRetryable(state.error.kind) ? (
+              <TextButton label="Try again" icon="refresh" onPress={reload} />
+            ) : undefined
+          }
+        />
       );
     }
 
     const receipts = state.data;
     if (receipts.length === 0) {
       return (
-        <Body testID="supplier-receipts-empty">
-          No stock has been received from this supplier yet.
-        </Body>
+        <Notice
+          testID="supplier-receipts-empty"
+          message="No stock has been received from this supplier yet."
+        />
       );
     }
 
@@ -78,7 +87,7 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
       <View style={{ gap: 12 }}>
         {receipts.map((receipt) => (
           <SurfaceRow key={receipt.id} testID={`supplier-receipt-${receipt.id}`}>
-            <Title>{receipt.receivedAt}</Title>
+            <SectionHeading title={formatReceiptDate(receipt.receivedAt)} detail="Stock receipt" />
             {receipt.locationName || receipt.locationId ? (
               <InfoRow
                 label="Destination"
@@ -100,4 +109,9 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
       </View>
     );
   }
+}
+
+function formatReceiptDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }

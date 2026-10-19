@@ -1,6 +1,5 @@
 import type { MeContextResponse } from "@shifted/clothing-commerce-sdk";
 import { useMemo, useState } from "react";
-import { View } from "react-native";
 
 import { resolveBrandContext } from "../catalog/brands";
 import { catalogObservations, type CatalogObservationStore } from "../catalog/observations";
@@ -16,16 +15,17 @@ import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/i
 import { useSession } from "../session/SessionProvider";
 import {
   Body,
-  Divider,
-  Eyebrow,
+  EmptyState,
+  FormSection,
+  Notice,
   PageHeader,
   PrimaryButton,
   ScrollScreen,
   SelectField,
+  Surface,
   type SelectOption,
   TextButton,
   TextField,
-  Title,
 } from "../ui/components";
 import { useMutation } from "../ui/useMutation";
 
@@ -43,8 +43,7 @@ export interface CreateProductScreenProps {
 /**
  * V1 create-product flow against the real contract (`createProduct`). Captures the canonical fields the
  * contract accepts — brand, name, slug (required), style code (optional), description (optional) — and
- * nothing it does not. A stable idempotency key (minted once per attempt, reused on ambiguous retry via
- * {@link useMutation}) means a retried create never makes a duplicate product.
+ * nothing it does not. A stable idempotency key is reused on an ambiguous retry.
  */
 export function CreateProductScreen({
   tenantId,
@@ -65,12 +64,18 @@ export function CreateProductScreen({
   if (brandContext.kind === "none") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Catalog" title="New product" onBack={onBack} />
-        <Divider />
-        <Body>
-          No brand is available to your account for this business, so a product cannot be created
-          here. Ask an owner to grant brand access.
-        </Body>
+        <PageHeader
+          eyebrow="Catalog"
+          title="New product"
+          description="Create the product identity before adding variants, prices and media."
+          icon="tag-plus-outline"
+          onBack={onBack}
+        />
+        <Notice
+          tone="warning"
+          title="Brand access required"
+          message="No brand is available to your account for this business, so a product cannot be created here. Ask an owner to grant brand access."
+        />
       </ScrollScreen>
     );
   }
@@ -112,9 +117,7 @@ function CreateProductForm({
   const [description, setDescription] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // The slug auto-follows the name until the manager edits it directly.
   const effectiveSlug = slugTouched ? slug : slugify(name);
-
   const brandOptions = useMemo<SelectOption[]>(
     () =>
       brandContext.kind === "multi"
@@ -158,8 +161,6 @@ function CreateProductForm({
 
   if (mutation.state.status === "success") {
     const created = mutation.state.data;
-    // Record what only the write revealed (publication state) plus the slug we chose, so the manage
-    // screen can show them without a read contract that returns them.
     observationStore.record(created.productId, {
       status: created.status,
       storefrontStatus: created.storefrontStatus,
@@ -167,17 +168,21 @@ function CreateProductForm({
     });
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Catalog" title="Product created" onBack={onBack} />
-        <Divider />
-        <Body>
-          “{name.trim()}” was created as a {created.status} product.
-        </Body>
-        <PrimaryButton
-          testID="open-created-product"
-          label="Manage this product"
-          onPress={() => onCreated(created.productId)}
+        <PageHeader eyebrow="Catalog" title="Product created" icon="check-circle-outline" />
+        <EmptyState
+          icon="check-circle-outline"
+          title="Ready to configure"
+          message={`“${name.trim()}” was created as a ${created.status} product. Add variants and a price before publishing it.`}
         />
-        <TextButton label="Back to products" onPress={onBack} />
+        <Surface tone="accent">
+          <PrimaryButton
+            testID="open-created-product"
+            label="Manage this product"
+            icon="arrow-right"
+            onPress={() => onCreated(created.productId)}
+          />
+          <TextButton label="Back to products" icon="arrow-left" onPress={onBack} />
+        </Surface>
       </ScrollScreen>
     );
   }
@@ -187,79 +192,106 @@ function CreateProductForm({
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Catalog" title="New product" onBack={onBack} />
-      <Divider />
-      {brandContext.kind === "single" ? (
-        <Body>Brand: {brandContext.brand.name}</Body>
-      ) : (
-        <SelectField
-          label="Brand"
-          options={brandOptions}
-          selected={brandId}
-          onSelect={setBrandId}
-          testIDPrefix="create-brand"
+      <PageHeader
+        eyebrow="Catalog"
+        title="New product"
+        description="Start with a clear product identity. Variants, pricing and imagery come next."
+        icon="tag-plus-outline"
+        onBack={onBack}
+      />
+
+      <FormSection
+        title="Product identity"
+        description="Internal catalog details shared across your management channels."
+        icon="tag-outline"
+      >
+        {brandContext.kind === "single" ? (
+          <Notice tone="info" message={`Brand: ${brandContext.brand.name}`} />
+        ) : (
+          <SelectField
+            label="Brand"
+            options={brandOptions}
+            selected={brandId}
+            onSelect={setBrandId}
+            testIDPrefix="create-brand"
+          />
+        )}
+        <TextField
+          label="Name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Summer Linen Shirt"
+          testID="create-name"
+          autoCapitalize="words"
         />
-      )}
-      <TextField
-        label="Name"
-        value={name}
-        onChangeText={setName}
-        placeholder="e.g. Summer Linen Shirt"
-        testID="create-name"
-        autoCapitalize="words"
-      />
-      <TextField
-        label="Storefront slug"
-        value={effectiveSlug}
-        onChangeText={(next) => {
-          setSlugTouched(true);
-          setSlug(next);
-        }}
-        placeholder="summer-linen-shirt"
-        testID="create-slug"
-        autoCapitalize="none"
-      />
-      <TextField
-        label="Style code (optional)"
-        value={styleCode}
-        onChangeText={setStyleCode}
-        placeholder="e.g. LS-001"
-        testID="create-style-code"
-        autoCapitalize="characters"
-      />
-      <TextField
-        label="Description (optional)"
-        value={description}
-        onChangeText={setDescription}
-        placeholder="Shown on the Storefront once published."
-        testID="create-description"
-        multiline
-      />
-      {localError ? <Body>{localError}</Body> : null}
+        <TextField
+          label="Storefront slug"
+          value={effectiveSlug}
+          onChangeText={(next) => {
+            setSlugTouched(true);
+            setSlug(next);
+          }}
+          placeholder="summer-linen-shirt"
+          testID="create-slug"
+          autoCapitalize="none"
+        />
+        <TextField
+          label="Style code (optional)"
+          value={styleCode}
+          onChangeText={setStyleCode}
+          placeholder="e.g. LS-001"
+          testID="create-style-code"
+          autoCapitalize="characters"
+        />
+      </FormSection>
+
+      <FormSection
+        title="Storefront content"
+        description="This description is used only when the product is later published."
+        icon="text-box-outline"
+      >
+        <TextField
+          label="Description (optional)"
+          value={description}
+          onChangeText={setDescription}
+          placeholder="Describe the product, material and fit."
+          testID="create-description"
+          multiline
+        />
+      </FormSection>
+
+      {localError ? <Notice tone="danger" message={localError} /> : null}
       {described ? (
-        <View style={{ gap: 8 }} testID="create-error">
-          <Title>{described.heading}</Title>
-          <Body>{described.message}</Body>
-          {described.recovery === "retry" ? (
-            <PrimaryButton label="Retry" testID="create-retry" onPress={() => mutation.retry()} />
-          ) : null}
-          {described.recovery === "edit" || described.recovery === "refresh" ? (
-            <TextButton label="Dismiss" onPress={() => mutation.reset()} />
-          ) : null}
-          {described.recovery === "none" ? (
-            <TextButton label="Dismiss" onPress={() => mutation.reset()} />
-          ) : null}
-        </View>
+        <Notice
+          tone="danger"
+          title={described.heading}
+          message={described.message}
+          testID="create-error"
+          action={
+            described.recovery === "retry" ? (
+              <TextButton
+                label="Retry"
+                icon="refresh"
+                testID="create-retry"
+                onPress={() => mutation.retry()}
+              />
+            ) : (
+              <TextButton label="Dismiss" icon="close" onPress={() => mutation.reset()} />
+            )
+          }
+        />
       ) : null}
-      <Eyebrow>
-        The product is created as a draft; you can add variants, prices and media next.
-      </Eyebrow>
-      <PrimaryButton
-        label={mutation.state.status === "submitting" ? "Creating…" : "Create product"}
-        testID="create-submit"
-        disabled={mutation.state.status === "submitting"}
-        onPress={onSubmit}
-      />
+
+      <Surface tone="brand">
+        <Body>The product starts as a draft. Nothing is published or sold automatically.</Body>
+        <PrimaryButton
+          label={mutation.state.status === "submitting" ? "Creating…" : "Create product"}
+          icon="plus"
+          testID="create-submit"
+          disabled={mutation.state.status === "submitting"}
+          onPress={onSubmit}
+        />
+      </Surface>
     </ScrollScreen>
   );
 }

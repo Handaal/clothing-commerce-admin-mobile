@@ -2,14 +2,7 @@ import { useCallback } from "react";
 
 import { errorHeading, isRetryable } from "../products/display";
 import { type IdempotencyKeyFactory } from "../inventory/idempotency";
-import {
-  Body,
-  Divider,
-  LoadingBlock,
-  PageHeader,
-  PrimaryButton,
-  ScrollScreen,
-} from "../ui/components";
+import { LoadingBlock, Notice, PageHeader, PrimaryButton, ScrollScreen } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
 import type { SupplierAdapter } from "./adapter";
 import type { Supplier } from "./model";
@@ -93,8 +86,12 @@ function EditSupplierLoader({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Suppliers" title="Edit supplier" onBack={onBack} />
-        <Divider />
+        <PageHeader
+          eyebrow="Suppliers"
+          title="Edit supplier"
+          icon="pencil-outline"
+          onBack={onBack}
+        />
         <LoadingBlock label="Loading supplier…" />
       </ScrollScreen>
     );
@@ -103,12 +100,21 @@ function EditSupplierLoader({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Suppliers" title={errorHeading(state.error.kind)} onBack={onBack} />
-        <Divider />
-        <Body>{state.error.message}</Body>
-        {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
-        ) : null}
+        <PageHeader
+          eyebrow="Suppliers"
+          title={errorHeading(state.error.kind)}
+          icon="alert-circle-outline"
+          onBack={onBack}
+        />
+        <Notice
+          tone="danger"
+          message={state.error.message}
+          action={
+            isRetryable(state.error.kind) ? (
+              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+            ) : undefined
+          }
+        />
       </ScrollScreen>
     );
   }

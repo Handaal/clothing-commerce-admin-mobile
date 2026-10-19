@@ -1,6 +1,5 @@
 import type { MeContextResponse, PromotionDetail } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useEffect } from "react";
-import { View } from "react-native";
 
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import { errorHeading, isRetryable } from "../products/display";
@@ -8,16 +7,17 @@ import {
   Badge,
   Body,
   ConfirmButton,
-  Divider,
-  Eyebrow,
+  FormSection,
   InfoRow,
   LoadingBlock,
+  Notice,
   PageHeader,
   PrimaryButton,
   ScrollScreen,
+  Surface,
   SurfaceRow,
-  Title,
 } from "../ui/components";
+import type { AppIconName } from "../ui/Icon";
 import { useAsync } from "../ui/useAsync";
 import { useMutation } from "../ui/useMutation";
 import type { PromotionClient } from "./client";
@@ -57,8 +57,14 @@ export function PromotionDetailScreen({
   if (!canRead) {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Promotions" title="Promotion" onBack={onBack} />
-        <Body>You do not have Promotion read access.</Body>
+        <PageHeader
+          eyebrow="Growth"
+          title="Promotion"
+          description="Review promotion economics, eligibility and redemption controls."
+          icon="ticket-percent-outline"
+          onBack={onBack}
+        />
+        <Notice tone="warning" message="You do not have Promotion read access." />
       </ScrollScreen>
     );
   }
@@ -108,7 +114,12 @@ function PromotionDetailContent({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Promotions" title="Promotion" onBack={onBack} />
+        <PageHeader
+          eyebrow="Growth"
+          title="Promotion"
+          icon="ticket-percent-outline"
+          onBack={onBack}
+        />
         <LoadingBlock label="Loading Promotion…" />
       </ScrollScreen>
     );
@@ -116,11 +127,21 @@ function PromotionDetailContent({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Promotions" title={errorHeading(state.error.kind)} onBack={onBack} />
-        <Body>{state.error.message}</Body>
-        {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
-        ) : null}
+        <PageHeader
+          eyebrow="Growth"
+          title={errorHeading(state.error.kind)}
+          icon="ticket-percent-outline"
+          onBack={onBack}
+        />
+        <Notice
+          tone="danger"
+          message={state.error.message}
+          action={
+            isRetryable(state.error.kind) ? (
+              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+            ) : undefined
+          }
+        />
       </ScrollScreen>
     );
   }
@@ -133,21 +154,33 @@ function PromotionDetailContent({
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Promotions" title={promotion.name} onBack={onBack} />
-      <Badge
-        label={effectiveStateLabel(promotionEffectiveState(promotion))}
-        testID="promotion-detail-status"
+      <PageHeader
+        eyebrow="Promotion record"
+        title={promotion.name}
+        description="Manage lifecycle, restrictions, schedule and voucher codes."
+        icon="ticket-percent-outline"
+        onBack={onBack}
       />
+      <Surface tone="brand">
+        <Badge
+          label={effectiveStateLabel(promotionEffectiveState(promotion))}
+          testID="promotion-detail-status"
+        />
+        <InfoRow label="Activation" value={activationLabel(promotion.activationType)} />
+      </Surface>
       {promotion.economicsLocked ? (
-        <Body testID="promotion-detail-economics-locked">
-          Used Promotion · discount economics are locked. Deactivate and create a new Promotion to
-          change them.
-        </Body>
+        <Notice
+          testID="promotion-detail-economics-locked"
+          tone="warning"
+          title="Discount locked after redemption"
+          message="Used Promotion · discount economics are locked. Deactivate and create a new Promotion to change them."
+        />
       ) : null}
       {canManage ? (
-        <>
+        <Surface>
           <PrimaryButton
             label="Edit Promotion"
+            icon="pencil-outline"
             testID="promotion-edit"
             onPress={() => onEdit(promotion.id)}
           />
@@ -162,25 +195,30 @@ function PromotionDetailContent({
           ) : (
             <PrimaryButton
               label="Activate Promotion"
+              icon="play-circle-outline"
               testID="promotion-status-toggle"
               disabled={statusMutation.state.status === "submitting"}
               onPress={() => statusMutation.submit("active")}
             />
           )}
-        </>
+        </Surface>
       ) : (
-        <Body testID="promotion-detail-read-only">
-          Read-only access · management actions are hidden.
-        </Body>
+        <Notice
+          testID="promotion-detail-read-only"
+          message="Read-only access · management actions are hidden."
+        />
       )}
       {statusError ? (
-        <View style={{ gap: 8 }}>
-          <Title>{statusError.heading}</Title>
-          <Body>{statusError.message}</Body>
-          {statusError.recovery === "retry" ? (
-            <PrimaryButton label="Retry safely" onPress={statusMutation.retry} />
-          ) : null}
-        </View>
+        <Notice
+          tone="danger"
+          title={statusError.heading}
+          message={statusError.message}
+          action={
+            statusError.recovery === "retry" ? (
+              <PrimaryButton label="Retry safely" icon="refresh" onPress={statusMutation.retry} />
+            ) : undefined
+          }
+        />
       ) : null}
 
       <DetailSection title="Basics">
@@ -256,12 +294,27 @@ function PromotionDetailContent({
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={{ gap: 10 }}>
-      <Divider />
-      <Eyebrow>{title}</Eyebrow>
+    <FormSection title={title} icon={detailSectionIcon(title)}>
       {children}
-    </View>
+    </FormSection>
   );
+}
+
+function detailSectionIcon(title: string): AppIconName {
+  switch (title) {
+    case "Basics":
+      return "information-outline";
+    case "Benefit":
+      return "sale-outline";
+    case "Eligibility":
+      return "target";
+    case "Usage":
+      return "counter";
+    case "Schedule":
+      return "calendar-clock-outline";
+    default:
+      return "ticket-confirmation-outline";
+  }
 }
 
 function restrictionName(

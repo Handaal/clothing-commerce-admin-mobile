@@ -1,6 +1,6 @@
 import type { ProductDetailResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 
 import {
   catalogObservations,
@@ -36,7 +36,9 @@ import { describeCatalogWriteError } from "../catalog/write-errors";
 import { classifyCommerceError } from "../commerce/errors";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import { useSession } from "../session/SessionProvider";
+import { AppIcon, type AppIconName } from "../ui/Icon";
 import {
+  AccordionTrigger,
   Badge,
   Body,
   ConfirmButton,
@@ -44,15 +46,19 @@ import {
   Eyebrow,
   InfoRow,
   LoadingBlock,
+  MetricCard,
+  Notice,
   PageHeader,
   PrimaryButton,
   ScrollScreen,
+  SectionHeading,
   SelectField,
+  Surface,
   type SelectOption,
   TextButton,
   TextField,
-  Title,
 } from "../ui/components";
+import { colors, radius, spacing, typography } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
 import { useMutation, type Mutation, type MutationState } from "../ui/useMutation";
 import { errorHeading, formatMoneyMinor, isRetryable } from "./display";
@@ -89,8 +95,13 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Catalog" title="Product" onBack={onBack} />
-        <Divider />
+        <PageHeader
+          eyebrow="Catalog"
+          title="Product"
+          description="Loading the latest catalog details."
+          icon="tshirt-crew-outline"
+          onBack={onBack}
+        />
         <LoadingBlock label="Loading product…" />
       </ScrollScreen>
     );
@@ -99,12 +110,22 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Catalog" title={errorHeading(state.error.kind)} onBack={onBack} />
-        <Divider />
-        <Body>{state.error.message}</Body>
-        {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
-        ) : null}
+        <PageHeader
+          eyebrow="Catalog"
+          title="Product unavailable"
+          icon="alert-circle-outline"
+          onBack={onBack}
+        />
+        <Notice
+          tone="danger"
+          title={errorHeading(state.error.kind)}
+          message={state.error.message}
+          action={
+            isRetryable(state.error.kind) ? (
+              <TextButton label="Try again" icon="refresh" onPress={reload} />
+            ) : undefined
+          }
+        />
       </ScrollScreen>
     );
   }
@@ -136,28 +157,51 @@ function ProductManage({
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Catalog" title={product.name} onBack={onBack} />
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <Badge label={`internal: ${product.status}`} testID="detail-status" />
-        <Badge
-          label={
-            observation?.storefrontStatus
-              ? `storefront: ${observation.storefrontStatus}`
-              : "storefront: unknown"
-          }
-          testID="detail-storefront-status"
+      <PageHeader
+        eyebrow="Catalog"
+        title={product.name}
+        description="Manage product identity, availability foundations and website publication."
+        icon="tshirt-crew-outline"
+        onBack={onBack}
+      />
+      <Surface tone="brand" style={productStyles.summaryCard}>
+        <View style={productStyles.summaryTop}>
+          <View style={productStyles.summaryIcon}>
+            <AppIcon name="tshirt-crew-outline" size={30} color={colors.white} />
+          </View>
+          <View style={productStyles.summaryCopy}>
+            <Text style={productStyles.summaryName}>{product.name}</Text>
+            <Text style={productStyles.summaryMeta}>
+              {product.styleCode ? `Style ${product.styleCode}` : "No style code"}
+            </Text>
+          </View>
+        </View>
+        <View style={productStyles.badges}>
+          <Badge label={`internal: ${product.status}`} testID="detail-status" />
+          <Badge
+            label={
+              observation?.storefrontStatus
+                ? `storefront: ${observation.storefrontStatus}`
+                : "storefront: unknown"
+            }
+            testID="detail-storefront-status"
+          />
+        </View>
+        <Body testID="publication-summary">{describePublication(observation)}</Body>
+      </Surface>
+
+      <View style={productStyles.metrics}>
+        <MetricCard label="Variants" value={String(data.variants.length)} icon="shape-outline" />
+        <MetricCard
+          label="Prices"
+          value={String(data.prices.length)}
+          icon="cash-multiple"
+          tone="accent"
         />
       </View>
-      <Body testID="publication-summary">{describePublication(observation)}</Body>
-      <Body>
-        Internal status (draft/active/archived) controls whether the product can be sold and
-        managed. It is separate from Storefront publication, which controls whether shoppers can see
-        it online. A product can be active but not published.
-      </Body>
-      {product.styleCode ? <InfoRow label="Style code" value={product.styleCode} /> : null}
-      <InfoRow label="Product id" value={product.id} />
 
-      <Divider />
+      <Notice message="Internal lifecycle and Storefront publication are separate. An active product is not automatically visible online." />
+
       <PublicationSection
         client={client}
         productId={productId}
@@ -166,66 +210,82 @@ function ProductManage({
         observationStore={observationStore}
       />
 
-      <Divider />
+      <SectionHeading title="Manage product" detail="Choose a section" />
       <SectionTab
         label="Edit details"
+        description="Name, slug, style code and description"
+        icon="pencil-outline"
         testID="section-details"
         active={section === "details"}
         onPress={() => setSection(section === "details" ? null : "details")}
       />
       {section === "details" ? (
-        <EditDetailsForm
-          client={client}
-          product={product}
-          observedSlug={observation?.slug}
-          generateKey={generateKey}
-          reload={reload}
-          observationStore={observationStore}
-        />
+        <Surface style={productStyles.expandedSection}>
+          <EditDetailsForm
+            client={client}
+            product={product}
+            observedSlug={observation?.slug}
+            generateKey={generateKey}
+            reload={reload}
+            observationStore={observationStore}
+          />
+        </Surface>
       ) : null}
 
       <SectionTab
         label="Variants & prices"
+        description="SKUs and current selling prices"
+        icon="shape-outline"
         testID="section-variants"
         active={section === "variants"}
         onPress={() => setSection(section === "variants" ? null : "variants")}
       />
       {section === "variants" ? (
-        <VariantsSection client={client} data={data} generateKey={generateKey} reload={reload} />
+        <Surface style={productStyles.expandedSection}>
+          <VariantsSection client={client} data={data} generateKey={generateKey} reload={reload} />
+        </Surface>
       ) : null}
 
       <SectionTab
         label="Media"
+        description="Product imagery and primary image"
+        icon="image-multiple-outline"
         testID="section-media"
         active={section === "media"}
         onPress={() => setSection(section === "media" ? null : "media")}
       />
       {section === "media" ? (
-        <MediaSection
-          client={client}
-          productId={productId}
-          generateKey={generateKey}
-          reload={reload}
-          imagePicker={imagePicker}
-          uploadFetch={uploadFetch}
-        />
+        <Surface style={productStyles.expandedSection}>
+          <MediaSection
+            client={client}
+            productId={productId}
+            generateKey={generateKey}
+            reload={reload}
+            imagePicker={imagePicker}
+            uploadFetch={uploadFetch}
+          />
+        </Surface>
       ) : null}
 
       <SectionTab
         label="Lifecycle"
+        description="Activate, return to draft or archive"
+        icon="timeline-clock-outline"
         testID="section-lifecycle"
         active={section === "lifecycle"}
         onPress={() => setSection(section === "lifecycle" ? null : "lifecycle")}
       />
       {section === "lifecycle" ? (
-        <LifecycleSection
-          client={client}
-          productId={productId}
-          status={product.status}
-          generateKey={generateKey}
-          reload={reload}
-          observationStore={observationStore}
-        />
+        <Surface style={productStyles.expandedSection}>
+          <LifecycleSection
+            client={client}
+            productId={productId}
+            status={product.status}
+            generateKey={generateKey}
+            reload={reload}
+            observationStore={observationStore}
+          />
+        </Surface>
       ) : null}
     </ScrollScreen>
   );
@@ -233,16 +293,29 @@ function ProductManage({
 
 function SectionTab({
   label,
+  description,
+  icon,
   testID,
   active,
   onPress,
 }: {
   label: string;
+  description: string;
+  icon: AppIconName;
   testID: string;
   active: boolean;
   onPress: () => void;
 }) {
-  return <PrimaryButton label={active ? `▾ ${label}` : label} testID={testID} onPress={onPress} />;
+  return (
+    <AccordionTrigger
+      title={label}
+      description={description}
+      icon={icon}
+      expanded={active}
+      testID={testID}
+      onPress={onPress}
+    />
+  );
 }
 
 /** Run a callback once when a mutation transitions to success (used to re-read the product). */
@@ -274,26 +347,34 @@ function CatalogWriteError<TArgs, TResult>({
 }) {
   const described = describeCatalogWriteError(state.error);
   return (
-    <View style={{ gap: 8 }} testID={testID ?? "write-error"}>
-      <Title>{described.heading}</Title>
-      <Body>{described.message}</Body>
-      {described.recovery === "retry" ? (
-        <PrimaryButton label="Retry" testID="write-retry" onPress={() => mutation.retry()} />
-      ) : null}
-      {described.recovery === "refresh" ? (
-        <PrimaryButton
-          label="Refresh product"
-          testID="write-refresh"
-          onPress={() => {
-            mutation.reset();
-            onRefresh();
-          }}
-        />
-      ) : null}
-      {described.recovery === "edit" || described.recovery === "none" ? (
-        <TextButton label="Dismiss" onPress={() => mutation.reset()} />
-      ) : null}
-    </View>
+    <Notice
+      tone="danger"
+      title={described.heading}
+      message={described.message}
+      testID={testID ?? "write-error"}
+      action={
+        described.recovery === "retry" ? (
+          <TextButton
+            label="Retry"
+            icon="refresh"
+            testID="write-retry"
+            onPress={() => mutation.retry()}
+          />
+        ) : described.recovery === "refresh" ? (
+          <TextButton
+            label="Refresh product"
+            icon="refresh"
+            testID="write-refresh"
+            onPress={() => {
+              mutation.reset();
+              onRefresh();
+            }}
+          />
+        ) : (
+          <TextButton label="Dismiss" icon="close" onPress={() => mutation.reset()} />
+        )
+      }
+    />
   );
 }
 
@@ -341,8 +422,16 @@ function PublicationSection({
   const busy = publish.state.status === "submitting" || unpublish.state.status === "submitting";
 
   return (
-    <View style={{ gap: 12 }}>
-      <Eyebrow>Storefront publication</Eyebrow>
+    <Surface tone="accent" style={productStyles.publicationCard}>
+      <View style={productStyles.sectionIntro}>
+        <View style={productStyles.accentIcon}>
+          <AppIcon name="storefront-outline" size={23} color={colors.accent} />
+        </View>
+        <View style={productStyles.sectionIntroCopy}>
+          <Text style={productStyles.sectionTitle}>Storefront publication</Text>
+          <Text style={productStyles.sectionDescription}>Control public website visibility</Text>
+        </View>
+      </View>
       <Body>
         Publishing exposes this product on the public Storefront. Publishing requires the product to
         be active, with at least one active variant and a valid current price.
@@ -357,6 +446,7 @@ function PublicationSection({
                 ? "Publish again"
                 : "Publish to Storefront"
         }
+        icon="web-plus"
         testID="publish-submit"
         disabled={busy}
         onPress={() => publish.submit({})}
@@ -364,18 +454,26 @@ function PublicationSection({
       {observation?.storefrontStatus === "published" || isPublished ? (
         <PrimaryButton
           label="Unpublish from Storefront"
+          icon="web-remove"
+          variant="secondary"
           testID="unpublish-submit"
           disabled={busy}
           onPress={() => unpublish.submit({})}
         />
       ) : null}
       {publish.state.status === "success" ? (
-        <Body testID="publish-success">Published. The Storefront now shows this product.</Body>
+        <Notice
+          tone="success"
+          testID="publish-success"
+          message="Published. The Storefront now shows this product."
+        />
       ) : null}
       {unpublish.state.status === "success" ? (
-        <Body testID="unpublish-success">
-          Unpublished. The Storefront no longer shows this product.
-        </Body>
+        <Notice
+          tone="success"
+          testID="unpublish-success"
+          message="Unpublished. The Storefront no longer shows this product."
+        />
       ) : null}
       {publish.state.status === "error" ? (
         <CatalogWriteError
@@ -393,7 +491,7 @@ function PublicationSection({
           testID="unpublish-error"
         />
       ) : null}
-    </View>
+    </Surface>
   );
 }
 
@@ -457,12 +555,12 @@ function EditDetailsForm({
   }
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={productStyles.sectionBody}>
       {observedSlug === undefined ? (
-        <Body>
-          The current slug and description are not returned by the read API. Confirm the slug before
-          saving; the description is only sent if you enter one.
-        </Body>
+        <Notice
+          tone="warning"
+          message="The current slug and description are not returned by the read API. Confirm the slug before saving; the description is only sent if you enter one."
+        />
       ) : null}
       <TextField label="Name" value={name} onChangeText={setName} testID="edit-name" />
       <TextField
@@ -486,8 +584,10 @@ function EditDetailsForm({
         testID="edit-description"
         multiline
       />
-      {localError ? <Body>{localError}</Body> : null}
-      {mutation.state.status === "success" ? <Body testID="edit-success">Saved.</Body> : null}
+      {localError ? <Notice tone="danger" message={localError} /> : null}
+      {mutation.state.status === "success" ? (
+        <Notice tone="success" message="Saved." testID="edit-success" />
+      ) : null}
       {mutation.state.status === "error" ? (
         <CatalogWriteError
           state={mutation.state}
@@ -498,6 +598,7 @@ function EditDetailsForm({
       ) : null}
       <PrimaryButton
         label={mutation.state.status === "submitting" ? "Saving…" : "Save details"}
+        icon="content-save-outline"
         testID="edit-submit"
         disabled={mutation.state.status === "submitting"}
         onPress={onSubmit}
@@ -533,25 +634,31 @@ function VariantsSection({
   }, [prices]);
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={productStyles.sectionBody}>
       <Eyebrow>Variants ({variants.length})</Eyebrow>
       {variants.length === 0 ? (
-        <Body>No variants yet. Add one below before setting a price or publishing.</Body>
+        <Notice
+          tone="warning"
+          message="No variants yet. Add one below before setting a price or publishing."
+        />
       ) : (
-        <View style={{ gap: 8 }}>
+        <View style={productStyles.variantList}>
           {variants.map((variant) => {
             const price = priceByVariant.get(variant.id);
             return (
-              <View key={variant.id} testID={`variant-${variant.id}`} style={{ gap: 4 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  <Title>{variant.displayName ?? variant.sku}</Title>
+              <Surface
+                key={variant.id}
+                testID={`variant-${variant.id}`}
+                tone="muted"
+                style={productStyles.variantCard}
+              >
+                <View style={productStyles.variantTop}>
+                  <View style={productStyles.variantIcon}>
+                    <AppIcon name="shape-outline" size={20} color={colors.brand} />
+                  </View>
+                  <Text style={productStyles.variantName}>
+                    {variant.displayName ?? variant.sku}
+                  </Text>
                   <Badge label={variant.status} />
                 </View>
                 <InfoRow label="SKU" value={variant.sku} />
@@ -559,7 +666,7 @@ function VariantsSection({
                   label="Price"
                   value={price ? formatMoneyMinor(price.amountMinor, price.currency) : "Not set"}
                 />
-              </View>
+              </Surface>
             );
           })}
         </View>
@@ -617,8 +724,8 @@ function CreateVariantForm({
   }
 
   return (
-    <View style={{ gap: 12 }}>
-      <Title>Add a variant</Title>
+    <View style={productStyles.sectionBody}>
+      <SectionHeading title="Add a variant" detail="New SKU" />
       <TextField
         label="SKU"
         value={sku}
@@ -634,9 +741,9 @@ function CreateVariantForm({
         placeholder="e.g. Medium"
         testID="variant-display-name"
       />
-      {localError ? <Body>{localError}</Body> : null}
+      {localError ? <Notice tone="danger" message={localError} /> : null}
       {mutation.state.status === "success" ? (
-        <Body testID="variant-success">Variant added.</Body>
+        <Notice tone="success" message="Variant added." testID="variant-success" />
       ) : null}
       {mutation.state.status === "error" ? (
         <CatalogWriteError
@@ -648,6 +755,7 @@ function CreateVariantForm({
       ) : null}
       <PrimaryButton
         label={mutation.state.status === "submitting" ? "Adding…" : "Add variant"}
+        icon="plus"
         testID="variant-submit"
         disabled={mutation.state.status === "submitting"}
         onPress={onSubmit}
@@ -715,10 +823,10 @@ function SetPriceForm({
   }
 
   return (
-    <View style={{ gap: 12 }}>
-      <Title>Set a selling price</Title>
+    <View style={productStyles.sectionBody}>
+      <SectionHeading title="Set a selling price" detail="Current price" />
       {variants.length === 0 ? (
-        <Body>Add a variant first.</Body>
+        <Notice message="Add a variant first." />
       ) : (
         <>
           <SelectField
@@ -743,13 +851,16 @@ function SetPriceForm({
             placeholder="e.g. 25.99"
             testID="price-amount"
           />
-          {localError ? <Body>{localError}</Body> : null}
+          {localError ? <Notice tone="danger" message={localError} /> : null}
           {mutation.state.status === "success" ? (
-            <Body testID="price-success">
-              Price set to{" "}
-              {formatMoneyMinor(mutation.state.data.amountMinor, mutation.state.data.currency)}.
-              This is recorded as canonical price history on the server.
-            </Body>
+            <Notice
+              tone="success"
+              testID="price-success"
+              message={`Price set to ${formatMoneyMinor(
+                mutation.state.data.amountMinor,
+                mutation.state.data.currency,
+              )}. This is recorded as canonical price history on the server.`}
+            />
           ) : null}
           {mutation.state.status === "error" ? (
             <CatalogWriteError
@@ -761,6 +872,7 @@ function SetPriceForm({
           ) : null}
           <PrimaryButton
             label={mutation.state.status === "submitting" ? "Saving…" : "Set price"}
+            icon="cash-check"
             testID="price-submit"
             disabled={mutation.state.status === "submitting"}
             onPress={onSubmit}
@@ -881,24 +993,29 @@ function MediaSection({
   }
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={productStyles.sectionBody}>
       <Eyebrow>Product media</Eyebrow>
       <Body>
         Images are uploaded to secure object storage via a server-issued signed URL, then registered
         with the catalog. Raw images are never stored in the API database.
       </Body>
       {registered.length > 0 ? (
-        <View style={{ gap: 8 }}>
+        <View style={productStyles.mediaList}>
           {registered.map((media) => (
-            <View key={media.mediaId} testID={`media-${media.mediaId}`} style={{ gap: 6 }}>
+            <Surface
+              key={media.mediaId}
+              testID={`media-${media.mediaId}`}
+              tone="muted"
+              style={productStyles.mediaCard}
+            >
               {media.previewUri ? (
                 <Image
                   source={{ uri: media.previewUri }}
-                  style={{ width: 96, height: 96, borderRadius: 12 }}
+                  style={productStyles.mediaThumbnail}
                   accessibilityLabel={media.altText ?? "Product image"}
                 />
               ) : null}
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={productStyles.mediaMeta}>
                 {media.isPrimary ? <Badge label="primary" /> : null}
                 <Body>{media.altText ?? media.mediaId}</Body>
               </View>
@@ -909,15 +1026,17 @@ function MediaSection({
                 disabled={archive.state.status === "submitting"}
                 onConfirm={() => archive.submit({ productId, mediaId: media.mediaId })}
               />
-            </View>
+            </Surface>
           ))}
         </View>
       ) : null}
 
       <Divider />
-      <Title>Add an image</Title>
+      <SectionHeading title="Add an image" detail="JPG, PNG or WebP" />
       <PrimaryButton
         label={picked ? "Choose a different image" : "Choose image"}
+        icon="image-plus"
+        variant="secondary"
         testID="media-pick"
         onPress={() => void onPick()}
       />
@@ -926,7 +1045,7 @@ function MediaSection({
           {picked.previewUri ? (
             <Image
               source={{ uri: picked.previewUri }}
-              style={{ width: 120, height: 120, borderRadius: 12 }}
+              style={productStyles.mediaPreview}
               accessibilityLabel="Selected image preview"
             />
           ) : null}
@@ -955,6 +1074,7 @@ function MediaSection({
                   ? "Registering…"
                   : "Upload and register"
             }
+            icon="cloud-upload-outline"
             testID="media-upload"
             disabled={preparing || register.state.status === "submitting"}
             onPress={() => void onUpload()}
@@ -962,13 +1082,15 @@ function MediaSection({
         </>
       ) : null}
       {prepareError ? (
-        <View style={{ gap: 8 }} testID="media-prepare-error">
-          <Title>Image not uploaded</Title>
-          <Body>{prepareError}</Body>
-        </View>
+        <Notice
+          tone="danger"
+          title="Image not uploaded"
+          message={prepareError}
+          testID="media-prepare-error"
+        />
       ) : null}
       {register.state.status === "success" ? (
-        <Body testID="media-success">Image registered.</Body>
+        <Notice tone="success" message="Image registered." testID="media-success" />
       ) : null}
       {register.state.status === "error" ? (
         <CatalogWriteError
@@ -1040,15 +1162,15 @@ function LifecycleSection({
   const busy = mutation.state.status === "submitting";
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={productStyles.sectionBody}>
       <Eyebrow>Lifecycle</Eyebrow>
-      <Body>
-        Current internal status: {status}. Archiving is not a delete — the product is retained and
-        can be returned to draft later.
-      </Body>
+      <Notice
+        message={`Current internal status: ${status}. Archiving is not a delete — the product is retained and can be returned to draft later.`}
+      />
       {targets.includes("active") ? (
         <PrimaryButton
           label="Activate"
+          icon="check-circle-outline"
           testID="lifecycle-active"
           disabled={busy}
           onPress={() => mutation.submit({ productId, status: "active" })}
@@ -1057,6 +1179,8 @@ function LifecycleSection({
       {targets.includes("draft") ? (
         <PrimaryButton
           label={status === "archived" ? "Restore to draft" : "Move to draft"}
+          icon="file-document-edit-outline"
+          variant="secondary"
           testID="lifecycle-draft"
           disabled={busy}
           onPress={() => mutation.submit({ productId, status: "draft" })}
@@ -1086,10 +1210,11 @@ function LifecycleSection({
         </>
       ) : null}
       {mutation.state.status === "success" ? (
-        <Body testID="lifecycle-success">
-          Status is now {mutation.state.data.status}. Storefront publication is unchanged by this
-          action unless the server reports otherwise.
-        </Body>
+        <Notice
+          tone="success"
+          testID="lifecycle-success"
+          message={`Status is now ${mutation.state.data.status}. Storefront publication is unchanged by this action unless the server reports otherwise.`}
+        />
       ) : null}
       {mutation.state.status === "error" ? (
         <CatalogWriteError
@@ -1102,3 +1227,53 @@ function LifecycleSection({
     </View>
   );
 }
+
+const productStyles = StyleSheet.create({
+  summaryCard: { gap: spacing.lg },
+  summaryTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  summaryIcon: {
+    width: 56,
+    height: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.lg,
+    backgroundColor: colors.brand,
+  },
+  summaryCopy: { flex: 1, gap: spacing.xs },
+  summaryName: { color: colors.ink, fontSize: 23, lineHeight: 29, fontWeight: "800" },
+  summaryMeta: { color: colors.inkMuted, ...typography.caption },
+  badges: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  publicationCard: { gap: spacing.lg },
+  sectionIntro: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  accentIcon: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  sectionIntroCopy: { flex: 1, gap: 2 },
+  sectionTitle: { color: colors.ink, ...typography.sectionTitle },
+  sectionDescription: { color: colors.inkMuted, ...typography.caption },
+  expandedSection: { borderColor: colors.brandSoftStrong, gap: spacing.lg },
+  sectionBody: { gap: spacing.md },
+  variantList: { gap: spacing.md },
+  variantCard: { gap: spacing.sm, shadowOpacity: 0, elevation: 0 },
+  variantTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  variantIcon: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.sm,
+    backgroundColor: colors.brandSoft,
+  },
+  variantName: { flex: 1, color: colors.ink, ...typography.cardTitle },
+  mediaList: { gap: spacing.md },
+  mediaCard: { gap: spacing.md, shadowOpacity: 0, elevation: 0 },
+  mediaThumbnail: { width: 112, height: 112, borderRadius: radius.md },
+  mediaPreview: { width: 152, height: 152, borderRadius: radius.lg },
+  mediaMeta: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+});
