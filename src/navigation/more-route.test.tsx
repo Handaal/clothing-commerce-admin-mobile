@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+// Route tests live under src/ (never under app/): any file in the expo-router app/ directory is
+// treated as a route and bundled by `expo export`, which would pull vitest/vite into the web build.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { meContext, TENANT_A } from "../src/test-support/fixtures";
-import type { SessionState } from "../src/session/reducer";
+import { meContext, TENANT_A } from "../test-support/fixtures";
+import type { SessionState } from "../session/reducer";
 
 const mocks = vi.hoisted(() => ({
   state: null as unknown as SessionState,
@@ -18,9 +20,9 @@ vi.mock("expo-router", () => ({
     return null;
   },
 }));
-vi.mock("../src/session/SessionProvider", () => ({ useSession: () => ({ state: mocks.state }) }));
+vi.mock("../session/SessionProvider", () => ({ useSession: () => ({ state: mocks.state }) }));
 
-import MoreRoute from "./more";
+import MoreRoute from "../../app/more";
 
 beforeEach(() => {
   vi.clearAllMocks();
