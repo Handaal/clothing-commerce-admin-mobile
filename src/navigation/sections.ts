@@ -160,3 +160,36 @@ export function managementSection(id: ManagementSectionId): ManagementSection {
   if (!section) throw new Error(`Unknown management section: ${id}`);
   return section;
 }
+
+/**
+ * The sections promoted to the persistent bottom navigation. This is the single source of truth for
+ * "which sections are primary"; the bottom bar renders them (in nav order) and the More screen omits
+ * them so a section is never both a tab and a More row.
+ */
+export const PRIMARY_SECTION_IDS = [
+  "dashboard",
+  "orders",
+  "inventory",
+  "products",
+] as const satisfies readonly ManagementSectionId[];
+
+export function isPrimarySection(id: ManagementSectionId): boolean {
+  return (PRIMARY_SECTION_IDS as readonly ManagementSectionId[]).includes(id);
+}
+
+/**
+ * Resolve which primary tab owns the current path, derived from the section registry's own routes
+ * rather than a hand-maintained prefix list. Anything not under a primary route belongs to "More".
+ */
+export function activeSectionForPath(pathname: string): ManagementSectionId | "more" {
+  for (const id of PRIMARY_SECTION_IDS) {
+    const route = managementSection(id).route;
+    if (!route) continue;
+    if (route === "/") {
+      if (pathname === "/") return id;
+      continue;
+    }
+    if (pathname === route || pathname.startsWith(`${route}/`)) return id;
+  }
+  return "more";
+}

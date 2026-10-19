@@ -341,9 +341,10 @@ export function Badge({
 
 function badgeTone(label: string): "neutral" | "brand" | "success" | "warning" | "danger" {
   const value = label.toLowerCase();
-  if (["active", "completed", "published", "succeeded", "in"].includes(value)) return "success";
+  if (["active", "completed", "published", "succeeded", "captured"].includes(value))
+    return "success";
   if (["failed", "cancelled", "suspended", "archived", "inactive"].includes(value)) return "danger";
-  if (["pending", "invited", "planned", "reserved"].includes(value)) return "warning";
+  if (["pending", "invited", "planned", "reserved", "authorized"].includes(value)) return "warning";
   if (["online", "pos", "read", "manage"].includes(value)) return "brand";
   return "neutral";
 }

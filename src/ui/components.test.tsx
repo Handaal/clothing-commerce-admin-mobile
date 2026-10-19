@@ -2,9 +2,17 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AccordionTrigger, FilterChips, SearchField } from "./components";
+import { AccordionTrigger, Badge, FilterChips, SearchField } from "./components";
 
 afterEach(() => cleanup());
+
+// The tone classes are hashed by react-native-web, so assert equivalence against a reference label
+// of a known tone rather than a literal class name.
+function toneClass(label: string): string {
+  cleanup();
+  render(<Badge label={label} testID="badge" />);
+  return screen.getByTestId("badge").className;
+}
 
 describe("shared UI controls", () => {
   it("makes search text easy to clear", () => {
@@ -54,5 +62,19 @@ describe("shared UI controls", () => {
     );
 
     expect(screen.getByTestId("variants-section").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("auto-tones a captured payment as success and an authorized one as a warning", () => {
+    const success = toneClass("active");
+    const warning = toneClass("pending");
+    const neutral = toneClass("totally-unknown-status");
+
+    // A captured payment is a success, not a neutral grey pill (the pre-fix behavior).
+    expect(toneClass("captured")).toBe(success);
+    expect(toneClass("captured")).not.toBe(neutral);
+    // An authorized-but-not-captured payment is provisional → warning.
+    expect(toneClass("authorized")).toBe(warning);
+    // The removed stray "in" entry must no longer read as success.
+    expect(toneClass("in")).toBe(neutral);
   });
 });

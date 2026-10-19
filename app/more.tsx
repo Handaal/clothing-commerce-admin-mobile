@@ -1,7 +1,7 @@
 import { Redirect, useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
-import { visibleManagementSections } from "../src/navigation/sections";
+import { isPrimarySection, visibleManagementSections } from "../src/navigation/sections";
 import { useSession } from "../src/session/SessionProvider";
 import {
   Badge,
@@ -16,8 +16,6 @@ import {
 import { AppIcon } from "../src/ui/Icon";
 import { colors, radius, spacing } from "../src/ui/theme";
 
-const PRIMARY_IDS = new Set(["dashboard", "products", "orders", "inventory"]);
-
 export default function MoreRoute() {
   const router = useRouter();
   const { state } = useSession();
@@ -25,7 +23,7 @@ export default function MoreRoute() {
   if (state.phase !== "ready") return <Redirect href="/" />;
 
   const sections = visibleManagementSections(state.context).filter(
-    (section) => !PRIMARY_IDS.has(section.id),
+    (section) => !isPrimarySection(section.id),
   );
   const available = sections.filter((section) => section.route);
   const planned = sections.filter((section) => !section.route);

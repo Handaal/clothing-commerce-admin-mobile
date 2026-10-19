@@ -13,3 +13,8 @@ export function SafeAreaView({
   void edges;
   return <View {...props}>{children}</View>;
 }
+
+/** Tests do not resolve device insets; render the provider as a transparent passthrough. */
+export function SafeAreaProvider({ children }: { children?: ReactNode }) {
+  return <>{children}</>;
+}
