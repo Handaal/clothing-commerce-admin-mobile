@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { View } from "react-native";
 
-import { errorHeading, isRetryable } from "../products/display";
 import type { CommerceErrorKind } from "../commerce/errors";
+import { t, useI18n, type MessageKey } from "../i18n";
+import { errorHeading, isRetryable } from "../products/display";
 import {
   Body,
   Divider,
@@ -19,11 +20,11 @@ import type { AsyncState } from "../ui/useAsync";
 import { customDateRange, validateCustomDateRange } from "./date-range";
 import type { DatePreset, ReportDateRange, ReportMeta } from "./model";
 
-const DATE_PRESETS: { value: DatePreset; label: string }[] = [
-  { value: "today", label: "Today" },
-  { value: "7-days", label: "7 days" },
-  { value: "30-days", label: "30 days" },
-  { value: "custom", label: "Custom" },
+const DATE_PRESET_KEYS: { value: DatePreset; labelKey: MessageKey }[] = [
+  { value: "today", labelKey: "report.datePreset.today" },
+  { value: "7-days", labelKey: "report.datePreset.7days" },
+  { value: "30-days", labelKey: "report.datePreset.30days" },
+  { value: "custom", labelKey: "report.datePreset.custom" },
 ];
 
 export function ReportingUnavailable({
@@ -35,14 +36,13 @@ export function ReportingUnavailable({
   canRead: boolean;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Reporting" title={title} onBack={onBack} />
-      <Title>{canRead ? "Reporting is unavailable" : "Access denied"}</Title>
+      <PageHeader eyebrow={t("report.eyebrow")} title={title} onBack={onBack} />
+      <Title>{canRead ? t("report.unavailableTitle") : t("report.accessDeniedTitle")}</Title>
       <Body testID={canRead ? "reporting-transport-pending" : "reporting-access-denied"}>
-        {canRead
-          ? "Reporting could not be initialized. No reporting data has been requested."
-          : "Your current business access does not include reporting."}
+        {canRead ? t("report.unavailableBody") : t("report.accessDeniedBody")}
       </Body>
     </ScrollScreen>
   );
@@ -55,6 +55,7 @@ export function DateRangeControls({
   value: ReportDateRange;
   onChange: (value: ReportDateRange) => void;
 }) {
+  const { t } = useI18n();
   const [selected, setSelected] = useState<DatePreset>(value.preset);
   const [from, setFrom] = useState(value.from ?? "");
   const [to, setTo] = useState(value.to ?? "");
@@ -77,8 +78,8 @@ export function DateRangeControls({
   return (
     <View style={{ gap: 10 }}>
       <SelectField
-        label="Date range"
-        options={DATE_PRESETS}
+        label={t("report.dateRange")}
+        options={DATE_PRESET_KEYS.map((p) => ({ value: p.value, label: t(p.labelKey) }))}
         selected={selected}
         onSelect={choose}
         testIDPrefix="report-date-preset"
@@ -86,21 +87,21 @@ export function DateRangeControls({
       {selected === "custom" ? (
         <View style={{ gap: 10 }}>
           <TextField
-            label="From (tenant-local date)"
+            label={t("report.from")}
             value={from}
             onChangeText={setFrom}
             placeholder="YYYY-MM-DD"
             testID="report-date-from"
           />
           <TextField
-            label="To (tenant-local date)"
+            label={t("report.to")}
             value={to}
             onChangeText={setTo}
             placeholder="YYYY-MM-DD"
             testID="report-date-to"
           />
           {error ? <Body testID="report-date-error">{error}</Body> : null}
-          <PrimaryButton label="Apply custom range" onPress={applyCustom} />
+          <PrimaryButton label={t("report.applyCustom")} onPress={applyCustom} />
         </View>
       ) : null}
     </View>
@@ -116,13 +117,14 @@ export function CurrencySelector({
   selected?: string;
   onChange: (currency: string | undefined) => void;
 }) {
+  const { t } = useI18n();
   const unique = [...new Set(currencies)];
   if (unique.length <= 1) return null;
   return (
     <SelectField
-      label="Currency"
+      label={t("report.currency")}
       options={[
-        { value: "__all", label: "All currencies (shown separately)" },
+        { value: "__all", label: t("report.allCurrencies") },
         ...unique.map((currency) => ({ value: currency, label: currency })),
       ]}
       selected={selected ?? "__all"}
@@ -133,12 +135,13 @@ export function CurrencySelector({
 }
 
 export function ReportMetaBlock({ meta }: { meta: ReportMeta }) {
+  const { t } = useI18n();
   return (
     <View testID="report-meta" style={{ gap: 4 }}>
-      <InfoRow label="Reporting timezone" value={meta.timezone} />
-      <InfoRow label="From (inclusive)" value={meta.fromInclusive} />
-      <InfoRow label="To (exclusive)" value={meta.toExclusive} />
-      <Body>Calendar dates and bucket boundaries are supplied by the reporting service.</Body>
+      <InfoRow label={t("report.timezone")} value={meta.timezone} />
+      <InfoRow label={t("report.fromInclusive")} value={meta.fromInclusive} />
+      <InfoRow label={t("report.toExclusive")} value={meta.toExclusive} />
+      <Body>{t("report.metaNote")}</Body>
     </View>
   );
 }
@@ -156,14 +159,15 @@ export function ReportAsyncState<T>({
   emptyMessage: string;
   children: (data: T) => ReactNode;
 }) {
-  if (state.status === "loading") return <LoadingBlock label="Loading reportâ€¦" />;
+  const { t } = useI18n();
+  if (state.status === "loading") return <LoadingBlock label={t("report.loading")} />;
   if (state.status === "error") {
     return (
       <View testID="report-error" style={{ gap: 10 }}>
         <Title>{errorHeading(state.error.kind)}</Title>
         <Body>{reportErrorMessage(state.error.kind)}</Body>
         {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
+          <PrimaryButton label={t("common.tryAgain")} onPress={reload} />
         ) : null}
       </View>
     );
@@ -172,7 +176,7 @@ export function ReportAsyncState<T>({
     return (
       <View style={{ gap: 10 }}>
         <Body testID="report-empty">{emptyMessage}</Body>
-        <PrimaryButton label="Refresh" onPress={reload} />
+        <PrimaryButton label={t("report.refresh")} onPress={reload} />
       </View>
     );
   }
@@ -180,7 +184,7 @@ export function ReportAsyncState<T>({
     <View style={{ gap: 14 }}>
       {children(state.data)}
       <Divider />
-      <PrimaryButton label="Refresh" onPress={reload} />
+      <PrimaryButton label={t("report.refresh")} onPress={reload} />
     </View>
   );
 }
@@ -188,19 +192,19 @@ export function ReportAsyncState<T>({
 function reportErrorMessage(kind: CommerceErrorKind): string {
   switch (kind) {
     case "auth":
-      return "Sign in again to view reporting.";
+      return t("report.errAuth");
     case "forbidden":
-      return "You do not have access to this report.";
+      return t("report.errForbidden");
     case "network":
-      return "Check your connection and try again. Reporting is online-only.";
+      return t("report.errNetwork");
     case "validation":
-      return "Check the date range or page selection, then try again.";
+      return t("report.errValidation");
     case "contract":
     case "server":
     case "unknown":
     case "not-found":
     default:
-      return "The report could not be loaded. Try again.";
+      return t("report.errDefault");
   }
 }
 
@@ -213,9 +217,10 @@ export function ReportPageFrame({
   children: ReactNode;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Reporting" title={title} onBack={onBack} />
+      <PageHeader eyebrow={t("report.eyebrow")} title={title} onBack={onBack} />
       {children}
     </ScrollScreen>
   );
@@ -232,10 +237,11 @@ export function PaginationControls({
   onPrevious: () => void;
   onNext: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <View testID="report-pagination" style={{ gap: 8 }}>
-      <PrimaryButton label="Previous page" disabled={!canPrevious} onPress={onPrevious} />
-      <PrimaryButton label="Next page" disabled={!canNext} onPress={onNext} />
+      <PrimaryButton label={t("report.previousPage")} disabled={!canPrevious} onPress={onPrevious} />
+      <PrimaryButton label={t("report.nextPage")} disabled={!canNext} onPress={onNext} />
     </View>
   );
 }

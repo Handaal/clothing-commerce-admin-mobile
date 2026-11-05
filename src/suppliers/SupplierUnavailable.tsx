@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import { Body, Divider, PageHeader } from "../ui/components";
 
 /**
@@ -6,15 +7,12 @@ import { Body, Divider, PageHeader } from "../ui/components";
  * yet. There is deliberately no retry: this is not a transient failure — the capability is not built.
  */
 export function SupplierUnavailable({ title, onBack }: { title: string; onBack: () => void }) {
+  const { t } = useI18n();
   return (
     <>
-      <PageHeader eyebrow="Suppliers" title={title} onBack={onBack} />
+      <PageHeader eyebrow={t("suppliers.title")} title={title} onBack={onBack} />
       <Divider />
-      <Body testID="supplier-unavailable">
-        Supplier management isn’t available yet. This screen is the Admin Mobile foundation for it;
-        the Supplier data and actions will appear here once the Commerce API adds the supplier
-        surface and the app is connected to it. Nothing is stored or changed in the meantime.
-      </Body>
+      <Body testID="supplier-unavailable">{t("supplier.unavailable")}</Body>
     </>
   );
 }

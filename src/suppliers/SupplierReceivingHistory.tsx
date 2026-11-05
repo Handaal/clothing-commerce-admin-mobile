@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import {
   FormSection,
@@ -29,6 +30,7 @@ export interface SupplierReceivingHistoryProps {
  * separated from the editable supplier record above them.
  */
 export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceivingHistoryProps) {
+  const { t } = useI18n();
   const load = useCallback(
     () => loadAllSupplierReceipts(adapter, supplierId),
     [adapter, supplierId],
@@ -37,8 +39,8 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
 
   return (
     <FormSection
-      title="Receiving history"
-      description="Read-only canonical inventory receipts from this supplier."
+      title={t("supReceiving.section")}
+      description={t("supReceiving.sectionDesc")}
       icon="package-variant-closed-check"
     >
       {renderBody()}
@@ -47,17 +49,12 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
 
   function renderBody() {
     if (state.status === "loading") {
-      return <LoadingBlock label="Loading receiving history…" />;
+      return <LoadingBlock label={t("supReceiving.loading")} />;
     }
 
     if (state.status === "error") {
       if (state.error.kind === "forbidden") {
-        return (
-          <Notice
-            tone="warning"
-            message="You do not have access to this supplier’s receiving history."
-          />
-        );
+        return <Notice tone="warning" message={t("supReceiving.forbidden")} />;
       }
       return (
         <Notice
@@ -66,7 +63,7 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <TextButton label="Try again" icon="refresh" onPress={reload} />
+              <TextButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -75,32 +72,39 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
 
     const receipts = state.data;
     if (receipts.length === 0) {
-      return (
-        <Notice
-          testID="supplier-receipts-empty"
-          message="No stock has been received from this supplier yet."
-        />
-      );
+      return <Notice testID="supplier-receipts-empty" message={t("supReceiving.empty")} />;
     }
 
     return (
       <View style={{ gap: 12 }}>
         {receipts.map((receipt) => (
           <SurfaceRow key={receipt.id} testID={`supplier-receipt-${receipt.id}`}>
-            <SectionHeading title={formatReceiptDate(receipt.receivedAt)} detail="Stock receipt" />
+            <SectionHeading
+              title={formatReceiptDate(receipt.receivedAt)}
+              detail={t("supReceiving.stockReceipt")}
+            />
             {receipt.locationName || receipt.locationId ? (
               <InfoRow
-                label="Destination"
+                label={t("supReceiving.destination")}
                 value={receipt.locationName ?? (receipt.locationId as string)}
               />
             ) : null}
-            {receipt.reference ? <InfoRow label="Reference" value={receipt.reference} /> : null}
-            {receipt.actor ? <InfoRow label="Received by" value={receipt.actor} /> : null}
-            <InfoRow label="Lines" value={String(receipt.lines.length)} />
+            {receipt.reference ? (
+              <InfoRow label={t("suppliers.reference")} value={receipt.reference} />
+            ) : null}
+            {receipt.actor ? (
+              <InfoRow label={t("supReceiving.receivedBy")} value={receipt.actor} />
+            ) : null}
+            <InfoRow label={t("supReceiving.lines")} value={String(receipt.lines.length)} />
             {receipt.lines.map((line, index) => (
               <InfoRow
                 key={`${receipt.id}-${index}`}
-                label={line.productName ?? line.sku ?? line.variantId ?? `Line ${index + 1}`}
+                label={
+                  line.productName ??
+                  line.sku ??
+                  line.variantId ??
+                  t("supReceiving.lineN", { n: index + 1 })
+                }
                 value={`×${line.quantity}`}
               />
             ))}

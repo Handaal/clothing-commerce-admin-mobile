@@ -2,6 +2,7 @@ import type { ProductDetailResponse, ProductListResponse } from "@shifted/clothi
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import {
   Body,
@@ -30,6 +31,7 @@ export function PromotionTargetSelector({
   choices: PromotionTargetChoice[];
   onChange: (choices: PromotionTargetChoice[]) => void;
 }) {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const load = useCallback(() => loadAllPromotionProducts(client), [client]);
@@ -60,13 +62,16 @@ export function PromotionTargetSelector({
 
   return (
     <View style={{ gap: 12 }}>
-      <Title>Selected targets</Title>
-      {choices.length === 0 ? <Body>No Product or Variant targets selected.</Body> : null}
+      <Title>{t("promoTgt.selectedTitle")}</Title>
+      {choices.length === 0 ? <Body>{t("promoTgt.none")}</Body> : null}
       {choices.map((choice) => (
         <SurfaceRow key={targetKey(choice)} testID={`promotion-target-${targetKey(choice)}`}>
-          <InfoRow label={choice.target.productId ? "Product" : "Variant"} value={choice.label} />
+          <InfoRow
+            label={choice.target.productId ? t("promoTgt.product") : t("promoTgt.variant")}
+            value={choice.label}
+          />
           <TextButton
-            label="Remove target"
+            label={t("promoTgt.remove")}
             onPress={() =>
               onChange(choices.filter((existing) => targetKey(existing) !== targetKey(choice)))
             }
@@ -75,30 +80,30 @@ export function PromotionTargetSelector({
       ))}
       <Divider />
       <TextField
-        label="Search Products"
+        label={t("promoTgt.searchProducts")}
         value={search}
         onChangeText={setSearch}
-        placeholder="Name or style code"
+        placeholder={t("promoTgt.searchPlaceholder")}
         testID="promotion-target-search"
       />
-      {state.status === "loading" ? <LoadingBlock label="Loading Products…" /> : null}
+      {state.status === "loading" ? <LoadingBlock label={t("promoTgt.loadingProducts")} /> : null}
       {state.status === "error" ? (
         <>
           <Title>{errorHeading(state.error.kind)}</Title>
           <Body>{state.error.message}</Body>
           {isRetryable(state.error.kind) ? (
-            <PrimaryButton label="Try again" onPress={reload} />
+            <PrimaryButton label={t("common.tryAgain")} onPress={reload} />
           ) : null}
         </>
       ) : null}
       {state.status === "success" ? (
         <SelectField
-          label="Product"
+          label={t("promoTgt.product")}
           options={productOptions}
           selected={selectedProductId}
           onSelect={setSelectedProductId}
           testIDPrefix="promotion-target-product"
-          emptyLabel={search ? "No Products match this search." : "No Products are available."}
+          emptyLabel={search ? t("promoTgt.noMatch") : t("promoTgt.noProducts")}
         />
       ) : null}
       {selectedProductId ? (
@@ -129,31 +134,32 @@ function SelectedProductTarget({
   product: ProductListResponse["items"][number] | undefined;
   onAdd: (choice: PromotionTargetChoice) => void;
 }) {
+  const { t } = useI18n();
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const load = useCallback(() => client.getProduct(productId), [client, productId]);
   const { state, reload } = useAsync<ProductDetailResponse>(load);
-  const productName = product?.name ?? "Selected Product";
+  const productName = product?.name ?? t("promoTgt.selectedProduct");
 
   return (
     <View style={{ gap: 12 }}>
       <PrimaryButton
-        label={`Add whole Product · ${productName}`}
+        label={t("promoTgt.addWholeProduct", { name: productName })}
         testID="promotion-target-add-product"
         onPress={() => onAdd({ target: { productId, variantId: null }, label: productName })}
       />
-      {state.status === "loading" ? <LoadingBlock label="Loading Variants…" /> : null}
+      {state.status === "loading" ? <LoadingBlock label={t("promoTgt.loadingVariants")} /> : null}
       {state.status === "error" ? (
         <>
           <Body>{state.error.message}</Body>
           {isRetryable(state.error.kind) ? (
-            <PrimaryButton label="Retry Variants" onPress={reload} />
+            <PrimaryButton label={t("promoTgt.retryVariants")} onPress={reload} />
           ) : null}
         </>
       ) : null}
       {state.status === "success" ? (
         <>
           <SelectField
-            label="Variant"
+            label={t("promoTgt.variant")}
             options={state.data.variants.map((variant) => ({
               value: variant.id,
               label: `${variant.displayName ?? variant.sku} · ${variant.sku}`,
@@ -161,10 +167,10 @@ function SelectedProductTarget({
             selected={selectedVariantId}
             onSelect={setSelectedVariantId}
             testIDPrefix="promotion-target-variant"
-            emptyLabel="This Product has no Variants."
+            emptyLabel={t("promoTgt.noVariants")}
           />
           <PrimaryButton
-            label="Add selected Variant"
+            label={t("promoTgt.addVariant")}
             testID="promotion-target-add-variant"
             disabled={!selectedVariantId}
             onPress={() => {

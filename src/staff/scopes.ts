@@ -6,18 +6,19 @@
  * already-readable lines, so this module never re-derives branch/location naming from ids.
  */
 
+import { t } from "../i18n";
 import type { AccessScopeKind, AccessScopeSummary } from "./model";
 
 export function accessScopeKindLabel(kind: AccessScopeKind): string {
   switch (kind) {
     case "tenant":
-      return "Tenant-wide";
+      return t("scopeKind.tenant");
     case "brand":
-      return "Brand";
+      return t("scopeKind.brand");
     case "branch":
-      return "Branch";
+      return t("scopeKind.branch");
     case "location":
-      return "Location";
+      return t("scopeKind.location");
   }
 }
 
@@ -32,7 +33,7 @@ export function isTenantWideScope(scope: AccessScopeSummary): boolean {
  * "Location: Main Stockroom"), falling back to the scope kind label when the adapter supplied none.
  */
 export function accessScopeTargetLines(scope: AccessScopeSummary): string[] {
-  if (isTenantWideScope(scope)) return ["Tenant-wide"];
+  if (isTenantWideScope(scope)) return [t("scopeKind.tenant")];
   if (scope.targets.length > 0) return scope.targets;
   return [accessScopeKindLabel(scope.kind)];
 }

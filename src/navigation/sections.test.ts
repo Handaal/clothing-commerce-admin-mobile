@@ -10,7 +10,7 @@ import {
 } from "./sections";
 
 describe("management section registry", () => {
-  it("shows only granted API-backed sections while retaining honest planned and reserved entries", () => {
+  it("shows only granted API-backed sections while retaining honest planned entries", () => {
     const context = meContext(TENANT_A, {
       inventory: { canRead: false },
       suppliers: null,
@@ -29,14 +29,18 @@ describe("management section registry", () => {
   });
 
   it("does not invent routes for domains without a canonical management API", () => {
-    expect(managementSection("customers").status).toBe("planned");
-    expect(managementSection("customers").route).toBeUndefined();
     expect(managementSection("activity").status).toBe("planned");
     expect(managementSection("activity").route).toBeUndefined();
-    expect(managementSection("storefront")).toMatchObject({
-      status: "reserved",
-      route: "/storefront",
-    });
+  });
+
+  it("routes storefront to its hub now that it aggregates real website controls", () => {
+    expect(managementSection("storefront").route).toBe("/storefront");
+    expect(managementSection("storefront").status).toBeUndefined();
+  });
+
+  it("routes customers to its management screen now that the customer API exists", () => {
+    expect(managementSection("customers").route).toBe("/customers");
+    expect(managementSection("customers").status).toBeUndefined();
   });
 });
 

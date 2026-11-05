@@ -1,4 +1,5 @@
 import type { ClassifiedCommerceError } from "../commerce/errors";
+import { t } from "../i18n";
 
 /**
  * How the UI should let the operator recover from a failed inventory write. This is derived from the
@@ -31,17 +32,16 @@ export function describeInventoryWriteError(
   // Authentication / authorization are decided by the classifier's kind, independent of any code.
   if (error.kind === "auth") {
     return {
-      heading: "Session problem",
-      message: "Your session is invalid or has expired. Please sign in again.",
+      heading: t("errorHead.auth"),
+      message: t("writeErr.authMessage"),
       recovery: "none",
       isConcurrencyConflict: false,
     };
   }
   if (error.kind === "forbidden") {
     return {
-      heading: "Access denied",
-      message:
-        "You are signed in, but the server denied this inventory operation. It was not applied.",
+      heading: t("errorHead.forbidden"),
+      message: t("invWriteErr.authDenied"),
       recovery: "none",
       isConcurrencyConflict: false,
     };
@@ -51,62 +51,59 @@ export function describeInventoryWriteError(
   switch (error.code) {
     case "CONCURRENT_MODIFICATION":
       return {
-        heading: "Stock changed since your count",
-        message:
-          "The on-hand balance changed after you took this count, so it was not applied. Refresh and recount before reconciling.",
+        heading: t("invWriteErr.stockChanged"),
+        message: t("invWriteErr.stockChangedMsg"),
         recovery: "reconcile",
         isConcurrencyConflict: true,
       };
     case "INSUFFICIENT_STOCK":
       return {
-        heading: "Not enough stock",
-        message:
-          "There is not enough stock on hand for this operation. Adjust the quantity and try again.",
+        heading: t("invWriteErr.insufficient"),
+        message: t("invWriteErr.insufficientMsg"),
         recovery: "edit",
         isConcurrencyConflict: false,
       };
     case "INVALID_QUANTITY":
       return {
-        heading: "Invalid quantity",
-        message: "The requested quantity is not valid. Edit it and try again.",
+        heading: t("invWriteErr.invalidQty"),
+        message: t("invWriteErr.invalidQtyMsg"),
         recovery: "edit",
         isConcurrencyConflict: false,
       };
     case "SAME_TRANSFER_LOCATION":
       return {
-        heading: "Same location",
-        message: "A transfer's source and destination must be different locations.",
+        heading: t("invWriteErr.sameLocation"),
+        message: t("invWriteErr.sameLocationMsg"),
         recovery: "edit",
         isConcurrencyConflict: false,
       };
     case "IDEMPOTENCY_CONFLICT":
       return {
-        heading: "Duplicate operation",
-        message:
-          "This operation key was already used with different details. Start a new operation to continue.",
+        heading: t("writeErr.duplicateOp"),
+        message: t("writeErr.duplicateOpMessage"),
         recovery: "none",
         isConcurrencyConflict: false,
       };
     case "LOCATION_CAPABILITY_DENIED":
       return {
-        heading: "Operation not permitted here",
-        message: "This inventory location does not permit this operation.",
+        heading: t("invWriteErr.notPermitted"),
+        message: t("invWriteErr.notPermittedMsg"),
         recovery: "none",
         isConcurrencyConflict: false,
       };
     case "LOCATION_INACTIVE":
     case "VARIANT_INACTIVE":
       return {
-        heading: "Not available for this operation",
-        message: "The selected item or location is not active for this operation.",
+        heading: t("invWriteErr.notActive"),
+        message: t("invWriteErr.notActiveMsg"),
         recovery: "none",
         isConcurrencyConflict: false,
       };
     case "VARIANT_NOT_FOUND":
     case "LOCATION_NOT_FOUND":
       return {
-        heading: "Not found",
-        message: "The selected item or location could not be found. Refresh and try again.",
+        heading: t("errorHead.notFound"),
+        message: t("invWriteErr.notFoundMsg"),
         recovery: "none",
         isConcurrencyConflict: false,
       };
@@ -117,16 +114,15 @@ export function describeInventoryWriteError(
   // Transport / unexpected server failures: the outcome is AMBIGUOUS, so recovery reuses the key.
   if (error.kind === "network") {
     return {
-      heading: "Network problem",
-      message:
-        "The Commerce API could not be reached. The operation may or may not have been applied — retry to complete it safely.",
+      heading: t("writeErr.networkProblem"),
+      message: t("writeErr.networkMessage"),
       recovery: "retry",
       isConcurrencyConflict: false,
     };
   }
   return {
-    heading: "Something went wrong",
-    message: `${error.message} You can retry.`,
+    heading: t("errorHead.unknown"),
+    message: t("writeErr.retrySuffix", { message: error.message }),
     recovery: "retry",
     isConcurrencyConflict: false,
   };

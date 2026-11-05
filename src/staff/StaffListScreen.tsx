@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import {
   Badge,
@@ -68,10 +69,11 @@ export function StaffListScreen({
   onAddStaff,
   onBack,
 }: StaffListScreenProps) {
+  const { t } = useI18n();
   if (!adapter) {
     return (
       <ScrollScreen>
-        <StaffUnavailable title="Staff" onBack={onBack} />
+        <StaffUnavailable title={t("staff.title")} onBack={onBack} />
       </ScrollScreen>
     );
   }
@@ -97,6 +99,7 @@ function StaffListContent({
 }: StaffListScreenProps & { adapter: StaffAdapter }) {
   // Draft search state the user edits, and the committed query the loader actually runs. Committing on
   // an explicit action (not each keystroke) keeps this a server round-trip, never a live local filter.
+  const { t } = useI18n();
   const [search, setSearch] = useState<StaffSearchState>(EMPTY_STAFF_SEARCH);
   const [query, setQuery] = useState<StaffListQuery>(() => buildStaffListQuery(EMPTY_STAFF_SEARCH));
   const isFiltered = !isEmptyStaffSearch(search) || Object.keys(query).length > 0;
@@ -110,10 +113,10 @@ function StaffListContent({
   );
   const roleFilterOptions = useMemo<SelectOption[]>(
     () => [
-      { value: "any", label: "Any role" },
+      { value: "any", label: t("staff.anyRole") },
       ...(roleOptions ?? []).map((role) => ({ value: role.id, label: role.label })),
     ],
-    [roleOptions],
+    [roleOptions, t],
   );
   const showRoleFilter = (roleOptions?.length ?? 0) > 0;
 
@@ -123,28 +126,26 @@ function StaffListContent({
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Staff" title="Staff" onBack={onBack} />
+      <PageHeader eyebrow={t("staff.eyebrow")} title={t("staff.title")} onBack={onBack} />
       {/* Add-Staff is offered only when /me/context grants staff management. The API remains the sole
           authority and still authorizes the write — a real 403 surfaces on submit even if shown. */}
       {canManage ? (
-        <PrimaryButton label="Add staff" testID="add-staff" onPress={onAddStaff} />
+        <PrimaryButton label={t("staff.addCta")} testID="add-staff" onPress={onAddStaff} />
       ) : (
-        <Body testID="staff-read-only-note">
-          You have read-only access to staff. Managing staff requires additional permission.
-        </Body>
+        <Body testID="staff-read-only-note">{t("staff.readOnlyNote")}</Body>
       )}
       <Divider />
 
       <TextField
-        label="Search"
+        label={t("staff.search")}
         value={search.term}
         onChangeText={(term) => setSearch((prev) => ({ ...prev, term }))}
-        placeholder="Name or email"
+        placeholder={t("staff.searchPlaceholder")}
         testID="staff-search-term"
         autoCapitalize="none"
       />
       <SelectField
-        label="Status"
+        label={t("staff.statusLabel")}
         options={statusOptions}
         selected={search.status}
         onSelect={(value) => setSearch((prev) => ({ ...prev, status: value as StaffStatusFilter }))}
@@ -152,32 +153,28 @@ function StaffListContent({
       />
       {showRoleFilter ? (
         <SelectField
-          label="Role"
+          label={t("staff.roleLabel")}
           options={roleFilterOptions}
           selected={search.roleId}
           onSelect={(value) => setSearch((prev) => ({ ...prev, roleId: value }))}
           testIDPrefix="staff-role-filter"
         />
       ) : null}
-      <PrimaryButton label="Search staff" testID="staff-search-submit" onPress={applySearch} />
+      <PrimaryButton label={t("staff.searchCta")} testID="staff-search-submit" onPress={applySearch} />
       <Divider />
 
-      {state.status === "loading" ? <LoadingBlock label="Loading staff…" /> : null}
+      {state.status === "loading" ? <LoadingBlock label={t("staff.loading")} /> : null}
       {state.status === "error" ? (
         <>
           <Title>{errorHeading(state.error.kind)}</Title>
           <Body>{state.error.message}</Body>
           {isRetryable(state.error.kind) ? (
-            <PrimaryButton label="Try again" onPress={reload} />
+            <PrimaryButton label={t("common.tryAgain")} onPress={reload} />
           ) : null}
         </>
       ) : null}
       {state.status === "success" && state.data.length === 0 ? (
-        <Body testID="staff-empty">
-          {isFiltered
-            ? "No staff match your search."
-            : "No staff yet. Add your first staff member to get started."}
-        </Body>
+        <Body testID="staff-empty">{isFiltered ? t("staff.emptyFiltered") : t("staff.empty")}</Body>
       ) : null}
       {state.status === "success" && state.data.length > 0 ? (
         <View style={{ gap: 12 }}>
@@ -195,14 +192,15 @@ function StaffListContent({
 }
 
 function StaffRow({ member, onOpen }: { member: StaffSummary; onOpen: () => void }) {
+  const { t } = useI18n();
   const roleSummary =
     member.roleSummaries.length > 0
       ? member.roleSummaries.map((role) => role.label).join(", ")
-      : "No roles";
+      : t("staff.noRoles");
   const scopeSummary =
     member.scopeSummaries.length > 0
       ? member.scopeSummaries.map((scope) => scope.label).join(", ")
-      : "No scopes";
+      : t("staff.noScopes");
 
   return (
     <PressableRow testID={`staff-row-${member.membershipId}`} onPress={onOpen}>
@@ -217,16 +215,23 @@ function StaffRow({ member, onOpen }: { member: StaffSummary; onOpen: () => void
         <Title>{member.displayName}</Title>
         <Badge
           label={membershipStatusLabel(member.status)}
+          tone={
+            member.status === "active"
+              ? "success"
+              : member.status === "deactivated"
+                ? "danger"
+                : member.status === "suspended"
+                  ? "warning"
+                  : "neutral"
+          }
           testID={`staff-status-${member.membershipId}`}
         />
       </View>
-      {member.primaryEmail ? <InfoRow label="Email" value={member.primaryEmail} /> : null}
-      <InfoRow label="Roles" value={roleSummary} />
-      <InfoRow label="Scopes" value={scopeSummary} />
+      {member.primaryEmail ? <InfoRow label={t("staff.email")} value={member.primaryEmail} /> : null}
+      <InfoRow label={t("staff.roles")} value={roleSummary} />
+      <InfoRow label={t("staff.scopes")} value={scopeSummary} />
       {/* Deactivated staff stay listed — they are retained history, never hidden as if deleted. */}
-      {member.status === "deactivated" ? (
-        <Eyebrow>Deactivated — retained, not deleted</Eyebrow>
-      ) : null}
+      {member.status === "deactivated" ? <Eyebrow>{t("staff.deactivatedTag")}</Eyebrow> : null}
     </PressableRow>
   );
 }

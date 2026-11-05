@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import type { StorefrontStatus } from "@shifted/clothing-commerce-sdk";
 
+import { t } from "../i18n";
 import type { ProductStatus } from "./operations";
 
 /**
@@ -87,9 +88,9 @@ export function useProductObservation(
 /** Human summary of a product's Storefront publication state for list/detail display. */
 export function describePublication(observation: ProductObservation | undefined): string {
   if (!observation || observation.storefrontStatus === undefined) {
-    return "Storefront state not observed this session";
+    return t("publication.notObserved");
   }
   return observation.storefrontStatus === "published"
-    ? "Published to Storefront"
-    : "Not published to Storefront";
+    ? t("publication.published")
+    : t("publication.notPublished");
 }

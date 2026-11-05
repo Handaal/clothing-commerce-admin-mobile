@@ -1,8 +1,8 @@
 import { useState } from "react";
 
+import { useI18n } from "../i18n";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import {
-  Body,
   EmptyState,
   FormSection,
   Notice,
@@ -14,6 +14,7 @@ import {
   TextButton,
   TextField,
 } from "../ui/components";
+import { useToast } from "../ui/Toast";
 import { useMutation, type Mutation } from "../ui/useMutation";
 import type { SupplierAdapter } from "./adapter";
 import {
@@ -42,9 +43,7 @@ export interface SupplierFormProps {
   generateIdempotencyKey?: IdempotencyKeyFactory;
 }
 
-const STATUS_OPTIONS: SelectOption[] = (["active", "inactive"] as SupplierStatus[]).map(
-  (value) => ({ value, label: supplierStatusLabel(value) }),
-);
+const SUPPLIER_STATUS_VALUES: SupplierStatus[] = ["active", "inactive"];
 
 /**
  * The one reusable Supplier form, shared by create and edit. It captures the local {@link SupplierDraft}
@@ -61,6 +60,11 @@ export function SupplierForm({
   generateIdempotencyKey,
 }: SupplierFormProps) {
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
+  const { t } = useI18n();
+  const statusOptions: SelectOption[] = SUPPLIER_STATUS_VALUES.map((value) => ({
+    value,
+    label: supplierStatusLabel(value),
+  }));
 
   const [name, setName] = useState(initial?.name ?? "");
   const [referenceCode, setReferenceCode] = useState(initial?.referenceCode ?? "");
@@ -71,6 +75,7 @@ export function SupplierForm({
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [status, setStatus] = useState<SupplierStatus>(initial?.status ?? "active");
   const [errors, setErrors] = useState<SupplierFieldErrors>({});
+  const toast = useToast();
 
   const mutation = useMutation<SupplierDraft, Supplier>(
     (draft, key) =>
@@ -78,6 +83,30 @@ export function SupplierForm({
         ? adapter.createSupplier(draft, key)
         : adapter.updateSupplier((initial as Supplier).id, draft, key),
     generateKey,
+    {
+      onSuccess: (saved) =>
+        toast.success(
+          t("supplierForm.savedMessage", {
+            name: saved.name,
+            action:
+              mode === "create" ? t("supplierForm.createdAction") : t("supplierForm.updatedAction"),
+            status: supplierStatusLabel(saved.status).toLowerCase(),
+          }),
+          {
+            title:
+              mode === "create" ? t("supplierForm.createdTitle") : t("supplierForm.updatedTitle"),
+          },
+        ),
+      onError: (error) => {
+        const described = describeSupplierWriteError(error);
+        toast.error(described.message, {
+          title: described.heading,
+          ...(described.recovery === "retry"
+            ? { action: { label: t("common.retry"), icon: "refresh" as const, onPress: () => mutation.retry() } }
+            : {}),
+        });
+      },
+    },
   );
 
   function currentDraft(): SupplierDraft {
@@ -97,9 +126,15 @@ export function SupplierForm({
     const draft = currentDraft();
     const found = validateSupplierDraft(draft);
     setErrors(found);
-    if (hasSupplierErrors(found)) return;
+    if (hasSupplierErrors(found)) {
+      toast.error(t("common.fixHighlightedSave"));
+      return;
+    }
     mutation.submit(draft);
   }
+
+  const clearError = (field: keyof SupplierFieldErrors) =>
+    setErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
 
   if (mutation.state.status === "success") {
     const saved = mutation.state.data;
@@ -108,16 +143,21 @@ export function SupplierForm({
         <PageTitle mode={mode} onBack={onBack} />
         <EmptyState
           icon="check-circle-outline"
-          title={mode === "create" ? "Supplier created" : "Supplier updated"}
-          message={`“${saved.name}” was ${mode === "create" ? "created" : "updated"} as a ${supplierStatusLabel(saved.status).toLowerCase()} supplier.`}
+          title={mode === "create" ? t("supplierForm.createdTitle") : t("supplierForm.updatedTitle")}
+          message={t("supplierForm.savedMessage", {
+            name: saved.name,
+            action:
+              mode === "create" ? t("supplierForm.createdAction") : t("supplierForm.updatedAction"),
+            status: supplierStatusLabel(saved.status).toLowerCase(),
+          })}
         />
         <PrimaryButton
           testID="supplier-saved-continue"
-          label="View supplier"
+          label={t("supplierForm.viewSupplier")}
           icon="arrow-right"
           onPress={() => onSaved(saved)}
         />
-        <TextButton label="Back to suppliers" onPress={onBack} />
+        <TextButton label={t("supplierForm.backToSuppliers")} onPress={onBack} />
       </ScrollScreen>
     );
   }
@@ -128,82 +168,104 @@ export function SupplierForm({
   return (
     <ScrollScreen>
       <PageTitle mode={mode} onBack={onBack} />
-      <FormSection title="Supplier identity" icon="badge-account-outline">
+      <FormSection title={t("supplierForm.identitySection")} icon="badge-account-outline">
         <TextField
-          label="Name"
+          label={t("supplierForm.name")}
           value={name}
-          onChangeText={setName}
-          placeholder="e.g. Nile Textiles Co."
+          onChangeText={(next) => {
+            setName(next);
+            clearError("name");
+          }}
+          placeholder={t("supplierForm.namePlaceholder")}
           testID="supplier-name"
           autoCapitalize="words"
+          required
+          error={errors.name}
         />
-        <FieldError message={errors.name} testID="supplier-name-error" />
         <TextField
-          label="Reference code (optional)"
+          label={t("supplierForm.refCode")}
           value={referenceCode}
-          onChangeText={setReferenceCode}
-          placeholder="e.g. SUP-014"
+          onChangeText={(next) => {
+            setReferenceCode(next);
+            clearError("referenceCode");
+          }}
+          placeholder={t("supplierForm.refPlaceholder")}
           testID="supplier-reference"
           autoCapitalize="characters"
+          error={errors.referenceCode}
         />
-        <FieldError message={errors.referenceCode} testID="supplier-reference-error" />
         <SelectField
-          label="Status"
-          options={STATUS_OPTIONS}
+          label={t("supplierForm.status")}
+          options={statusOptions}
           selected={status}
           onSelect={(value) => setStatus(value as SupplierStatus)}
           testIDPrefix="supplier-status"
         />
       </FormSection>
 
-      <FormSection title="Contact" icon="card-account-phone-outline">
+      <FormSection title={t("supplierForm.contactSection")} icon="card-account-phone-outline">
         <TextField
-          label="Contact person (optional)"
+          label={t("supplierForm.contactPerson")}
           value={contactPerson}
-          onChangeText={setContactPerson}
+          onChangeText={(next) => {
+            setContactPerson(next);
+            clearError("contactPerson");
+          }}
           testID="supplier-contact"
           autoCapitalize="words"
+          error={errors.contactPerson}
         />
-        <FieldError message={errors.contactPerson} testID="supplier-contact-error" />
         <TextField
-          label="Phone (optional)"
+          label={t("supplierForm.phone")}
           value={phone}
-          onChangeText={setPhone}
+          onChangeText={(next) => {
+            setPhone(next);
+            clearError("phone");
+          }}
           placeholder="+20 10 0000 0000"
           testID="supplier-phone"
           autoCapitalize="none"
+          error={errors.phone}
         />
-        <FieldError message={errors.phone} testID="supplier-phone-error" />
         <TextField
-          label="Email (optional)"
+          label={t("supplierForm.email")}
           value={email}
-          onChangeText={setEmail}
-          placeholder="orders@supplier.example"
+          onChangeText={(next) => {
+            setEmail(next);
+            clearError("email");
+          }}
+          placeholder={t("supplierForm.emailPlaceholder")}
           testID="supplier-email"
           autoCapitalize="none"
+          error={errors.email}
         />
-        <FieldError message={errors.email} testID="supplier-email-error" />
       </FormSection>
 
-      <FormSection title="Address & notes" icon="map-marker-outline">
+      <FormSection title={t("supplierForm.addressSection")} icon="map-marker-outline">
         <TextField
-          label="Address (optional)"
+          label={t("supplierForm.address")}
           value={address}
-          onChangeText={setAddress}
-          placeholder="Street, city, region, postal code, country"
+          onChangeText={(next) => {
+            setAddress(next);
+            clearError("address");
+          }}
+          placeholder={t("supplierForm.addressPlaceholder")}
           testID="supplier-address"
           multiline
+          error={errors.address}
         />
-        <FieldError message={errors.address} testID="supplier-address-error" />
         <TextField
-          label="Notes (optional)"
+          label={t("supplierForm.notes")}
           value={notes}
-          onChangeText={setNotes}
-          placeholder="Internal notes about this supplier."
+          onChangeText={(next) => {
+            setNotes(next);
+            clearError("notes");
+          }}
+          placeholder={t("supplierForm.notesPlaceholder")}
           testID="supplier-notes"
           multiline
+          error={errors.notes}
         />
-        <FieldError message={errors.notes} testID="supplier-notes-error" />
       </FormSection>
 
       {submitError ? (
@@ -213,10 +275,10 @@ export function SupplierForm({
       <PrimaryButton
         label={
           mutation.state.status === "submitting"
-            ? "Saving…"
+            ? t("common.saving")
             : mode === "create"
-              ? "Create supplier"
-              : "Save changes"
+              ? t("supplierForm.createSupplier")
+              : t("common.saveChanges")
         }
         testID="supplier-submit"
         icon={mode === "create" ? "account-plus-outline" : "content-save-outline"}
@@ -228,20 +290,16 @@ export function SupplierForm({
 }
 
 function PageTitle({ mode, onBack }: { mode: SupplierFormMode; onBack: () => void }) {
+  const { t } = useI18n();
   return (
     <PageHeader
-      eyebrow="Suppliers"
-      title={mode === "create" ? "New supplier" : "Edit supplier"}
-      description="Maintain the authoritative supplier profile and lifecycle."
+      eyebrow={t("suppliers.title")}
+      title={mode === "create" ? t("supplierForm.newTitle") : t("supplierForm.editTitle")}
+      description={t("supplierForm.desc")}
       icon={mode === "create" ? "account-plus-outline" : "pencil-outline"}
       onBack={onBack}
     />
   );
-}
-
-function FieldError({ message, testID }: { message?: string; testID: string }) {
-  if (!message) return null;
-  return <Body testID={testID}>{message}</Body>;
 }
 
 function SubmitError({
@@ -251,6 +309,7 @@ function SubmitError({
   described: ReturnType<typeof describeSupplierWriteError>;
   mutation: Mutation<SupplierDraft, Supplier>;
 }) {
+  const { t } = useI18n();
   return (
     <Notice
       testID="supplier-submit-error"
@@ -260,20 +319,20 @@ function SubmitError({
       action={
         described.recovery === "retry" ? (
           <PrimaryButton
-            label="Retry"
+            label={t("common.retry")}
             icon="refresh"
             testID="supplier-submit-retry"
             onPress={() => mutation.retry()}
           />
         ) : described.recovery === "edit" ? (
           <PrimaryButton
-            label="Edit and try again"
+            label={t("supplierForm.editAndRetry")}
             icon="pencil-outline"
             testID="supplier-submit-edit"
             onPress={() => mutation.reset()}
           />
         ) : (
-          <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+          <TextButton label={t("common.dismiss")} onPress={() => mutation.reset()} />
         )
       }
     />

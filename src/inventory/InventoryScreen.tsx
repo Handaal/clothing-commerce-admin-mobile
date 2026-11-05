@@ -2,33 +2,34 @@ import type { MeContextResponse } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import { useSession } from "../session/SessionProvider";
 import { resolveSupplierAdapter } from "../suppliers/adapter";
 import { loadAllSuppliers } from "../suppliers/load";
 import type { SupplierSummary } from "../suppliers/model";
 import {
+  type ActionDockItem,
   Badge,
-  Body,
   EmptyState,
-  InfoRow,
+  HeaderIconButton,
   LoadingBlock,
-  MetricCard,
   Notice,
   PageHeader,
   PrimaryButton,
+  ResponsiveList,
   ScrollScreen,
   SearchField,
   SectionHeading,
   type SelectOption,
   Surface,
   SurfaceRow,
-  TextButton,
+  SummaryStrip,
 } from "../ui/components";
 import { AppIcon } from "../ui/Icon";
 import { colors, radius, spacing } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
-import { InventoryOperations } from "./InventoryOperations";
+import { InventoryOperations, type InventoryOperationKind } from "./InventoryOperations";
 import {
   createDurableJournalStore,
   quarantineLegacyV1,
@@ -42,36 +43,39 @@ import { loadAllInventory, type InventoryItem } from "./load";
 export interface InventoryScreenProps {
   tenantId: string;
   context: MeContextResponse;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 /** Inventory visibility and the three explicitly authorized management operations. */
-export function InventoryScreen({ tenantId, context, onBack }: InventoryScreenProps) {
+export function InventoryScreen({ tenantId, context }: InventoryScreenProps) {
+  const { t } = useI18n();
   if (!context.access.inventory.canRead) {
     return (
-      <ScrollScreen>
+      <ScrollScreen wide>
         <PageHeader
-          eyebrow="Operations"
-          title="Inventory"
-          description="Review stock availability across the locations assigned to your account."
+          eyebrow={t("inventory.eyebrow")}
+          title={t("inventory.title")}
+          description={t("inventory.headerNoAccessDesc")}
           icon="warehouse"
-          onBack={onBack}
         />
         <Notice
           tone="warning"
-          title="Inventory access required"
-          message="You do not have read access to inventory. Ask an owner or administrator."
+          title={t("inventory.accessTitle")}
+          message={t("inventory.accessBody")}
         />
       </ScrollScreen>
     );
   }
 
-  return <InventoryContent tenantId={tenantId} context={context} onBack={onBack} />;
+  return <InventoryContent tenantId={tenantId} context={context} />;
 }
 
-function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
+function InventoryContent({ tenantId, context }: Omit<InventoryScreenProps, "onBack">) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
+  const { t } = useI18n();
+  const [activeOperation, setActiveOperation] = useState<InventoryOperationKind | null>(null);
+  const [scrollToTopSignal, setScrollToTopSignal] = useState(0);
   const owner = useMemo<JournalOwner>(
     () => ({ tenantId, membershipId: context.membership.id }),
     [tenantId, context.membership.id],
@@ -117,6 +121,7 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
   const [concurrencyNotice, setConcurrencyNotice] = useState(false);
   const [search, setSearch] = useState("");
   const refreshAfterConcurrency = useCallback(() => {
+    setActiveOperation(null);
     setConcurrencyNotice(true);
     reload();
   }, [reload]);
@@ -139,30 +144,83 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
     [visibleItems],
   );
 
+  const requestOperation = useCallback((kind: InventoryOperationKind) => {
+    setActiveOperation(kind);
+    setScrollToTopSignal((signal) => signal + 1);
+  }, []);
+
+  const headerActions: ActionDockItem[] = [];
+  if (state.status === "success" && state.data.length > 0) {
+    if (context.access.inventory.write.canReceive) {
+      headerActions.push({
+        label: t("invOps.tabReceive"),
+        icon: "package-down",
+        onPress: () => requestOperation("receive"),
+        testID: "inventory-action-receive",
+      });
+    }
+    if (context.access.inventory.write.canAdjust) {
+      headerActions.push({
+        label: t("invOps.tabAdjust"),
+        icon: "clipboard-check-outline",
+        onPress: () => requestOperation("adjust"),
+        testID: "inventory-action-adjust",
+        emphasis: headerActions.length === 0 ? "primary" : "secondary",
+      });
+    }
+    if (context.access.inventory.write.canTransfer) {
+      headerActions.push({
+        label: t("invOps.tabTransfer"),
+        icon: "swap-horizontal",
+        onPress: () => requestOperation("transfer"),
+        testID: "inventory-action-transfer",
+        emphasis: headerActions.length === 0 ? "primary" : "secondary",
+      });
+    }
+    if (headerActions.length === 0) {
+      headerActions.push({
+        label: t("inventory.refresh"),
+        icon: "refresh",
+        onPress: reload,
+        testID: "inventory-action-refresh",
+      });
+    }
+  }
+
   return (
-    <ScrollScreen>
+    <ScrollScreen wide scrollToTopSignal={scrollToTopSignal}>
       <PageHeader
-        eyebrow="Operations"
-        title="Inventory"
-        description="Monitor stock and safely record physical inventory changes."
+        eyebrow={t("inventory.eyebrow")}
+        title={t("inventory.title")}
+        description={t("inventory.headerDesc")}
         icon="warehouse"
         action={
-          state.status === "success" ? (
-            <TextButton label="Refresh" icon="refresh" onPress={reload} />
+          headerActions.length > 0 ? (
+            <View style={inventoryStyles.headerActions}>
+              {headerActions.map((action, index) => (
+                <HeaderIconButton
+                  key={`${action.label}-${index}`}
+                  label={action.label}
+                  icon={action.icon}
+                  testID={action.testID}
+                  variant={action.emphasis === "secondary" ? "secondary" : "primary"}
+                  onPress={action.onPress}
+                />
+              ))}
+            </View>
           ) : undefined
         }
-        onBack={onBack}
       />
 
       {concurrencyNotice ? (
         <Notice
           testID="inventory-concurrency-notice"
           tone="warning"
-          title="Inventory changed"
-          message="Inventory was refreshed from the server. Review the current on-hand quantity, then select the row and enter the physical count again before submitting a new adjustment."
+          title={t("inventory.changedTitle")}
+          message={t("inventory.changedBody")}
           action={
             <PrimaryButton
-              label="Review refreshed inventory"
+              label={t("inventory.reviewRefreshed")}
               icon="refresh"
               variant="secondary"
               onPress={() => setConcurrencyNotice(false)}
@@ -184,11 +242,13 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
             receiveSuppliers={receiveSuppliers}
             detectLegacy={detectLegacy}
             quarantineLegacy={quarantineLegacyV1}
+            activeOperation={activeOperation}
+            onActiveOperationChange={setActiveOperation}
           />
         </Surface>
       ) : null}
 
-      {state.status === "loading" ? <LoadingBlock label="Loading inventory…" /> : null}
+      {state.status === "loading" ? <LoadingBlock label={t("inventory.loading")} /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -196,7 +256,7 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+              <PrimaryButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -204,50 +264,64 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
       {state.status === "success" && state.data.length === 0 ? (
         <EmptyState
           icon="package-variant-closed"
-          title="Stock is empty"
-          message="No inventory yet. Stock counted in this business will appear here."
+          title={t("inventory.emptyTitle")}
+          message={t("inventory.emptyBody")}
+          action={<PrimaryButton label={t("inventory.refresh")} icon="refresh" onPress={reload} />}
         />
       ) : null}
       {state.status === "success" && state.data.length > 0 ? (
         <>
-          <View style={inventoryStyles.metrics}>
-            <MetricCard
-              label="Stock rows"
-              value={String(state.data.length)}
-              icon="format-list-bulleted"
-            />
-            <MetricCard
-              label="Locations shown"
-              value={String(visibleLocationCount)}
-              icon="map-marker-outline"
-              tone="accent"
-            />
-          </View>
-
           <View style={inventoryStyles.catalogHeader}>
-            <SectionHeading title="Stock overview" detail={`${visibleItems.length} shown`} />
+            <SectionHeading
+              title={t("inventory.overviewHeading")}
+              detail={t("common.shown", { count: visibleItems.length })}
+            />
             <SearchField
               value={search}
               onChangeText={setSearch}
-              placeholder="Search product, SKU or location"
+              placeholder={t("inventory.searchPlaceholder")}
               testID="inventory-search"
             />
           </View>
 
+          <SummaryStrip
+            testID="inventory-summary"
+            items={[
+              {
+                label: t("inventory.stockRows"),
+                value: String(state.data.length),
+                icon: "format-list-bulleted",
+              },
+              {
+                label: t("inventory.locationsShown"),
+                value: String(visibleLocationCount),
+                icon: "map-marker-outline",
+                tone: "accent",
+              },
+            ]}
+          />
+
           {visibleItems.length === 0 ? (
             <EmptyState
               icon="magnify"
-              title="No matching stock"
-              message="Try a different product, SKU or location."
+              title={t("inventory.noMatchTitle")}
+              message={t("inventory.noMatchBody")}
+              action={
+                <PrimaryButton
+                  label={t("inventory.clearSearch")}
+                  icon="close-circle-outline"
+                  onPress={() => setSearch("")}
+                />
+              }
             />
           ) : (
-            <View style={inventoryStyles.list}>
+            <ResponsiveList>
               {visibleItems.map((item) => {
                 const itemKey = `${item.inventoryLocationId}:${item.variantId}`;
                 const locationName =
                   locationNameById.get(item.inventoryLocationId) ?? item.inventoryLocationId;
                 return (
-                  <SurfaceRow key={itemKey} testID={`inventory-row-${itemKey}`}>
+                  <SurfaceRow key={itemKey} testID={`inventory-row-${itemKey}`} density="compact">
                     <View style={inventoryStyles.stockIcon}>
                       <AppIcon name="hanger" size={22} color={colors.brand} />
                     </View>
@@ -257,21 +331,24 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
                         <Badge
                           label={String(item.onHand)}
                           tone={
-                            item.onHand === 0 ? "danger" : item.onHand <= 5 ? "warning" : "success"
+                            item.onHand === 0 ? "danger" : item.onHand <= 5 ? "warning" : "neutral"
                           }
                           testID={`inventory-onhand-${itemKey}`}
                         />
                       </View>
-                      <InfoRow label="SKU" value={item.sku} />
-                      <View style={inventoryStyles.locationRow}>
-                        <AppIcon name="map-marker-outline" size={17} color={colors.inkSubtle} />
-                        <Body>{locationName}</Body>
+                      <View style={inventoryStyles.stockMetadata}>
+                        <Text style={inventoryStyles.skuText}>{item.sku}</Text>
+                        <View style={inventoryStyles.metadataDot} />
+                        <AppIcon name="map-marker-outline" size={14} color={colors.inkSubtle} />
+                        <Text numberOfLines={1} style={inventoryStyles.locationText}>
+                          {locationName}
+                        </Text>
                       </View>
                     </View>
                   </SurfaceRow>
                 );
               })}
-            </View>
+            </ResponsiveList>
           )}
         </>
       ) : null}
@@ -280,24 +357,43 @@ function InventoryContent({ tenantId, context, onBack }: InventoryScreenProps) {
 }
 
 const inventoryStyles = StyleSheet.create({
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  headerActions: {
+    maxWidth: 360,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
   catalogHeader: { gap: spacing.md },
-  list: { gap: spacing.md },
   stockIcon: {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.md,
     backgroundColor: colors.brandSoft,
   },
-  stockCopy: { flex: 1, gap: spacing.xs },
-  stockName: { flex: 1, color: colors.ink, fontSize: 18, lineHeight: 24, fontWeight: "800" },
+  stockCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
+  stockName: { flex: 1, color: colors.ink, fontSize: 16, lineHeight: 21, fontWeight: "800" },
   stockTitleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: spacing.md,
   },
-  locationRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  stockMetadata: { flexDirection: "row", alignItems: "center", gap: 5 },
+  skuText: { color: colors.inkMuted, fontSize: 10, lineHeight: 14, fontWeight: "700" },
+  metadataDot: {
+    width: 3,
+    height: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.borderStrong,
+  },
+  locationText: {
+    flex: 1,
+    color: colors.inkMuted,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "600",
+  },
 });

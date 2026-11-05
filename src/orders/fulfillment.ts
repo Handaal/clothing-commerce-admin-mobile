@@ -1,5 +1,7 @@
 import type { OrderDetailResponse } from "@shifted/clothing-commerce-sdk";
 
+import { t } from "../i18n";
+
 export type FulfillmentStatus = OrderDetailResponse["fulfillmentProgress"]["status"];
 export type FulfillmentLine = OrderDetailResponse["fulfillmentProgress"]["lines"][number];
 
@@ -10,11 +12,11 @@ export type FulfillmentLine = OrderDetailResponse["fulfillmentProgress"]["lines"
 export function fulfillmentStatusLabel(status: FulfillmentStatus): string {
   switch (status) {
     case "unfulfilled":
-      return "Unfulfilled";
+      return t("fulfill.unfulfilled");
     case "partially_fulfilled":
-      return "Partially fulfilled";
+      return t("fulfill.partial");
     case "fulfilled":
-      return "Fulfilled";
+      return t("fulfill.fulfilled");
   }
 }
 
@@ -24,7 +26,7 @@ export function fulfillmentStatusLabel(status: FulfillmentStatus): string {
  * authorization state, only as a read-only label.
  */
 export function fulfillmentQuantityLabel(fulfilled: number, ordered: number): string {
-  return `${fulfilled} / ${ordered} fulfilled`;
+  return t("fulfill.quantityLabel", { fulfilled, ordered });
 }
 
 /**

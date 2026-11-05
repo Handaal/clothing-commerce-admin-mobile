@@ -27,6 +27,8 @@ import {
   TextButton,
   TextField,
 } from "../ui/components";
+import { useI18n } from "../i18n";
+import { useToast } from "../ui/Toast";
 import { useMutation } from "../ui/useMutation";
 
 export interface CreateProductScreenProps {
@@ -55,6 +57,7 @@ export function CreateProductScreen({
 }: CreateProductScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
+  const { t } = useI18n();
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
   const brandContext = useMemo(
     () => resolveBrandContext(context.access.catalog),
@@ -65,16 +68,16 @@ export function CreateProductScreen({
     return (
       <ScrollScreen>
         <PageHeader
-          eyebrow="Catalog"
-          title="New product"
-          description="Create the product identity before adding variants, prices and media."
+          eyebrow={t("products.eyebrow")}
+          title={t("createProduct.title")}
+          description={t("createProduct.noBrandDesc")}
           icon="tag-plus-outline"
           onBack={onBack}
         />
         <Notice
           tone="warning"
-          title="Brand access required"
-          message="No brand is available to your account for this business, so a product cannot be created here. Ask an owner to grant brand access."
+          title={t("createProduct.brandAccessTitle")}
+          message={t("createProduct.brandAccessMsg")}
         />
       </ScrollScreen>
     );
@@ -115,7 +118,14 @@ function CreateProductForm({
   const [slugTouched, setSlugTouched] = useState(false);
   const [styleCode, setStyleCode] = useState("");
   const [description, setDescription] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    brand?: string;
+    name?: string;
+    slug?: string;
+    styleCode?: string;
+  }>({});
+  const toast = useToast();
+  const { t } = useI18n();
 
   const effectiveSlug = slugTouched ? slug : slugify(name);
   const brandOptions = useMemo<SelectOption[]>(
@@ -138,18 +148,37 @@ function CreateProductForm({
       key,
     ) => createProduct(client, args, key),
     generateKey,
+    {
+      onSuccess: () =>
+        toast.success(t("createProduct.createdToast", { name: name.trim() }), {
+          title: t("createProduct.createdTitle"),
+        }),
+      onError: (error) => {
+        const described = describeCatalogWriteError(error);
+        toast.error(described.message, {
+          title: described.heading,
+          ...(described.recovery === "retry"
+            ? { action: { label: t("common.retry"), icon: "refresh" as const, onPress: () => mutation.retry() } }
+            : {}),
+        });
+      },
+    },
   );
 
   function onSubmit() {
     const trimmedName = name.trim();
     const trimmedSlug = effectiveSlug.trim();
-    const problem = !brandId
-      ? "Choose a brand for this product."
-      : (validateProductName(trimmedName) ??
-        validateSlug(trimmedSlug) ??
-        validateStyleCode(styleCode));
-    setLocalError(problem);
-    if (problem || !brandId) return;
+    const errors = {
+      brand: brandId ? undefined : t("createProduct.chooseBrand"),
+      name: validateProductName(trimmedName) ?? undefined,
+      slug: validateSlug(trimmedSlug) ?? undefined,
+      styleCode: validateStyleCode(styleCode) ?? undefined,
+    };
+    setFieldErrors(errors);
+    if (!brandId || errors.name || errors.slug || errors.styleCode) {
+      toast.error(t("common.fixHighlighted"));
+      return;
+    }
     mutation.submit({
       brandId,
       name: trimmedName,
@@ -168,20 +197,33 @@ function CreateProductForm({
     });
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Catalog" title="Product created" icon="check-circle-outline" />
+        <PageHeader
+          eyebrow={t("products.eyebrow")}
+          title={t("createProduct.createdTitle")}
+          icon="check-circle-outline"
+        />
         <EmptyState
           icon="check-circle-outline"
-          title="Ready to configure"
-          message={`“${name.trim()}” was created as a ${created.status} product. Add variants and a price before publishing it.`}
+          title={t("createProduct.readyTitle")}
+          message={t("createProduct.readyMsg", {
+            name: name.trim(),
+            status: t(
+              created.status === "draft"
+                ? "filter.draft"
+                : created.status === "active"
+                  ? "filter.active"
+                  : "filter.archived",
+            ),
+          })}
         />
         <Surface tone="accent">
           <PrimaryButton
             testID="open-created-product"
-            label="Manage this product"
+            label={t("createProduct.manageCta")}
             icon="arrow-right"
             onPress={() => onCreated(created.productId)}
           />
-          <TextButton label="Back to products" icon="arrow-left" onPress={onBack} />
+          <TextButton label={t("createProduct.backToProducts")} icon="arrow-left" onPress={onBack} />
         </Surface>
       </ScrollScreen>
     );
@@ -193,74 +235,91 @@ function CreateProductForm({
   return (
     <ScrollScreen>
       <PageHeader
-        eyebrow="Catalog"
-        title="New product"
-        description="Start with a clear product identity. Variants, pricing and imagery come next."
+        eyebrow={t("products.eyebrow")}
+        title={t("createProduct.title")}
+        description={t("createProduct.formDesc")}
         icon="tag-plus-outline"
         onBack={onBack}
       />
 
       <FormSection
-        title="Product identity"
-        description="Internal catalog details shared across your management channels."
+        title={t("createProduct.identitySection")}
+        description={t("createProduct.identityDesc")}
         icon="tag-outline"
       >
         {brandContext.kind === "single" ? (
-          <Notice tone="info" message={`Brand: ${brandContext.brand.name}`} />
+          <Notice tone="info" message={t("createProduct.brandFixed", { name: brandContext.brand.name })} />
         ) : (
           <SelectField
-            label="Brand"
+            label={t("createProduct.brandLabel")}
             options={brandOptions}
             selected={brandId}
-            onSelect={setBrandId}
+            onSelect={(value) => {
+              setBrandId(value);
+              setFieldErrors((prev) => ({ ...prev, brand: undefined }));
+            }}
             testIDPrefix="create-brand"
+            required
+            error={fieldErrors.brand}
           />
         )}
         <TextField
-          label="Name"
+          label={t("createProduct.nameField")}
           value={name}
-          onChangeText={setName}
-          placeholder="e.g. Summer Linen Shirt"
+          onChangeText={(next) => {
+            setName(next);
+            if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: undefined }));
+          }}
+          placeholder={t("createProduct.namePlaceholder")}
           testID="create-name"
           autoCapitalize="words"
+          required
+          error={fieldErrors.name}
         />
         <TextField
-          label="Storefront slug"
+          label={t("createProduct.slugField")}
           value={effectiveSlug}
           onChangeText={(next) => {
             setSlugTouched(true);
             setSlug(next);
+            if (fieldErrors.slug) setFieldErrors((prev) => ({ ...prev, slug: undefined }));
           }}
-          placeholder="summer-linen-shirt"
+          placeholder={t("createProduct.slugPlaceholder")}
           testID="create-slug"
           autoCapitalize="none"
+          required
+          error={fieldErrors.slug}
+          hint={t("createProduct.slugHint")}
         />
         <TextField
-          label="Style code (optional)"
+          label={t("createProduct.styleField")}
           value={styleCode}
-          onChangeText={setStyleCode}
-          placeholder="e.g. LS-001"
+          onChangeText={(next) => {
+            setStyleCode(next);
+            if (fieldErrors.styleCode) setFieldErrors((prev) => ({ ...prev, styleCode: undefined }));
+          }}
+          placeholder={t("createProduct.stylePlaceholder")}
           testID="create-style-code"
           autoCapitalize="characters"
+          error={fieldErrors.styleCode}
         />
       </FormSection>
 
       <FormSection
-        title="Storefront content"
-        description="This description is used only when the product is later published."
+        title={t("createProduct.contentSection")}
+        description={t("createProduct.contentDesc")}
         icon="text-box-outline"
       >
         <TextField
-          label="Description (optional)"
+          label={t("createProduct.descField")}
           value={description}
           onChangeText={setDescription}
-          placeholder="Describe the product, material and fit."
+          placeholder={t("createProduct.descPlaceholder")}
           testID="create-description"
           multiline
         />
       </FormSection>
 
-      {localError ? <Notice tone="danger" message={localError} /> : null}
       {described ? (
         <Notice
           tone="danger"
@@ -270,22 +329,22 @@ function CreateProductForm({
           action={
             described.recovery === "retry" ? (
               <TextButton
-                label="Retry"
+                label={t("common.retry")}
                 icon="refresh"
                 testID="create-retry"
                 onPress={() => mutation.retry()}
               />
             ) : (
-              <TextButton label="Dismiss" icon="close" onPress={() => mutation.reset()} />
+              <TextButton label={t("common.dismiss")} icon="close" onPress={() => mutation.reset()} />
             )
           }
         />
       ) : null}
 
       <Surface tone="brand">
-        <Body>The product starts as a draft. Nothing is published or sold automatically.</Body>
+        <Body>{t("createProduct.draftNote")}</Body>
         <PrimaryButton
-          label={mutation.state.status === "submitting" ? "Creating…" : "Create product"}
+          label={mutation.state.status === "submitting" ? t("createProduct.creating") : t("products.createCta")}
           icon="plus"
           testID="create-submit"
           disabled={mutation.state.status === "submitting"}

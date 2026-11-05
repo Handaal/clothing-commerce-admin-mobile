@@ -20,11 +20,13 @@ vi.mock("../session/SessionProvider", () => ({ useSession: () => ({ state: mocks
 
 import { ManagementShell } from "./ManagementShell";
 
-// react-native-web does not forward accessibilityState.selected to an aria attribute, so the active
-// tab is identified by the brand-colored icon (colors.brand === #4F46E5 === rgb(79, 70, 229)) that
-// ManagementShell renders only for the selected item.
+// react-native-web does not forward accessibilityState.selected to an aria attribute, and the brand
+// green active styling (filled icon container + label color) is applied via generated CSS classes
+// rather than inline style. The one inline signal unique to the selected tab is its icon, which
+// ManagementShell renders white (rgb(255, 255, 255)) only when active — inactive icons use the muted
+// ink tone.
 function isActive(tab: HTMLElement): boolean {
-  return tab.querySelector('[style*="rgb(79, 70, 229)"]') !== null;
+  return tab.querySelector('[style*="rgb(255, 255, 255)"]') !== null;
 }
 
 function renderShell() {

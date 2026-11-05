@@ -2,9 +2,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AccordionTrigger, Badge, FilterChips, SearchField } from "./components";
+import { setLocale } from "../i18n";
+import { AccordionTrigger, Badge, FilterChips, PageHeader, SearchField } from "./components";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  setLocale("en");
+});
 
 // The tone classes are hashed by react-native-web, so assert equivalence against a reference label
 // of a known tone rather than a literal class name.
@@ -64,6 +68,37 @@ describe("shared UI controls", () => {
     expect(screen.getByTestId("variants-section").getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("uses an icon-only accessible back control on detail-page headers", () => {
+    const onBack = vi.fn();
+    render(
+      <PageHeader
+        eyebrow="Orders"
+        title="ORD-1001"
+        description="Online order details"
+        icon="receipt-text-outline"
+        onBack={onBack}
+      />,
+    );
+
+    const back = screen.getByLabelText("Back");
+    expect(back.textContent).toBe("");
+    fireEvent.click(back);
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it("applies RTL direction and start alignment immediately for Arabic", () => {
+    setLocale("ar");
+    render(<PageHeader eyebrow="القسم" title="الطلبات" description="إدارة طلبات المتجر" />);
+
+    expect(getComputedStyle(screen.getByTestId("page-header")).direction).toBe("rtl");
+    const title = getComputedStyle(screen.getByTestId("page-header-title"));
+    const description = getComputedStyle(screen.getByTestId("page-header-description"));
+    expect(title.textAlign).toBe("right");
+    expect(title.width).toBe("100%");
+    expect(description.textAlign).toBe("right");
+    expect(description.alignSelf).toBe("flex-end");
+  });
+
   it("auto-tones a captured payment as success and an authorized one as a warning", () => {
     const success = toneClass("active");
     const warning = toneClass("pending");
@@ -76,5 +111,8 @@ describe("shared UI controls", () => {
     expect(toneClass("authorized")).toBe(warning);
     // The removed stray "in" entry must no longer read as success.
     expect(toneClass("in")).toBe(neutral);
+    // Sales channels are metadata, not a health state, so they stay visually neutral.
+    expect(toneClass("POS")).toBe(neutral);
+    expect(toneClass("ONLINE")).toBe(neutral);
   });
 });

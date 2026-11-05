@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import { errorHeading, isRetryable } from "../products/display";
 import {
@@ -17,6 +18,7 @@ import {
   Title,
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
+import { useToast } from "../ui/Toast";
 import { useMutation } from "../ui/useMutation";
 import { AccessScopeSelector } from "./AccessScopeSelector";
 import type { StaffAdapter } from "./adapter";
@@ -57,10 +59,11 @@ export function StaffDetailScreen({
   onBack,
   generateIdempotencyKey,
 }: StaffDetailScreenProps) {
+  const { t } = useI18n();
   if (!adapter) {
     return (
       <ScrollScreen>
-        <StaffUnavailable title="Staff member" onBack={onBack} />
+        <StaffUnavailable title={t("staffDetail.memberTitle")} onBack={onBack} />
       </ScrollScreen>
     );
   }
@@ -83,6 +86,7 @@ function StaffDetailContent({
   generateIdempotencyKey,
 }: StaffDetailScreenProps & { adapter: StaffAdapter }) {
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
+  const { t } = useI18n();
   const load = useCallback(() => adapter.getStaff(membershipId), [adapter, membershipId]);
   const { state, reload } = useAsync<StaffDetail>(load);
 
@@ -93,14 +97,37 @@ function StaffDetailContent({
   });
   // Stable re-read callback for child panels (avoids re-running their success effects each render).
   const reloadDetail = useCallback(() => latestReload.current(), []);
+  const toast = useToast();
 
   const lifecycleMutation = useMutation<MembershipStatusTarget, StaffDetail>(
     (status, key) => adapter.updateMembershipStatus(membershipId, status, key),
     generateKey,
+    {
+      onSuccess: (staff) =>
+        toast.success(
+          t("staffDetail.statusToast", {
+            name: staff.identity.displayName,
+            status: membershipStatusLabel(staff.status),
+          }),
+          { title: t("staffDetail.updatedToast") },
+        ),
+      onError: (error) => {
+        const described = describeStaffWriteError(error);
+        toast.error(described.message, { title: described.heading });
+      },
+    },
   );
   const unassignMutation = useMutation<string, StaffDetail>(
     (assignmentId, key) => adapter.unassignRoleScope(membershipId, assignmentId, key),
     generateKey,
+    {
+      onSuccess: () =>
+        toast.success(t("staffDetail.assignmentRemoved"), { title: t("staffDetail.accessUpdated") }),
+      onError: (error) => {
+        const described = describeStaffWriteError(error);
+        toast.error(described.message, { title: described.heading });
+      },
+    },
   );
 
   useEffect(() => {
@@ -113,9 +140,9 @@ function StaffDetailContent({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Staff" title="Staff member" onBack={onBack} />
+        <PageHeader eyebrow={t("staff.eyebrow")} title={t("staffDetail.memberTitle")} onBack={onBack} />
         <Divider />
-        <LoadingBlock label="Loading staff member…" />
+        <LoadingBlock label={t("staffDetail.loading")} />
       </ScrollScreen>
     );
   }
@@ -123,11 +150,11 @@ function StaffDetailContent({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Staff" title={errorHeading(state.error.kind)} onBack={onBack} />
+        <PageHeader eyebrow={t("staff.eyebrow")} title={errorHeading(state.error.kind)} onBack={onBack} />
         <Divider />
         <Body>{state.error.message}</Body>
         {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
+          <PrimaryButton label={t("common.tryAgain")} onPress={reload} />
         ) : null}
       </ScrollScreen>
     );
@@ -143,28 +170,40 @@ function StaffDetailContent({
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Staff" title={staff.identity.displayName} onBack={onBack} />
+      <PageHeader eyebrow={t("staff.eyebrow")} title={staff.identity.displayName} onBack={onBack} />
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Badge label={membershipStatusLabel(staff.status)} testID="staff-detail-status" />
+        <Badge
+          label={membershipStatusLabel(staff.status)}
+          tone={
+            staff.status === "active"
+              ? "success"
+              : staff.status === "deactivated"
+                ? "danger"
+                : staff.status === "suspended"
+                  ? "warning"
+                  : "neutral"
+          }
+          testID="staff-detail-status"
+        />
       </View>
       <Body>{describeMembershipStatus(staff.status)}</Body>
       <Divider />
 
-      <Eyebrow>Identity</Eyebrow>
-      <InfoRow label="Name" value={staff.identity.displayName} />
+      <Eyebrow>{t("staffDetail.identity")}</Eyebrow>
+      <InfoRow label={t("staffDetail.name")} value={staff.identity.displayName} />
       {staff.identity.primaryEmail ? (
-        <InfoRow label="Email" value={staff.identity.primaryEmail} />
+        <InfoRow label={t("staff.email")} value={staff.identity.primaryEmail} />
       ) : null}
       {staff.identity.identityStatus ? (
-        <InfoRow label="Identity status" value={staff.identity.identityStatus} />
+        <InfoRow label={t("staffDetail.identityStatus")} value={staff.identity.identityStatus} />
       ) : null}
-      <InfoRow label="Membership id" value={staff.membershipId} />
-      {staff.createdAt ? <InfoRow label="Added" value={staff.createdAt} /> : null}
-      {staff.updatedAt ? <InfoRow label="Updated" value={staff.updatedAt} /> : null}
+      <InfoRow label={t("staffDetail.membershipId")} value={staff.membershipId} />
+      {staff.createdAt ? <InfoRow label={t("staffDetail.added")} value={staff.createdAt} /> : null}
+      {staff.updatedAt ? <InfoRow label={t("staffDetail.updated")} value={staff.updatedAt} /> : null}
       <Divider />
 
-      <Eyebrow>Roles &amp; access scopes</Eyebrow>
-      <Body>Each assignment grants one role at one access scope.</Body>
+      <Eyebrow>{t("staffDetail.rolesScopes")}</Eyebrow>
+      <Body>{t("staffDetail.assignmentHint")}</Body>
       <StaffAssignmentList
         assignments={staff.assignments}
         canManage={canManage}
@@ -241,6 +280,7 @@ function AddAssignment({
   const [roleId, setRoleId] = useState<string | null>(null);
   const [scopeId, setScopeId] = useState<string | null>(null);
 
+  const { t } = useI18n();
   const mutation = useMutation<RoleScopeAssignmentInput, StaffDetail>(
     (input, key) => adapter.assignRoleScope(membershipId, input, key),
     generateKey,
@@ -257,18 +297,16 @@ function AddAssignment({
   return (
     <View style={{ gap: 8 }} testID="staff-add-assignment">
       <Divider />
-      <Eyebrow>Add a role &amp; scope</Eyebrow>
+      <Eyebrow>{t("staffDetail.addRoleScope")}</Eyebrow>
       {disabled ? (
-        <Body testID="staff-add-assignment-disabled">
-          Reactivate this membership before assigning new roles or scopes.
-        </Body>
+        <Body testID="staff-add-assignment-disabled">{t("staffDetail.reactivateFirst")}</Body>
       ) : state.status === "loading" ? (
-        <LoadingBlock label="Loading assignable roles and scopes…" />
+        <LoadingBlock label={t("staffDetail.loadingOptions")} />
       ) : state.status === "error" ? (
         <View style={{ gap: 8 }}>
           <Body>{state.error.message}</Body>
           {isRetryable(state.error.kind) ? (
-            <PrimaryButton label="Try again" onPress={reload} />
+            <PrimaryButton label={t("common.tryAgain")} onPress={reload} />
           ) : null}
         </View>
       ) : (
@@ -286,7 +324,11 @@ function AddAssignment({
             testIDPrefix="staff-add-scope"
           />
           <PrimaryButton
-            label={mutation.state.status === "submitting" ? "Assigning…" : "Assign role & scope"}
+            label={
+              mutation.state.status === "submitting"
+                ? t("staffDetail.assigning")
+                : t("staffDetail.assignCta")
+            }
             testID="staff-add-assignment-submit"
             disabled={!roleId || !scopeId || mutation.state.status === "submitting"}
             onPress={() => {
@@ -318,14 +360,15 @@ function WriteError({
   onDismiss: () => void;
   testID: string;
 }) {
+  const { t } = useI18n();
   return (
     <View style={{ gap: 8 }} testID={testID}>
       <Title>{described.heading}</Title>
       <Body>{described.message}</Body>
       {described.recovery === "retry" ? (
-        <PrimaryButton label="Retry" onPress={onRetry} />
+        <PrimaryButton label={t("common.retry")} onPress={onRetry} />
       ) : (
-        <TextButton label="Dismiss" onPress={onDismiss} />
+        <TextButton label={t("common.dismiss")} onPress={onDismiss} />
       )}
     </View>
   );

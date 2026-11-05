@@ -4,21 +4,23 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { brandNameMap } from "../catalog/brands";
 import { describePublication, useProductObservation } from "../catalog/observations";
+import { useI18n, type MessageKey } from "../i18n";
 import { useSession } from "../session/SessionProvider";
 import { AppIcon } from "../ui/Icon";
 import {
   Badge,
-  Body,
   EmptyState,
   FilterChips,
+  HeaderIconButton,
   LoadingBlock,
-  MetricCard,
   Notice,
   PageHeader,
   PressableRow,
   PrimaryButton,
+  ResponsiveList,
   ScrollScreen,
   SectionHeading,
+  SummaryStrip,
   Surface,
   TextButton,
 } from "../ui/components";
@@ -31,17 +33,17 @@ export interface ProductsListScreenProps {
   context: MeContextResponse;
   onOpenProduct: (productId: string) => void;
   onCreateProduct: () => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 type StatusFilter = "all" | "draft" | "active" | "archived";
 
-const STATUS_FILTERS = [
-  { value: "all", label: "All" },
-  { value: "active", label: "Active" },
-  { value: "draft", label: "Draft" },
-  { value: "archived", label: "Archived" },
-] as const;
+const STATUS_FILTER_KEYS = {
+  all: "filter.all",
+  active: "filter.active",
+  draft: "filter.draft",
+  archived: "filter.archived",
+} as const satisfies Record<StatusFilter, MessageKey>;
 
 /**
  * Products list for the active tenant with management affordances. Context controls navigation UX
@@ -52,22 +54,21 @@ export function ProductsListScreen({
   context,
   onOpenProduct,
   onCreateProduct,
-  onBack,
 }: ProductsListScreenProps) {
+  const { t } = useI18n();
   if (!context.access.catalog.canRead) {
     return (
-      <ScrollScreen>
+      <ScrollScreen wide>
         <PageHeader
-          eyebrow="Catalog"
-          title="Products"
-          description="Manage the catalog shared by your stores and website."
+          eyebrow={t("products.eyebrow")}
+          title={t("products.title")}
+          description={t("products.headerNoAccessDesc")}
           icon="tag-multiple-outline"
-          onBack={onBack}
         />
         <Notice
           tone="warning"
-          title="Catalog access required"
-          message="You do not have read access to this catalog. Ask an owner or administrator."
+          title={t("products.accessTitle")}
+          message={t("products.accessBody")}
         />
       </ScrollScreen>
     );
@@ -79,7 +80,6 @@ export function ProductsListScreen({
       context={context}
       onOpenProduct={onOpenProduct}
       onCreateProduct={onCreateProduct}
-      onBack={onBack}
     />
   );
 }
@@ -89,10 +89,14 @@ function ProductsListContent({
   context,
   onOpenProduct,
   onCreateProduct,
-  onBack,
-}: ProductsListScreenProps) {
+}: Omit<ProductsListScreenProps, "onBack">) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
+  const { t } = useI18n();
+  const statusFilterOptions = (Object.keys(STATUS_FILTER_KEYS) as StatusFilter[]).map((value) => ({
+    value,
+    label: t(STATUS_FILTER_KEYS[value]),
+  }));
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const load = useCallback(
     () => client.listProducts(statusFilter === "all" ? undefined : { status: statusFilter }),
@@ -104,61 +108,69 @@ function ProductsListContent({
   const canAuthor = context.access.catalog.brands.length > 0;
   const items = state.status === "success" ? state.data.items : [];
   const activeCount = items.filter((product) => product.status === "active").length;
+  const isEmpty = state.status === "success" && items.length === 0;
 
   return (
-    <ScrollScreen>
+    <ScrollScreen wide>
       <PageHeader
-        eyebrow="Catalog"
-        title="Products"
-        description="Build and maintain the catalog shared by every commerce channel."
+        eyebrow={t("products.eyebrow")}
+        title={t("products.title")}
+        description={t("products.headerDesc")}
         icon="tag-multiple-outline"
-        onBack={onBack}
+        action={
+          canAuthor && !isEmpty ? (
+            <HeaderIconButton
+              label={t("products.createCta")}
+              icon="plus"
+              testID="create-product"
+              onPress={onCreateProduct}
+            />
+          ) : undefined
+        }
       />
 
       <Surface tone="brand" style={styles.catalogOverview}>
         <View style={styles.overviewCopy}>
-          <Text style={styles.overviewTitle}>Catalog workspace</Text>
-          <Text style={styles.overviewBody}>
-            Products stay separate from selling. Manage product identity, variants, prices, media
-            and website publication here.
-          </Text>
+          <Text style={styles.overviewTitle}>{t("products.workspaceTitle")}</Text>
+          <Text style={styles.overviewBody}>{t("products.workspaceBody")}</Text>
         </View>
-        {canAuthor ? (
-          <PrimaryButton
-            label="Create product"
-            icon="plus"
-            testID="create-product"
-            onPress={onCreateProduct}
-          />
-        ) : null}
       </Surface>
-
-      {state.status === "success" ? (
-        <View style={styles.metrics}>
-          <MetricCard label="Loaded products" value={String(items.length)} icon="package-variant" />
-          <MetricCard
-            label="Active"
-            value={String(activeCount)}
-            icon="check-circle-outline"
-            tone="accent"
-          />
-        </View>
-      ) : null}
 
       <View style={styles.listControls}>
         <SectionHeading
-          title="Product catalog"
-          detail={state.status === "success" ? `${items.length} shown` : undefined}
+          title={t("products.catalogHeading")}
+          detail={
+            state.status === "success" ? t("common.shown", { count: items.length }) : undefined
+          }
         />
         <FilterChips
-          options={STATUS_FILTERS}
+          options={statusFilterOptions}
           selected={statusFilter}
           onSelect={setStatusFilter}
           testIDPrefix="product-status-filter"
         />
       </View>
 
-      {state.status === "loading" ? <LoadingBlock label="Loading products…" /> : null}
+      {state.status === "success" ? (
+        <SummaryStrip
+          testID="products-summary"
+          items={[
+            {
+              label: t("products.loadedProducts"),
+              value: String(items.length),
+              icon: "package-variant",
+            },
+            {
+              label: t("products.activeMetric"),
+              value: String(activeCount),
+              icon: "check-circle-outline",
+              tone: "accent",
+            },
+          ]}
+        />
+      ) : null}
+
+      {state.status === "loading" ? <LoadingBlock label={t("products.loading")} /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -166,7 +178,7 @@ function ProductsListContent({
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <TextButton label="Try again" icon="refresh" onPress={reload} />
+              <TextButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -174,16 +186,34 @@ function ProductsListContent({
       {state.status === "success" && items.length === 0 ? (
         <EmptyState
           icon="tag-outline"
-          title={statusFilter === "all" ? "No products yet" : `No ${statusFilter} products`}
-          message={
+          title={
             statusFilter === "all"
-              ? "Create your first product to begin building the management catalog."
-              : "Try another lifecycle filter or create a new product."
+              ? t("products.emptyAllTitle")
+              : t("products.emptyFilteredTitle", { status: t(STATUS_FILTER_KEYS[statusFilter]) })
+          }
+          message={
+            statusFilter === "all" ? t("products.emptyAllBody") : t("products.emptyFilteredBody")
+          }
+          action={
+            statusFilter !== "all" ? (
+              <PrimaryButton
+                label={t("products.showAll")}
+                icon="format-list-bulleted"
+                onPress={() => setStatusFilter("all")}
+              />
+            ) : canAuthor ? (
+              <PrimaryButton
+                label={t("products.createCta")}
+                icon="plus"
+                testID="create-product"
+                onPress={onCreateProduct}
+              />
+            ) : undefined
           }
         />
       ) : null}
       {state.status === "success" && items.length > 0 ? (
-        <View style={styles.productList}>
+        <ResponsiveList>
           {items.map((product) => (
             <ProductRow
               key={product.id}
@@ -192,10 +222,10 @@ function ProductsListContent({
               onOpen={() => onOpenProduct(product.id)}
             />
           ))}
-          {state.data.pageInfo.hasMore ? (
-            <Notice message="More products are available. This screen currently shows the first bounded API page." />
-          ) : null}
-        </View>
+        </ResponsiveList>
+      ) : null}
+      {state.status === "success" && state.data.pageInfo.hasMore ? (
+        <Notice message={t("products.moreAvailable")} />
       ) : null}
     </ScrollScreen>
   );
@@ -212,8 +242,9 @@ function ProductRow({
 }) {
   const observation = useProductObservation(product.id);
   const publication = describePublication(observation);
+  const { t } = useI18n();
   return (
-    <PressableRow testID={`product-row-${product.id}`} onPress={onOpen}>
+    <PressableRow testID={`product-row-${product.id}`} onPress={onOpen} density="compact">
       <View style={styles.productRowTop}>
         <View style={styles.productIcon}>
           <AppIcon name="tshirt-crew-outline" size={25} color={colors.brand} />
@@ -225,7 +256,7 @@ function ProductRow({
             {brandName && product.styleCode ? <Text style={styles.metaDot}>•</Text> : null}
             {product.styleCode ? <Text style={styles.productMeta}>{product.styleCode}</Text> : null}
             {!brandName && !product.styleCode ? (
-              <Text style={styles.productMeta}>Product details</Text>
+              <Text style={styles.productMeta}>{t("products.detailsFallback")}</Text>
             ) : null}
           </View>
         </View>
@@ -237,7 +268,9 @@ function ProductRow({
           size={17}
           color={observation?.storefrontStatus === "published" ? colors.success : colors.inkSubtle}
         />
-        <Body>{publication}</Body>
+        <Text numberOfLines={1} style={styles.publicationText}>
+          {publication}
+        </Text>
       </View>
     </PressableRow>
   );
@@ -248,13 +281,11 @@ const styles = StyleSheet.create({
   overviewCopy: { gap: spacing.sm },
   overviewTitle: { color: colors.ink, ...typography.sectionTitle },
   overviewBody: { color: colors.inkMuted, ...typography.body },
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   listControls: { gap: spacing.sm },
-  productList: { gap: spacing.md },
   productRowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   productIcon: {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.md,
@@ -266,4 +297,11 @@ const styles = StyleSheet.create({
   productMeta: { color: colors.inkMuted, ...typography.caption },
   metaDot: { color: colors.inkSubtle, ...typography.caption },
   publicationRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  publicationText: {
+    flex: 1,
+    color: colors.inkMuted,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "600",
+  },
 });

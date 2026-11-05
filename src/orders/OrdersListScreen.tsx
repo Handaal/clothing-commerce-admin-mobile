@@ -2,25 +2,25 @@ import type { MeContextResponse } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { useI18n, type MessageKey } from "../i18n";
 import { errorHeading, formatMoneyMinor, isRetryable } from "../products/display";
 import { useSession } from "../session/SessionProvider";
 import {
   Badge,
-  Body,
   EmptyState,
   FilterChips,
-  InfoRow,
+  HeaderIconButton,
   LoadingBlock,
-  MetricCard,
   Notice,
   PageHeader,
   PressableRow,
   PrimaryButton,
+  ResponsiveList,
   ScrollScreen,
   SectionHeading,
-  TextButton,
+  SummaryStrip,
 } from "../ui/components";
-import { AppIcon } from "../ui/Icon";
+import { AppIcon, type AppIconName } from "../ui/Icon";
 import { colors, radius, spacing } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
 import { formatOrderDate } from "./display";
@@ -30,56 +30,50 @@ export interface OrdersListScreenProps {
   tenantId: string;
   context: MeContextResponse;
   onOpenOrder: (orderId: string) => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 type OrderChannelFilter = "all" | "pos" | "online";
 
-const channelOptions = [
-  { value: "all", label: "All", icon: "format-list-bulleted" },
-  { value: "pos", label: "POS", icon: "store-outline" },
-  { value: "online", label: "Online", icon: "web" },
-] as const;
+const CHANNEL_META = [
+  { value: "all", labelKey: "orderChannel.all", icon: "format-list-bulleted" },
+  { value: "pos", labelKey: "orderChannel.pos", icon: "store-outline" },
+  { value: "online", labelKey: "orderChannel.online", icon: "web" },
+] as const satisfies readonly {
+  value: OrderChannelFilter;
+  labelKey: MessageKey;
+  icon: AppIconName;
+}[];
 
 /** Read-only order visibility across every authorized sales channel. */
-export function OrdersListScreen({
-  tenantId,
-  context,
-  onOpenOrder,
-  onBack,
-}: OrdersListScreenProps) {
+export function OrdersListScreen({ tenantId, context, onOpenOrder }: OrdersListScreenProps) {
+  const { t } = useI18n();
   if (!context.access.orders.canRead) {
     return (
-      <ScrollScreen>
+      <ScrollScreen wide>
         <PageHeader
-          eyebrow="Sales visibility"
-          title="Orders"
-          description="Review orders placed through POS and online channels."
+          eyebrow={t("orders.eyebrow")}
+          title={t("orders.title")}
+          description={t("orders.headerNoAccessDesc")}
           icon="receipt-text-outline"
-          onBack={onBack}
         />
-        <Notice
-          tone="warning"
-          title="Order access required"
-          message="You do not have read access to orders. Ask an owner or administrator."
-        />
+        <Notice tone="warning" title={t("orders.accessTitle")} message={t("orders.accessBody")} />
       </ScrollScreen>
     );
   }
 
-  return (
-    <OrdersListContent
-      tenantId={tenantId}
-      context={context}
-      onOpenOrder={onOpenOrder}
-      onBack={onBack}
-    />
-  );
+  return <OrdersListContent tenantId={tenantId} context={context} onOpenOrder={onOpenOrder} />;
 }
 
-function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenProps) {
+function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps, "onBack">) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
+  const { t } = useI18n();
+  const channelOptions = CHANNEL_META.map((meta) => ({
+    value: meta.value,
+    label: t(meta.labelKey),
+    icon: meta.icon,
+  }));
   const [channel, setChannel] = useState<OrderChannelFilter>("all");
   const load = useCallback(
     () => loadAllOrders(client, channel === "all" ? {} : { channel }),
@@ -93,42 +87,32 @@ function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenPr
   );
 
   return (
-    <ScrollScreen>
+    <ScrollScreen wide>
       <PageHeader
-        eyebrow="Sales visibility"
-        title="Orders"
-        description="Track placed orders, payments and fulfillment status without changing the sale."
+        eyebrow={t("orders.eyebrow")}
+        title={t("orders.title")}
+        description={t("orders.headerDesc")}
         icon="receipt-text-outline"
         action={
-          state.status === "success" ? (
-            <TextButton label="Refresh orders" icon="refresh" onPress={reload} />
+          state.status === "success" && state.data.length > 0 ? (
+            <HeaderIconButton
+              label={t("orders.refresh")}
+              icon="refresh"
+              testID="refresh-orders-persistent"
+              onPress={reload}
+            />
           ) : undefined
         }
-        onBack={onBack}
       />
 
-      <Notice message="Orders are read-only in the management app. Selling, payment capture and fulfillment actions remain outside this channel." />
-
-      {state.status === "success" ? (
-        <View style={orderStyles.metrics}>
-          <MetricCard
-            label="Loaded orders"
-            value={String(state.data.length)}
-            icon="receipt-text-check-outline"
-          />
-          <MetricCard
-            label="Channels shown"
-            value={String(channelCount)}
-            icon="source-branch"
-            tone="accent"
-          />
-        </View>
-      ) : null}
+      <Notice message={t("orders.readonlyNotice")} />
 
       <View style={orderStyles.filterBlock}>
         <SectionHeading
-          title="Order history"
-          detail={state.status === "success" ? `${state.data.length} shown` : undefined}
+          title={t("orders.historyHeading")}
+          detail={
+            state.status === "success" ? t("common.shown", { count: state.data.length }) : undefined
+          }
         />
         <FilterChips
           options={channelOptions}
@@ -138,7 +122,26 @@ function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenPr
         />
       </View>
 
-      {state.status === "loading" ? <LoadingBlock label="Loading orders…" /> : null}
+      {state.status === "success" ? (
+        <SummaryStrip
+          testID="orders-summary"
+          items={[
+            {
+              label: t("orders.loadedOrders"),
+              value: String(state.data.length),
+              icon: "receipt-text-check-outline",
+            },
+            {
+              label: t("orders.channelsShown"),
+              value: String(channelCount),
+              icon: "source-branch",
+              tone: "accent",
+            },
+          ]}
+        />
+      ) : null}
+
+      {state.status === "loading" ? <LoadingBlock label={t("orders.loading")} /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -146,7 +149,7 @@ function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenPr
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+              <PrimaryButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -154,21 +157,38 @@ function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenPr
       {state.status === "success" && state.data.length === 0 ? (
         <EmptyState
           icon="receipt-text-outline"
-          title="No matching orders"
+          title={t("orders.emptyTitle")}
           message={
             channel === "all"
-              ? "No orders yet. Orders placed in this business will appear here."
-              : `No ${channel === "pos" ? "POS" : "online"} orders found.`
+              ? t("orders.emptyAllBody")
+              : t("orders.emptyFilteredBody", {
+                  channel:
+                    channel === "pos"
+                      ? t("orderChannel.posInline")
+                      : t("orderChannel.onlineInline"),
+                })
+          }
+          action={
+            channel === "all" ? (
+              <PrimaryButton label={t("orders.refresh")} icon="refresh" onPress={reload} />
+            ) : (
+              <PrimaryButton
+                label={t("orders.showAll")}
+                icon="format-list-bulleted"
+                onPress={() => setChannel("all")}
+              />
+            )
           }
         />
       ) : null}
       {state.status === "success" && state.data.length > 0 ? (
-        <View style={orderStyles.list}>
+        <ResponsiveList>
           {state.data.map((order) => (
             <PressableRow
               key={order.id}
               testID={`order-row-${order.id}`}
               onPress={() => onOpenOrder(order.id)}
+              density="compact"
             >
               <View style={orderStyles.orderLead}>
                 <View
@@ -188,50 +208,70 @@ function OrdersListContent({ tenantId, onOpenOrder, onBack }: OrdersListScreenPr
                     <Text style={orderStyles.orderNumber}>{order.orderNumber}</Text>
                     <Badge label={order.status} testID={`order-status-${order.id}`} />
                   </View>
-                  <View style={orderStyles.badgeRow}>
-                    <Badge
-                      label={order.channel.toUpperCase()}
-                      testID={`order-channel-${order.id}`}
-                      tone="brand"
-                    />
+                  <View style={orderStyles.metadataRow}>
+                    <Text testID={`order-channel-${order.id}`} style={orderStyles.channelText}>
+                      {order.channel.toUpperCase()}
+                    </Text>
+                    <View style={orderStyles.metadataDot} />
+                    <AppIcon name="clock-outline" size={14} color={colors.inkSubtle} />
+                    <Text numberOfLines={1} style={orderStyles.dateText}>
+                      {formatOrderDate(order.placedAt)}
+                    </Text>
                   </View>
                 </View>
               </View>
-              <InfoRow label="Total" value={formatMoneyMinor(order.totalMinor, order.currency)} />
-              <View style={orderStyles.placedRow}>
-                <AppIcon name="clock-outline" size={16} color={colors.inkSubtle} />
-                <Body>{formatOrderDate(order.placedAt)}</Body>
+              <View style={orderStyles.totalRow}>
+                <Text style={orderStyles.totalLabel}>{t("orders.total")}</Text>
+                <Text style={orderStyles.totalValue}>
+                  {formatMoneyMinor(order.totalMinor, order.currency)}
+                </Text>
               </View>
             </PressableRow>
           ))}
-        </View>
+        </ResponsiveList>
       ) : null}
     </ScrollScreen>
   );
 }
 
 const orderStyles = StyleSheet.create({
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   filterBlock: { gap: spacing.sm },
-  list: { gap: spacing.md },
-  orderLead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  orderLead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   channelIcon: {
-    width: 46,
-    height: 46,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.md,
     backgroundColor: colors.brandSoft,
   },
   channelIconOnline: { backgroundColor: colors.accentSoft },
-  orderCopy: { flex: 1, gap: spacing.sm },
-  orderNumber: { flex: 1, color: colors.ink, fontSize: 18, lineHeight: 24, fontWeight: "800" },
+  orderCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
+  orderNumber: { flex: 1, color: colors.ink, fontSize: 16, lineHeight: 21, fontWeight: "800" },
   titleRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: spacing.sm,
   },
-  badgeRow: { flexDirection: "row" },
-  placedRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  metadataRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  channelText: { color: colors.accent, fontSize: 10, lineHeight: 14, fontWeight: "800" },
+  metadataDot: {
+    width: 3,
+    height: 3,
+    borderRadius: radius.pill,
+    backgroundColor: colors.borderStrong,
+  },
+  dateText: { flex: 1, color: colors.inkMuted, fontSize: 10, lineHeight: 14, fontWeight: "600" },
+  totalRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+  },
+  totalLabel: { color: colors.inkSubtle, fontSize: 10, fontWeight: "700" },
+  totalValue: { color: colors.ink, fontSize: 13, fontWeight: "800" },
 });

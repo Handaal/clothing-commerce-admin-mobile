@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import {
   Badge,
@@ -51,10 +52,11 @@ export function SuppliersListScreen({
   onCreateSupplier,
   onBack,
 }: SuppliersListScreenProps) {
+  const { t } = useI18n();
   if (!adapter) {
     return (
       <ScrollScreen>
-        <SupplierUnavailable title="Suppliers" onBack={onBack} />
+        <SupplierUnavailable title={t("suppliers.title")} onBack={onBack} />
       </ScrollScreen>
     );
   }
@@ -76,6 +78,7 @@ function SuppliersListContent({
   onCreateSupplier,
   onBack,
 }: SuppliersListScreenProps & { adapter: SupplierAdapter }) {
+  const { t } = useI18n();
   const [search, setSearch] = useState<SupplierSearchState>(EMPTY_SUPPLIER_SEARCH);
   const [query, setQuery] = useState<SupplierListQuery>(() =>
     buildSupplierListQuery(EMPTY_SUPPLIER_SEARCH),
@@ -87,37 +90,31 @@ function SuppliersListContent({
   return (
     <ScrollScreen>
       <PageHeader
-        eyebrow="Partners"
-        title="Suppliers"
-        description="Manage supplier records and review canonical receiving history."
+        eyebrow={t("suppliers.eyebrow")}
+        title={t("suppliers.title")}
+        description={t("suppliers.headerDesc")}
         icon="truck-delivery-outline"
         onBack={onBack}
       />
       <Surface tone="accent">
-        <SectionHeading title="Supplier workspace" detail="Management only" />
-        <Body>
-          Supplier status controls future receiving choices while preserving every historical
-          receipt.
-        </Body>
+        <SectionHeading title={t("suppliers.workspaceTitle")} detail={t("suppliers.managementOnly")} />
+        <Body>{t("suppliers.workspaceBody")}</Body>
         {canManage ? (
           <PrimaryButton
-            label="Add supplier"
+            label={t("suppliers.addCta")}
             icon="account-plus-outline"
             testID="create-supplier"
             onPress={onCreateSupplier}
           />
         ) : (
-          <Notice
-            testID="suppliers-read-only"
-            message="Read-only access · supplier management actions are hidden."
-          />
+          <Notice testID="suppliers-read-only" message={t("suppliers.readOnly")} />
         )}
       </Surface>
       <Surface>
         <SearchField
           value={search.term}
           onChangeText={(term) => setSearch((current) => ({ ...current, term }))}
-          placeholder="Name, reference, phone or email"
+          placeholder={t("suppliers.searchPlaceholder")}
           testID="supplier-search-term"
         />
         <FilterChips
@@ -136,13 +133,13 @@ function SuppliersListContent({
           testIDPrefix="supplier-status-filter"
         />
         <PrimaryButton
-          label="Search suppliers"
+          label={t("suppliers.searchCta")}
           icon="magnify"
           testID="supplier-search-submit"
           onPress={() => setQuery(buildSupplierListQuery(search))}
         />
       </Surface>
-      {state.status === "loading" ? <LoadingBlock label="Loading suppliers…" /> : null}
+      {state.status === "loading" ? <LoadingBlock label={t("suppliers.loading")} /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -150,7 +147,7 @@ function SuppliersListContent({
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+              <PrimaryButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -159,12 +156,8 @@ function SuppliersListContent({
         <View testID="supplier-empty">
           <EmptyState
             icon="truck-outline"
-            title={isFiltered ? "No matching suppliers" : "Your supplier directory is empty"}
-            message={
-              isFiltered
-                ? "No suppliers match your search."
-                : "No suppliers yet. Add your first supplier to get started."
-            }
+            title={isFiltered ? t("suppliers.emptyFilteredTitle") : t("suppliers.emptyTitle")}
+            message={isFiltered ? t("suppliers.emptyFilteredBody") : t("suppliers.emptyBody")}
           />
         </View>
       ) : null}
@@ -172,18 +165,21 @@ function SuppliersListContent({
         <>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
             <MetricCard
-              label="Loaded suppliers"
+              label={t("suppliers.loadedSuppliers")}
               value={String(state.data.length)}
               icon="truck-outline"
             />
             <MetricCard
-              label="Active"
+              label={t("suppliers.activeMetric")}
               value={String(state.data.filter((supplier) => supplier.status === "active").length)}
               icon="check-circle-outline"
               tone="accent"
             />
           </View>
-          <SectionHeading title="Supplier directory" detail={`${state.data.length} loaded`} />
+          <SectionHeading
+            title={t("suppliers.directory")}
+            detail={t("suppliers.loaded", { count: state.data.length })}
+          />
           <View style={{ gap: 12 }}>
             {state.data.map((supplier) => (
               <SupplierRow
@@ -200,6 +196,7 @@ function SuppliersListContent({
 }
 
 function SupplierRow({ supplier, onOpen }: { supplier: SupplierSummary; onOpen: () => void }) {
+  const { t } = useI18n();
   return (
     <PressableRow testID={`supplier-row-${supplier.id}`} onPress={onOpen}>
       <View
@@ -215,13 +212,18 @@ function SupplierRow({ supplier, onOpen }: { supplier: SupplierSummary; onOpen: 
         </Text>
         <Badge
           label={supplierStatusLabel(supplier.status)}
+          tone={supplier.status === "active" ? "success" : "neutral"}
           testID={`supplier-status-${supplier.id}`}
         />
       </View>
-      {supplier.referenceCode ? <InfoRow label="Reference" value={supplier.referenceCode} /> : null}
-      {supplier.contactPerson ? <InfoRow label="Contact" value={supplier.contactPerson} /> : null}
-      {supplier.phone ? <InfoRow label="Phone" value={supplier.phone} /> : null}
-      {supplier.status === "inactive" ? <Body>Inactive · retained, not deleted</Body> : null}
+      {supplier.referenceCode ? (
+        <InfoRow label={t("suppliers.reference")} value={supplier.referenceCode} />
+      ) : null}
+      {supplier.contactPerson ? (
+        <InfoRow label={t("suppliers.contact")} value={supplier.contactPerson} />
+      ) : null}
+      {supplier.phone ? <InfoRow label={t("suppliers.phone")} value={supplier.phone} /> : null}
+      {supplier.status === "inactive" ? <Body>{t("suppliers.inactiveTag")}</Body> : null}
     </PressableRow>
   );
 }

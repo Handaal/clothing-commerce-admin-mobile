@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useRef } from "react";
+import type { MeContextResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
+import { useI18n } from "../i18n";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
+import { loadAllInventory } from "../inventory/load";
+import { distinctVariants } from "../inventory/operations";
 import { errorHeading, isRetryable } from "../products/display";
+import type { SelectOption } from "../ui/components";
 import {
   Badge,
   Body,
@@ -17,8 +22,10 @@ import {
   TextButton,
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
+import { useToast } from "../ui/Toast";
 import { useMutation } from "../ui/useMutation";
 import type { SupplierAdapter } from "./adapter";
+import { SupplierLedger } from "./SupplierLedger";
 import type { Supplier, SupplierStatus } from "./model";
 import { SupplierReceivingHistory } from "./SupplierReceivingHistory";
 import { describeSupplierStatus, supplierStatusLabel, supplierStatusToggle } from "./status";
@@ -33,6 +40,14 @@ export interface SupplierDetailScreenProps {
   onBack: () => void;
   onEdit: (supplierId: string) => void;
   generateIdempotencyKey?: IdempotencyKeyFactory;
+  /**
+   * Optional accounts-payable ledger wiring. When provided, the detail screen renders the supplier's
+   * purchases, payments, dues and reminders. `context` supplies the authorized receiving locations and
+   * `client` lazily loads purchasable variants. Omitted in contexts without a resolved session (the
+   * ledger section is simply not shown).
+   */
+  context?: MeContextResponse;
+  client?: Pick<TenantCommerceClient, "listInventory">;
 }
 
 /**
@@ -48,11 +63,14 @@ export function SupplierDetailScreen({
   onBack,
   onEdit,
   generateIdempotencyKey,
+  context,
+  client,
 }: SupplierDetailScreenProps) {
+  const { t } = useI18n();
   if (!adapter) {
     return (
       <ScrollScreen>
-        <SupplierUnavailable title="Supplier" onBack={onBack} />
+        <SupplierUnavailable title={t("supplierDetail.singular")} onBack={onBack} />
       </ScrollScreen>
     );
   }
@@ -64,6 +82,8 @@ export function SupplierDetailScreen({
       onBack={onBack}
       onEdit={onEdit}
       generateIdempotencyKey={generateIdempotencyKey}
+      context={context}
+      client={client}
     />
   );
 }
@@ -75,14 +95,51 @@ function SupplierDetailContent({
   onBack,
   onEdit,
   generateIdempotencyKey,
+  context,
+  client,
 }: SupplierDetailScreenProps & { adapter: SupplierAdapter }) {
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
+  const { t } = useI18n();
+  // Receiving locations the caller may purchase into (restock destinations for a supplier purchase).
+  const ledgerLocationOptions = useMemo<SelectOption[]>(
+    () =>
+      (context?.access.inventory.write.locations ?? [])
+        .filter((location) => location.canReceive)
+        .map((location) => ({ value: location.id, label: location.name })),
+    [context?.access.inventory.write.locations],
+  );
+  // Lazily load distinct purchasable variants from the authoritative inventory list.
+  const loadVariants = useCallback(async (): Promise<SelectOption[]> => {
+    if (!client) return [];
+    const items = await loadAllInventory(client);
+    return distinctVariants(items).map((v) => ({ value: v.variantId, label: `${v.productName} · ${v.sku}` }));
+  }, [client]);
   const load = useCallback(() => adapter.getSupplier(supplierId), [adapter, supplierId]);
   const { state, reload } = useAsync<Supplier>(load);
 
+  const toast = useToast();
   const statusMutation = useMutation<SupplierStatus, Supplier>(
     (status, key) => adapter.setSupplierStatus(supplierId, status, key),
     generateKey,
+    {
+      onSuccess: (supplier) =>
+        toast.success(
+          t("supplierDetail.statusToast", {
+            name: supplier.name,
+            status: supplierStatusLabel(supplier.status),
+          }),
+          { title: t("supplierDetail.updatedToast") },
+        ),
+      onError: (error) => {
+        const described = describeSupplierWriteError(error);
+        toast.error(described.message, {
+          title: described.heading,
+          ...(described.recovery === "retry"
+            ? { action: { label: t("common.retry"), icon: "refresh" as const, onPress: () => statusMutation.retry() } }
+            : {}),
+        });
+      },
+    },
   );
 
   // Re-read the authoritative supplier once after a successful status change (the badge and toggle then
@@ -99,12 +156,12 @@ function SupplierDetailContent({
     return (
       <ScrollScreen>
         <PageHeader
-          eyebrow="Suppliers"
-          title="Supplier"
+          eyebrow={t("suppliers.title")}
+          title={t("supplierDetail.singular")}
           icon="truck-delivery-outline"
           onBack={onBack}
         />
-        <LoadingBlock label="Loading supplier…" />
+        <LoadingBlock label={t("supplierDetail.loading")} />
       </ScrollScreen>
     );
   }
@@ -113,7 +170,7 @@ function SupplierDetailContent({
     return (
       <ScrollScreen>
         <PageHeader
-          eyebrow="Suppliers"
+          eyebrow={t("suppliers.title")}
           title={errorHeading(state.error.kind)}
           icon="alert-circle-outline"
           onBack={onBack}
@@ -123,7 +180,7 @@ function SupplierDetailContent({
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+              <PrimaryButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -139,58 +196,69 @@ function SupplierDetailContent({
   return (
     <ScrollScreen>
       <PageHeader
-        eyebrow="Supplier record"
+        eyebrow={t("supplierDetail.recordEyebrow")}
         title={supplier.name}
-        description="Contact details, lifecycle and receiving history."
+        description={t("supplierDetail.recordDesc")}
         icon="truck-delivery-outline"
         onBack={onBack}
       />
       <Surface tone="brand">
-        <Badge label={supplierStatusLabel(supplier.status)} testID="supplier-detail-status" />
+        <Badge
+          label={supplierStatusLabel(supplier.status)}
+          tone={supplier.status === "active" ? "success" : "neutral"}
+          testID="supplier-detail-status"
+        />
         <Body>{describeSupplierStatus(supplier.status)}</Body>
       </Surface>
       {canManage ? (
         <Surface>
           <PrimaryButton
-            label="Edit supplier"
+            label={t("supplierDetail.editCta")}
             icon="pencil-outline"
             testID="supplier-edit"
             onPress={() => onEdit(supplier.id)}
           />
         </Surface>
       ) : (
-        <Notice message="Read-only access · supplier management actions are hidden." />
+        <Notice message={t("suppliers.readOnly")} />
       )}
 
-      <FormSection title="Supplier profile" icon="account-box-outline">
+      <FormSection title={t("supplierDetail.profileSection")} icon="account-box-outline">
         {supplier.referenceCode ? (
-          <InfoRow label="Reference" value={supplier.referenceCode} />
+          <InfoRow label={t("suppliers.reference")} value={supplier.referenceCode} />
         ) : null}
-        {supplier.contactPerson ? <InfoRow label="Contact" value={supplier.contactPerson} /> : null}
-        {supplier.phone ? <InfoRow label="Phone" value={supplier.phone} /> : null}
-        {supplier.email ? <InfoRow label="Email" value={supplier.email} /> : null}
+        {supplier.contactPerson ? (
+          <InfoRow label={t("suppliers.contact")} value={supplier.contactPerson} />
+        ) : null}
+        {supplier.phone ? <InfoRow label={t("suppliers.phone")} value={supplier.phone} /> : null}
+        {supplier.email ? <InfoRow label={t("suppliers.email")} value={supplier.email} /> : null}
       </FormSection>
       {supplier.address || supplier.notes ? (
-        <FormSection title="Address & notes" icon="map-marker-outline">
-          {supplier.address ? <InfoRow label="Address" value={supplier.address} /> : null}
-          {supplier.notes ? <InfoRow label="Notes" value={supplier.notes} /> : null}
+        <FormSection title={t("supplierDetail.addressSection")} icon="map-marker-outline">
+          {supplier.address ? (
+            <InfoRow label={t("supplierDetail.address")} value={supplier.address} />
+          ) : null}
+          {supplier.notes ? (
+            <InfoRow label={t("supplierDetail.notes")} value={supplier.notes} />
+          ) : null}
         </FormSection>
       ) : null}
       {supplier.createdAt || supplier.updatedAt ? (
-        <FormSection title="Record timeline" icon="clock-outline">
-          {supplier.createdAt ? <InfoRow label="Created" value={supplier.createdAt} /> : null}
-          {supplier.updatedAt ? <InfoRow label="Updated" value={supplier.updatedAt} /> : null}
+        <FormSection title={t("supplierDetail.timelineSection")} icon="clock-outline">
+          {supplier.createdAt ? (
+            <InfoRow label={t("supplierDetail.created")} value={supplier.createdAt} />
+          ) : null}
+          {supplier.updatedAt ? (
+            <InfoRow label={t("supplierDetail.updated")} value={supplier.updatedAt} />
+          ) : null}
         </FormSection>
       ) : null}
 
       {canManage ? (
-        <FormSection title="Lifecycle control" icon="sync">
-          <Body>
-            Marking a supplier inactive keeps it and its history; it is never deleted. An inactive
-            supplier cannot be chosen for new receipts, but its past receipts remain visible.
-          </Body>
+        <FormSection title={t("supplierDetail.lifecycleSection")} icon="sync">
+          <Body>{t("supplierDetail.lifecycleBody")}</Body>
           <ConfirmButton
-            label={statusMutation.state.status === "submitting" ? "Saving…" : toggle.label}
+            label={statusMutation.state.status === "submitting" ? t("common.saving") : toggle.label}
             confirmLabel={toggle.confirmLabel}
             disabled={statusMutation.state.status === "submitting"}
             testID="supplier-status-toggle"
@@ -204,6 +272,19 @@ function SupplierDetailContent({
             />
           ) : null}
         </FormSection>
+      ) : null}
+
+      {/* Accounts-payable ledger: balance, purchases, payments and reminders. Shown only when the
+          route supplies session context (receiving locations) + a client (variant loading). */}
+      {context ? (
+        <SupplierLedger
+          adapter={adapter}
+          supplierId={supplier.id}
+          canManage={canManage}
+          locationOptions={ledgerLocationOptions}
+          loadVariants={loadVariants}
+          generateKey={generateKey}
+        />
       ) : null}
 
       {/* Historical receiving records — clearly separated from the editable supplier data above. */}
@@ -221,6 +302,7 @@ function StatusError({
   onRetry: () => void;
   onDismiss: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <Notice
       testID="supplier-status-error"
@@ -230,13 +312,13 @@ function StatusError({
       action={
         described.recovery === "retry" ? (
           <PrimaryButton
-            label="Retry"
+            label={t("common.retry")}
             icon="refresh"
             testID="supplier-status-retry"
             onPress={onRetry}
           />
         ) : (
-          <TextButton label="Dismiss" onPress={onDismiss} />
+          <TextButton label={t("common.dismiss")} onPress={onDismiss} />
         )
       }
     />

@@ -14,7 +14,8 @@ export default function SupplierDetailRoute() {
     return <Redirect href="/" />;
   }
 
-  const adapter = resolveSupplierAdapter(getTenantClient(state.tenantId));
+  const client = getTenantClient(state.tenantId);
+  const adapter = resolveSupplierAdapter(client);
   const { canManage } = supplierCapabilities(state.context);
 
   return (
@@ -22,6 +23,8 @@ export default function SupplierDetailRoute() {
       adapter={adapter}
       supplierId={supplierId}
       canManage={canManage}
+      context={state.context}
+      client={client}
       onEdit={(id) => router.push(`/suppliers/edit/${id}`)}
       onBack={() => router.back()}
     />

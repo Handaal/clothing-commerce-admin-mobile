@@ -157,14 +157,15 @@ describe("ProductManageScreen", () => {
     renderScreen();
     fireEvent.click(await screen.findByTestId("section-variants"));
     fireEvent.click(screen.getByTestId(`price-variant-${VARIANT_A}`));
-    // The currency seeds from the existing price and the amount from the current value.
-    expect((screen.getByTestId("price-currency") as HTMLInputElement).value).toBe("USD");
+    // The currency is locked to the single operating currency (EGP) and shown read-only; only the
+    // amount seeds from the current value.
+    expect(screen.getByTestId("price-currency").textContent).toContain("EGP");
     fireEvent.change(screen.getByTestId("price-amount"), { target: { value: "30.00" } });
     fireEvent.click(screen.getByTestId("price-submit"));
     expect(await screen.findByTestId("price-success")).toBeTruthy();
     expect(mocks.setVariantPrice).toHaveBeenCalledWith({
       variantId: VARIANT_A,
-      currency: "USD",
+      currency: "EGP",
       amountMinor: 3000,
       idempotencyKey: "key-1",
     });
@@ -186,12 +187,16 @@ describe("ProductManageScreen", () => {
     renderScreen();
     fireEvent.click(await screen.findByTestId("publish-submit"));
     expect(await screen.findByTestId("publish-success")).toBeTruthy();
-    expect(store.get(PRODUCT_A)).toMatchObject({ storefrontStatus: "published" });
+    await waitFor(() =>
+      expect(store.get(PRODUCT_A)).toMatchObject({ storefrontStatus: "published" }),
+    );
     expect(screen.getByTestId("detail-storefront-status").textContent).toContain("published");
 
     fireEvent.click(screen.getByTestId("unpublish-submit"));
     expect(await screen.findByTestId("unpublish-success")).toBeTruthy();
-    expect(store.get(PRODUCT_A)).toMatchObject({ storefrontStatus: "unpublished" });
+    await waitFor(() =>
+      expect(store.get(PRODUCT_A)).toMatchObject({ storefrontStatus: "unpublished" }),
+    );
   });
 
   it("maps PRODUCT_NOT_PUBLISHABLE to a manager-facing prerequisite explanation", async () => {
@@ -226,7 +231,7 @@ describe("ProductManageScreen", () => {
     expect(mocks.setProductStatus).toHaveBeenCalledWith(
       expect.objectContaining({ productId: PRODUCT_A, status: "active" }),
     );
-    expect(store.get(PRODUCT_A)).toMatchObject({ status: "active" });
+    await waitFor(() => expect(store.get(PRODUCT_A)).toMatchObject({ status: "active" }));
   });
 
   it("requires a two-step confirm to archive (never a one-tap delete)", async () => {

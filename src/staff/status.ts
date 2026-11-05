@@ -6,19 +6,20 @@
  * helpers only shape the UI and offer confirmed, distinct lifecycle actions.
  */
 
+import { t } from "../i18n";
 import type { MembershipStatus, MembershipStatusTarget } from "./model";
 import type { StaffStatusFilter } from "./search";
 
 export function membershipStatusLabel(status: MembershipStatus): string {
   switch (status) {
     case "invited":
-      return "Invited";
+      return t("staffStatus.invited");
     case "active":
-      return "Active";
+      return t("staffStatus.active");
     case "suspended":
-      return "Suspended";
+      return t("staffStatus.suspended");
     case "deactivated":
-      return "Deactivated";
+      return t("staffStatus.deactivated");
   }
 }
 
@@ -26,13 +27,13 @@ export function membershipStatusLabel(status: MembershipStatus): string {
 export function describeMembershipStatus(status: MembershipStatus): string {
   switch (status) {
     case "invited":
-      return "Invited — an initial membership state that has not been activated yet.";
+      return t("staffStatus.invitedDesc");
     case "active":
-      return "Active — normal access to the tenant.";
+      return t("staffStatus.activeDesc");
     case "suspended":
-      return "Suspended — access is temporarily disabled and can be restored.";
+      return t("staffStatus.suspendedDesc");
     case "deactivated":
-      return "Deactivated — access is revoked. The record is retained for history, never deleted.";
+      return t("staffStatus.deactivatedDesc");
   }
 }
 
@@ -57,14 +58,14 @@ export function membershipLifecycleActions(status: MembershipStatus): Membership
       return [
         {
           next: "active",
-          label: "Activate access",
-          confirmLabel: "Confirm activate",
+          label: t("staffAction.activate"),
+          confirmLabel: t("staffAction.confirmActivate"),
           destructive: false,
         },
         {
           next: "deactivated",
-          label: "Deactivate membership",
-          confirmLabel: "Confirm deactivate",
+          label: t("staffAction.deactivate"),
+          confirmLabel: t("staffAction.confirmDeactivate"),
           destructive: true,
         },
       ];
@@ -72,14 +73,14 @@ export function membershipLifecycleActions(status: MembershipStatus): Membership
       return [
         {
           next: "suspended",
-          label: "Suspend access",
-          confirmLabel: "Confirm suspend",
+          label: t("staffAction.suspend"),
+          confirmLabel: t("staffAction.confirmSuspend"),
           destructive: false,
         },
         {
           next: "deactivated",
-          label: "Deactivate membership",
-          confirmLabel: "Confirm deactivate",
+          label: t("staffAction.deactivate"),
+          confirmLabel: t("staffAction.confirmDeactivate"),
           destructive: true,
         },
       ];
@@ -87,14 +88,14 @@ export function membershipLifecycleActions(status: MembershipStatus): Membership
       return [
         {
           next: "active",
-          label: "Restore access",
-          confirmLabel: "Confirm restore",
+          label: t("staffAction.restore"),
+          confirmLabel: t("staffAction.confirmRestore"),
           destructive: false,
         },
         {
           next: "deactivated",
-          label: "Deactivate membership",
-          confirmLabel: "Confirm deactivate",
+          label: t("staffAction.deactivate"),
+          confirmLabel: t("staffAction.confirmDeactivate"),
           destructive: true,
         },
       ];
@@ -107,14 +108,14 @@ export function membershipLifecycleActions(status: MembershipStatus): Membership
 export function staffStatusFilterLabel(filter: StaffStatusFilter): string {
   switch (filter) {
     case "all":
-      return "All";
+      return t("staffFilter.all");
     case "invited":
-      return "Invited";
+      return t("staffFilter.invited");
     case "active":
-      return "Active";
+      return t("staffFilter.active");
     case "suspended":
-      return "Suspended";
+      return t("staffFilter.suspended");
     case "deactivated":
-      return "Deactivated";
+      return t("staffFilter.deactivated");
   }
 }

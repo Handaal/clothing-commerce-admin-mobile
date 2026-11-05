@@ -2,6 +2,7 @@ import { useSignIn } from "@clerk/expo";
 import { useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { Body, Eyebrow, PrimaryButton, Screen, Title } from "./components";
 import { AppIcon } from "./Icon";
 import { colors, radius, spacing } from "./theme";
@@ -14,6 +15,7 @@ import { colors, radius, spacing } from "./theme";
  */
 export function SignInScreen() {
   const { signIn } = useSignIn();
+  const { t } = useI18n();
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +28,7 @@ export function SignInScreen() {
     try {
       const { error: passwordError } = await signIn.password({ emailAddress, password });
       if (passwordError) {
-        setError(clerkErrorMessage(passwordError));
+        setError(clerkErrorMessage(passwordError, t("signIn.genericError")));
         return;
       }
       if (signIn.status === "complete") {
@@ -34,10 +36,10 @@ export function SignInScreen() {
         await signIn.finalize();
       } else {
         // e.g. MFA / additional verification required — not implemented in this checkpoint.
-        setError(`Additional verification required (status: ${signIn.status}).`);
+        setError(t("signIn.mfaRequired", { status: signIn.status }));
       }
     } catch (err) {
-      setError(clerkErrorMessage(err));
+      setError(clerkErrorMessage(err, t("signIn.genericError")));
     } finally {
       setSubmitting(false);
     }
@@ -48,12 +50,12 @@ export function SignInScreen() {
       <View style={styles.brandMark}>
         <AppIcon name="briefcase-variant-outline" size={26} color={colors.white} />
       </View>
-      <Eyebrow>Commerce management</Eyebrow>
-      <Title>Welcome back</Title>
-      <Body>Sign in with your manager account to continue.</Body>
+      <Eyebrow>{t("signIn.eyebrow")}</Eyebrow>
+      <Title>{t("signIn.title")}</Title>
+      <Body>{t("signIn.subtitle")}</Body>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t("signIn.email")}</Text>
         <TextInput
           testID="sign-in-email"
           style={styles.input}
@@ -62,13 +64,13 @@ export function SignInScreen() {
           textContentType="emailAddress"
           value={emailAddress}
           onChangeText={setEmailAddress}
-          placeholder="you@business.com"
+          placeholder={t("signIn.emailPlaceholder")}
           placeholderTextColor={colors.inkSubtle}
         />
       </View>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Password</Text>
+        <Text style={styles.label}>{t("signIn.password")}</Text>
         <TextInput
           testID="sign-in-password"
           style={styles.input}
@@ -85,7 +87,7 @@ export function SignInScreen() {
 
       <PrimaryButton
         testID="sign-in-submit"
-        label={submitting ? "Signing in…" : "Sign in"}
+        label={submitting ? t("signIn.submitting") : t("signIn.submit")}
         icon="login"
         onPress={onSubmit}
         disabled={submitting}
@@ -94,16 +96,12 @@ export function SignInScreen() {
   );
 }
 
-function clerkErrorMessage(error: unknown): string {
+function clerkErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === "object") {
     const maybe = error as { message?: string; errors?: { message?: string }[] };
-    return (
-      maybe.errors?.[0]?.message ??
-      maybe.message ??
-      "Sign-in failed. Check your credentials and connection."
-    );
+    return maybe.errors?.[0]?.message ?? maybe.message ?? fallback;
   }
-  return "Sign-in failed. Check your credentials and connection.";
+  return fallback;
 }
 
 const styles = StyleSheet.create({

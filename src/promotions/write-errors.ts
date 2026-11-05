@@ -1,4 +1,5 @@
 import type { ClassifiedCommerceError } from "../commerce/errors";
+import { t } from "../i18n";
 
 export type PromotionWriteRecovery = "retry" | "edit" | "none" | "replace";
 
@@ -13,15 +14,15 @@ export function describePromotionWriteError(
 ): DescribedPromotionWriteError {
   if (error.kind === "auth") {
     return {
-      heading: "Session problem",
-      message: "Your session is invalid or has expired. Please sign in again.",
+      heading: t("errorHead.auth"),
+      message: t("writeErr.authMessage"),
       recovery: "none",
     };
   }
   if (error.kind === "forbidden") {
     return {
-      heading: "Access denied",
-      message: "The server denied this Promotion operation. Nothing was applied.",
+      heading: t("errorHead.forbidden"),
+      message: t("promoWriteErr.denied"),
       recovery: "none",
     };
   }
@@ -29,34 +30,33 @@ export function describePromotionWriteError(
   switch (error.code) {
     case "PROMOTION_ECONOMICS_LOCKED":
       return {
-        heading: "Promotion already used",
-        message:
-          "Its discount economics are locked after the first redemption. Deactivate this Promotion and create a new one for changed economics.",
+        heading: t("promoWriteErr.economicsLocked"),
+        message: t("promoWriteErr.economicsLockedMsg"),
         recovery: "replace",
       };
     case "PROMOTION_CODE_CONFLICT":
       return {
-        heading: "Code already in use",
-        message: "Choose a different Promotion code and try again.",
+        heading: t("promoWriteErr.codeConflict"),
+        message: t("promoWriteErr.codeConflictMsg"),
         recovery: "edit",
       };
     case "INVALID_PROMOTION":
     case "VALIDATION_ERROR":
       return {
-        heading: "Check Promotion details",
-        message: "Some Promotion details are invalid. Correct them and try again.",
+        heading: t("promoWriteErr.invalid"),
+        message: t("promoWriteErr.invalidMsg"),
         recovery: "edit",
       };
     case "IDEMPOTENCY_CONFLICT":
       return {
-        heading: "Duplicate operation",
-        message: "This operation key was already used with different details. Start again.",
+        heading: t("writeErr.duplicateOp"),
+        message: t("promoWriteErr.duplicateMsg"),
         recovery: "none",
       };
     case "PROMOTION_NOT_FOUND":
       return {
-        heading: "Promotion not found",
-        message: "This Promotion or code no longer exists. Go back and refresh.",
+        heading: t("promoWriteErr.notFound"),
+        message: t("promoWriteErr.notFoundMsg"),
         recovery: "none",
       };
     default:
@@ -65,22 +65,21 @@ export function describePromotionWriteError(
 
   if (error.status === 409) {
     return {
-      heading: "Promotion changed",
-      message: "The Promotion changed while you were working. Refresh it before trying again.",
+      heading: t("promoWriteErr.changed"),
+      message: t("promoWriteErr.changedMsg"),
       recovery: "edit",
     };
   }
   if (error.kind === "network") {
     return {
-      heading: "Network problem",
-      message:
-        "The Commerce API could not be reached. The operation may have been applied; retry safely with the same request.",
+      heading: t("writeErr.networkProblem"),
+      message: t("promoWriteErr.networkMsg"),
       recovery: "retry",
     };
   }
   return {
-    heading: "Something went wrong",
-    message: "The Promotion operation did not complete. Try again.",
+    heading: t("errorHead.unknown"),
+    message: t("promoWriteErr.unknownMsg"),
     recovery: "retry",
   };
 }

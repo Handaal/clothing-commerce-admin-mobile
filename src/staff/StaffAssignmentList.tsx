@@ -1,5 +1,6 @@
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { Badge, Body, ConfirmButton, Eyebrow, InfoRow, SurfaceRow, Title } from "../ui/components";
 import type { StaffAssignment } from "./model";
 import { accessScopeKindLabel, accessScopeTargetLines } from "./scopes";
@@ -26,12 +27,9 @@ export function StaffAssignmentList({
   busy = false,
   onUnassign,
 }: StaffAssignmentListProps) {
+  const { t } = useI18n();
   if (assignments.length === 0) {
-    return (
-      <Body testID="staff-assignments-empty">
-        No role or scope assignments yet. Assignments grant a role at a specific access scope.
-      </Body>
-    );
+    return <Body testID="staff-assignments-empty">{t("staffAssign.empty")}</Body>;
   }
 
   return (
@@ -58,19 +56,19 @@ export function StaffAssignmentList({
           {assignment.role.permissionSummary ? (
             <Body>{assignment.role.permissionSummary}</Body>
           ) : null}
-          <Eyebrow>At scope</Eyebrow>
-          <InfoRow label="Scope" value={assignment.scope.label} />
+          <Eyebrow>{t("staffAssign.atScope")}</Eyebrow>
+          <InfoRow label={t("staffAssign.scope")} value={assignment.scope.label} />
           {accessScopeTargetLines(assignment.scope).map((line, index) => (
             <Body key={`${assignment.assignmentId}-target-${index}`}>{line}</Body>
           ))}
           {assignment.isProtected ? (
             <Eyebrow testID={`staff-assignment-protected-${assignment.assignmentId}`}>
-              Protected — cannot be changed here
+              {t("staffAssign.protected")}
             </Eyebrow>
           ) : canManage && onUnassign ? (
             <ConfirmButton
-              label="Remove assignment"
-              confirmLabel="Confirm remove"
+              label={t("staffAssign.remove")}
+              confirmLabel={t("staffAssign.confirmRemove")}
               disabled={busy}
               testID={`staff-assignment-unassign-${assignment.assignmentId}`}
               onConfirm={() => onUnassign(assignment.assignmentId)}

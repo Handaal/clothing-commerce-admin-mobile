@@ -10,5 +10,12 @@ export default function SettingsRoute() {
   const access = settingsCapabilities(state.context);
   const open = (section: SettingsSectionKey) =>
     router.push(section === "devices" ? "/settings/devices" : `/settings/${section}`);
-  return <SettingsHomeScreen {...access} onOpen={open} onBack={() => router.back()} />;
+  return (
+    <SettingsHomeScreen
+      {...access}
+      context={state.context}
+      onOpen={open}
+      onBack={() => router.back()}
+    />
+  );
 }

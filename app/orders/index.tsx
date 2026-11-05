@@ -1,5 +1,6 @@
 import { Redirect, useRouter } from "expo-router";
 
+import { goBackOrReplace } from "../../src/navigation/back";
 import { OrdersListScreen } from "../../src/orders/OrdersListScreen";
 import { useSession } from "../../src/session/SessionProvider";
 
@@ -18,7 +19,7 @@ export default function OrdersRoute() {
       tenantId={state.tenantId}
       context={state.context}
       onOpenOrder={(orderId) => router.push(`/orders/${orderId}`)}
-      onBack={() => router.back()}
+      onBack={() => goBackOrReplace(router, "/")}
     />
   );
 }

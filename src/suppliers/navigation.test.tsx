@@ -72,15 +72,15 @@ describe("management navigation — Suppliers entry", () => {
     expect(mocks.push).toHaveBeenCalledWith("/suppliers");
   });
 
-  it("does not disturb the existing catalog / inventory / orders entries", async () => {
+  it("keeps primary bottom-tab destinations out of the Home management-area directory", async () => {
     mocks.getContext.mockResolvedValue(
       meContext(TENANT_A, { inventory: { canRead: true, tenantWide: true, locations: [] } }),
     );
     renderHome();
     await screen.findByTestId("open-suppliers");
-    expect(screen.getByTestId("open-products")).toBeTruthy();
-    expect(screen.getByTestId("open-inventory")).toBeTruthy();
-    expect(screen.getByTestId("open-orders")).toBeTruthy();
+    expect(screen.queryByTestId("open-products")).toBeNull();
+    expect(screen.queryByTestId("open-inventory")).toBeNull();
+    expect(screen.queryByTestId("open-orders")).toBeNull();
   });
 
   it("hides the Suppliers entry when the context grants no supplier read access", async () => {
@@ -88,7 +88,7 @@ describe("management navigation — Suppliers entry", () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A, { suppliers: null }));
     renderHome();
     // Wait for a known entry to confirm the ready screen rendered, then assert Suppliers is absent.
-    await screen.findByTestId("open-products");
+    await screen.findByTestId("open-staff");
     expect(screen.queryByTestId("open-suppliers")).toBeNull();
   });
 });

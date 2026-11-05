@@ -5,6 +5,7 @@ import type {
 } from "@shifted/clothing-commerce-sdk";
 
 import { formatMinorToInput } from "../catalog/money";
+import { OPERATING_CURRENCY } from "../commerce/currency";
 import { formatPercentBasisPoints } from "./display";
 
 export type PromotionLimitKind = "unlimited" | "single" | "custom";
@@ -46,7 +47,7 @@ export const EMPTY_PROMOTION_FORM: PromotionFormState = {
   description: "",
   benefitType: "percentage",
   benefitValue: "",
-  currency: "USD",
+  currency: OPERATING_CURRENCY,
   targetType: "order",
   activationType: "automatic",
   minimumSubtotal: "",
@@ -140,7 +141,7 @@ export function validatePromotionForm(
           typeof value === "string" ? value : "Enter the fixed discount amount.";
       }
       if (!/^[A-Z]{3}$/.test(state.currency.trim().toUpperCase())) {
-        errors.currency = "Enter a three-letter currency code, for example USD.";
+        errors.currency = "Enter a three-letter currency code, for example EGP.";
       }
     }
 
@@ -293,7 +294,7 @@ export function promotionDetailToForm(detail: PromotionDetail): PromotionFormSta
       detail.benefitType === "percentage"
         ? formatPercentBasisPoints(detail.benefitPercentBp ?? 0).replace("%", "")
         : formatMinorToInput(detail.benefitAmountMinor ?? 0),
-    currency: detail.benefitCurrency ?? "USD",
+    currency: detail.benefitCurrency ?? OPERATING_CURRENCY,
     targetType: detail.targetType,
     activationType: detail.activationType,
     minimumSubtotal:

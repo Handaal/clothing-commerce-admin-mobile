@@ -117,6 +117,8 @@ describe("ProductsListScreen", () => {
     expect(screen.getByTestId(`product-status-${PRODUCT_A}`).textContent).toBe("active");
     expect(screen.getByText("LS-001")).toBeTruthy();
     expect(screen.getByText("Acme Brand")).toBeTruthy();
+    expect(screen.queryByText("Back")).toBeNull();
+    expect(screen.getByTestId("create-product").textContent).toBe("");
     // The call went through the tenant-scoped client for the resolved tenant.
     expect(mocks.withTenant).toHaveBeenCalledWith(TENANT_A);
     expect(mocks.listProducts).toHaveBeenCalledTimes(1);
@@ -126,6 +128,8 @@ describe("ProductsListScreen", () => {
     mocks.listProducts.mockResolvedValue(productList([]));
     renderProducts();
     expect(await screen.findByText(/No products yet/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("create-product"));
+    expect(onCreateProduct).toHaveBeenCalledOnce();
   });
 
   it("surfaces a classified network error with a retry", async () => {

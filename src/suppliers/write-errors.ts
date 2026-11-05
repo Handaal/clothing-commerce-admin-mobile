@@ -8,6 +8,7 @@
  */
 
 import type { ClassifiedCommerceError } from "../commerce/errors";
+import { t } from "../i18n";
 
 /**
  * - `retry` — AMBIGUOUS outcome (transport / 5xx). The write may or may not have applied, so the retry
@@ -29,16 +30,15 @@ export function describeSupplierWriteError(
 ): DescribedSupplierWriteError {
   if (error.kind === "auth") {
     return {
-      heading: "Session problem",
-      message: "Your session is invalid or has expired. Please sign in again.",
+      heading: t("errorHead.auth"),
+      message: t("writeErr.authMessage"),
       recovery: "none",
     };
   }
   if (error.kind === "forbidden") {
     return {
-      heading: "Access denied",
-      message:
-        "You are signed in, but the server denied this supplier operation. It was not applied.",
+      heading: t("errorHead.forbidden"),
+      message: t("supWriteErr.authDenied"),
       recovery: "none",
     };
   }
@@ -46,36 +46,59 @@ export function describeSupplierWriteError(
   switch (error.code) {
     case "SUPPLIER_CODE_CONFLICT":
       return {
-        heading: "Reference code already in use",
-        message:
-          "Another supplier already uses this reference code. Choose a different code and try again.",
+        heading: t("supWriteErr.codeConflict"),
+        message: t("supWriteErr.codeConflictMsg"),
         recovery: "edit",
       };
     case "SUPPLIER_INACTIVE":
       return {
-        heading: "Supplier is inactive",
-        message: "This supplier is inactive and cannot be used for new receipts.",
+        heading: t("supWriteErr.inactive"),
+        message: t("supWriteErr.inactiveMsg"),
         recovery: "none",
       };
     case "SUPPLIER_NOT_FOUND":
       return {
-        heading: "Supplier not found",
-        message:
-          "This supplier could not be found. It may have been removed. Refresh and try again.",
+        heading: t("supWriteErr.notFound"),
+        message: t("supWriteErr.notFoundMsg"),
         recovery: "none",
       };
     case "INVALID_SUPPLIER":
+    case "INVALID_SUPPLIER_PURCHASE":
     case "VALIDATION_ERROR":
       return {
-        heading: "Invalid supplier details",
-        message: "Some of the supplier details are not valid. Correct them and try again.",
+        heading: t("supWriteErr.invalid"),
+        message: t("supWriteErr.invalidMsg"),
         recovery: "edit",
+      };
+    case "INVENTORY_LOCATION_UNAVAILABLE":
+      return {
+        heading: t("supWriteErr.locationUnavailable"),
+        message: t("supWriteErr.locationUnavailableMsg"),
+        recovery: "edit",
+      };
+    case "PAYMENT_EXCEEDS_DUES":
+      return {
+        heading: t("supWriteErr.paymentExceeds"),
+        message: t("supWriteErr.paymentExceedsMsg"),
+        recovery: "edit",
+      };
+    case "NO_OUTSTANDING_DUES":
+      return {
+        heading: t("supWriteErr.noDues"),
+        message: t("supWriteErr.noDuesMsg"),
+        recovery: "none",
+      };
+    case "SUPPLIER_PURCHASE_NOT_FOUND":
+    case "SUPPLIER_REMINDER_NOT_FOUND":
+      return {
+        heading: t("supWriteErr.notFound"),
+        message: t("supWriteErr.notFoundMsg2"),
+        recovery: "none",
       };
     case "IDEMPOTENCY_CONFLICT":
       return {
-        heading: "Duplicate operation",
-        message:
-          "This operation key was already used with different details. Start a new operation to continue.",
+        heading: t("writeErr.duplicateOp"),
+        message: t("writeErr.duplicateOpMessage"),
         recovery: "none",
       };
     default:
@@ -84,22 +107,21 @@ export function describeSupplierWriteError(
 
   if (error.kind === "not-found") {
     return {
-      heading: "Supplier not found",
-      message: "This supplier could not be found. Refresh and try again.",
+      heading: t("supWriteErr.notFound"),
+      message: t("supWriteErr.notFoundMsg2"),
       recovery: "none",
     };
   }
   if (error.kind === "network") {
     return {
-      heading: "Network problem",
-      message:
-        "The Commerce API could not be reached. The operation may or may not have been applied — retry to complete it safely.",
+      heading: t("writeErr.networkProblem"),
+      message: t("writeErr.networkMessage"),
       recovery: "retry",
     };
   }
   return {
-    heading: "Something went wrong",
-    message: `${error.message} You can retry.`,
+    heading: t("errorHead.unknown"),
+    message: t("writeErr.retrySuffix", { message: error.message }),
     recovery: "retry",
   };
 }

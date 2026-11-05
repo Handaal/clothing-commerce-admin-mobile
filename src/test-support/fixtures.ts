@@ -19,12 +19,18 @@ import type {
   ReceiveInventoryResponse,
   RegisterProductMediaResponse,
   ReturnDetailResponse,
+  ReturnEligibilityResponse,
   ReturnHistoryResponse,
   SetVariantPriceResponse,
   Supplier as SdkSupplier,
+  SupplierDue,
   SupplierListResponse,
+  SupplierPayment,
+  SupplierPurchase,
+  SupplierPurchaseItem,
   SupplierReceipt as SdkSupplierReceipt,
   SupplierReceiptsResponse,
+  SupplierReminder,
   SupplierSummary as SdkSupplierSummary,
   AssignableStaffRole as SdkAssignableStaffRole,
   AssignableStaffRolesResponse as SdkAssignableStaffRolesResponse,
@@ -552,6 +558,38 @@ export function returnHistory(
   return { items, pageInfo: { nextCursor: null, hasMore: false, ...pageInfo } };
 }
 
+/** Server return eligibility for `GET /orders/{id}/return-eligibility`, matching {@link orderDetail}. */
+export function returnEligibility(
+  overrides: Partial<ReturnEligibilityResponse> = {},
+): ReturnEligibilityResponse {
+  return {
+    orderId: ORDER_A,
+    currency: "USD",
+    eligible: true,
+    reason: null,
+    maxRefundableMinor: 12995,
+    policy: {
+      windowDays: 30,
+      allowedReasons: null,
+      manualRefundsEnabled: true,
+      maxManualRefundMinor: null,
+    },
+    lines: [
+      {
+        orderLineId: ORDER_LINE_A,
+        lineNumber: 1,
+        variantId: VARIANT_A,
+        purchasedQuantity: 3,
+        fulfilledQuantity: 3,
+        returnedQuantity: 0,
+        eligibleQuantity: 3,
+        unitPriceMinor: 2599,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Phase 2N Suppliers (foundation only — no Supplier SDK exists yet). These fixtures build the local,
 // Admin-owned model and a fake adapter, used ONLY in tests. Production has no adapter and shows the
@@ -609,6 +647,99 @@ function page<T>(items: T[], overrides: Partial<CursorPage<T>["pageInfo"]> = {})
   return { items, pageInfo: { nextCursor: null, hasMore: false, ...overrides } };
 }
 
+// ── Supplier accounts-payable ledger fixtures ──────────────────────────────────────────────────
+export const SUPPLIER_PURCHASE_A = "e9e9e9e9-e9e9-4e9e-8e9e-e9e9e9e9e9e9";
+export const SUPPLIER_PAYMENT_A = "f0f0f0f0-f0f0-4f0f-8f0f-f0f0f0f0f0f0";
+export const SUPPLIER_REMINDER_A = "a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3";
+
+export function supplierPurchase(overrides: Partial<SupplierPurchase> = {}): SupplierPurchase {
+  return {
+    id: SUPPLIER_PURCHASE_A,
+    supplierId: SUPPLIER_A,
+    supplierName: "Nile Textiles Co.",
+    supplierCode: "SUP-001",
+    inventoryOperationId: OPERATION_ID,
+    inventoryLocationId: INVENTORY_LOCATION_A,
+    inventoryLocationName: "Flagship Stockroom",
+    supplierReference: "PO-2026-0007",
+    currency: "USD",
+    totalMinor: 50000,
+    initialPaidMinor: 20000,
+    effectivePaidMinor: 20000,
+    outstandingMinor: 30000,
+    occurredAt: "2026-09-15T10:00:00.000Z",
+    notes: null,
+    actorMembershipId: MEMBERSHIP_A,
+    createdAt: "2026-09-15T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function supplierPurchaseItem(
+  overrides: Partial<SupplierPurchaseItem> = {},
+): SupplierPurchaseItem {
+  return {
+    id: "a4a4a4a4-a4a4-4a4a-8a4a-a4a4a4a4a4a4",
+    lineNumber: 1,
+    variantId: VARIANT_A,
+    sku: "LS-001-M",
+    productName: "Linen Shirt",
+    quantity: 20,
+    unitCostMinor: 2500,
+    lineTotalMinor: 50000,
+    ...overrides,
+  };
+}
+
+export function supplierPayment(overrides: Partial<SupplierPayment> = {}): SupplierPayment {
+  return {
+    id: SUPPLIER_PAYMENT_A,
+    supplierId: SUPPLIER_A,
+    currency: "USD",
+    amountMinor: 10000,
+    paidAt: "2026-09-20T10:00:00.000Z",
+    notes: null,
+    actorMembershipId: MEMBERSHIP_A,
+    createdAt: "2026-09-20T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function supplierDue(overrides: Partial<SupplierDue> = {}): SupplierDue {
+  return {
+    supplierId: SUPPLIER_A,
+    supplierName: "Nile Textiles Co.",
+    supplierCode: "SUP-001",
+    supplierStatus: "active",
+    currency: "USD",
+    purchasedMinor: 50000,
+    paidMinor: 20000,
+    outstandingMinor: 30000,
+    ...overrides,
+  };
+}
+
+export function supplierReminder(overrides: Partial<SupplierReminder> = {}): SupplierReminder {
+  return {
+    id: SUPPLIER_REMINDER_A,
+    supplierId: SUPPLIER_A,
+    supplierName: "Nile Textiles Co.",
+    dueDate: "2026-10-01",
+    amountMinor: 30000,
+    currency: "USD",
+    note: "Settle balance",
+    leadDays: 3,
+    notify: true,
+    status: "pending",
+    isDue: false,
+    isOverdue: false,
+    actorMembershipId: MEMBERSHIP_A,
+    createdAt: "2026-09-21T10:00:00.000Z",
+    updatedAt: "2026-09-21T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
 /**
  * Build a fake {@link SupplierAdapter} for tests. Each method defaults to a schema-valid success and
  * can be overridden per test (including with rejections). This is the test-only stand-in for the
@@ -622,6 +753,20 @@ export function fakeSupplierAdapter(overrides: Partial<SupplierAdapter> = {}): S
     updateSupplier: async (id, draft) => supplier({ ...draft, id }),
     setSupplierStatus: async (id, status) => supplier({ id, status }),
     listSupplierReceipts: async () => page([supplierReceipt()]),
+    listSupplierPurchases: async () => page([supplierPurchase()]),
+    supplierPurchaseItems: async () => [supplierPurchaseItem()],
+    recordSupplierPurchase: async (args) =>
+      supplierPurchase({ supplierId: args.supplierId, inventoryLocationId: args.inventoryLocationId }),
+    listSupplierPayments: async () => page([supplierPayment()]),
+    recordSupplierPayment: async (supplierId, args) =>
+      supplierPayment({ supplierId, amountMinor: args.amountMinor }),
+    supplierDues: async () => [supplierDue()],
+    listSupplierReminders: async () => [supplierReminder()],
+    createSupplierReminder: async (args) =>
+      supplierReminder({ supplierId: args.supplierId, dueDate: args.dueDate }),
+    updateSupplierReminder: async (reminderId, args) =>
+      supplierReminder({ id: reminderId, ...(args.status ? { status: args.status } : {}) }),
+    deleteSupplierReminder: async () => {},
     ...overrides,
   };
 }

@@ -8,6 +8,8 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
+
 import {
   AccordionTrigger,
   Badge,
@@ -85,9 +87,12 @@ export interface InventoryOperationsProps {
    * changing them changes the idempotency intent (a new key), never a silently mutated retry.
    */
   receiveSuppliers?: SelectOption[];
+  /** Optional controlled operation state used by a screen-level persistent action dock. */
+  activeOperation?: InventoryOperationKind | null;
+  onActiveOperationChange?: (operation: InventoryOperationKind | null) => void;
 }
 
-type OpKind = "receive" | "adjust" | "transfer";
+export type InventoryOperationKind = "receive" | "adjust" | "transfer";
 
 /**
  * The three inventory WRITE actions layered onto the read surface. Opening Stock and Generic Issue are
@@ -95,7 +100,10 @@ type OpKind = "receive" | "adjust" | "transfer";
  * still authorizes every write, and a real 403 surfaces as an explicit denied state.
  */
 export function InventoryOperations(props: InventoryOperationsProps) {
-  const [activeOp, setActiveOp] = useState<OpKind | null>(null);
+  const { t } = useI18n();
+  const [internalActiveOp, setInternalActiveOp] = useState<InventoryOperationKind | null>(null);
+  const activeOp = props.activeOperation !== undefined ? props.activeOperation : internalActiveOp;
+  const setActiveOp = props.onActiveOperationChange ?? setInternalActiveOp;
   const hasWriteAction = props.write.canReceive || props.write.canAdjust || props.write.canTransfer;
   // Fail closed at startup: write forms stay hidden until the recovery panel has validated the durable
   // V2 store AND completed the legacy V1 check and reported availability. There is deliberately NO window
@@ -146,16 +154,10 @@ export function InventoryOperations(props: InventoryOperationsProps) {
   return (
     <View style={{ gap: 12 }}>
       <SectionHeading
-        title="Inventory operations"
-        detail={hasWriteAction ? "Choose an action" : "Read-only access"}
+        title={t("invOps.title")}
+        detail={hasWriteAction ? t("invOps.chooseAction") : t("invOps.readOnlyAccess")}
       />
-      <Notice
-        message={
-          hasWriteAction
-            ? "Receive deliveries, reconcile a physical count, or move stock between authorized locations. Every change is verified by the Commerce API."
-            : "You can review current stock, but no inventory-change operations are available to this account."
-        }
-      />
+      <Notice message={hasWriteAction ? t("invOps.noticeWrite") : t("invOps.noticeReadOnly")} />
       {/* Restart/remount recovery: any inventory command whose result was never confirmed is surfaced
           here and completed by replaying its original idempotency key — never re-minted into a duplicate. */}
       <InventoryRecoveryPanel
@@ -172,8 +174,8 @@ export function InventoryOperations(props: InventoryOperationsProps) {
         <Notice
           testID="inventory-writes-unavailable"
           tone="danger"
-          title="Inventory changes temporarily unavailable"
-          message="A recent change could not be saved to the recovery journal, so inventory changes are paused and no inventory was changed. Reload to try again; if it keeps happening, the recovery journal needs attention. Your other Admin data is unaffected."
+          title={t("invOps.storagePausedTitle")}
+          message={t("invOps.storagePausedMsg")}
         />
       ) : null}
       {formsVisible ? (
@@ -181,8 +183,8 @@ export function InventoryOperations(props: InventoryOperationsProps) {
           <View style={{ gap: 8 }}>
             {props.write.canReceive ? (
               <OpTab
-                label="Receive stock"
-                description="Record stock arriving at a location"
+                label={t("invOps.tabReceive")}
+                description={t("invOps.tabReceiveDesc")}
                 icon="package-down"
                 testID="open-receive"
                 active={activeOp === "receive"}
@@ -191,8 +193,8 @@ export function InventoryOperations(props: InventoryOperationsProps) {
             ) : null}
             {props.write.canAdjust ? (
               <OpTab
-                label="Adjust (reconcile)"
-                description="Match the system to a physical count"
+                label={t("invOps.tabAdjust")}
+                description={t("invOps.tabAdjustDesc")}
                 icon="clipboard-check-outline"
                 testID="open-adjust"
                 active={activeOp === "adjust"}
@@ -201,8 +203,8 @@ export function InventoryOperations(props: InventoryOperationsProps) {
             ) : null}
             {props.write.canTransfer ? (
               <OpTab
-                label="Transfer stock"
-                description="Move units between locations"
+                label={t("invOps.tabTransfer")}
+                description={t("invOps.tabTransferDesc")}
                 icon="swap-horizontal"
                 testID="open-transfer"
                 active={activeOp === "transfer"}
@@ -331,6 +333,7 @@ function WriteError<TResult extends object>({
   state: Extract<JournaledMutationState<TResult>, { status: "error" }>;
   mutation: JournaledMutation<TResult>;
 }) {
+  const { t } = useI18n();
   const described = describeInventoryWriteError(state.error);
   return (
     <Notice
@@ -340,15 +343,19 @@ function WriteError<TResult extends object>({
       message={described.message}
       action={
         described.recovery === "retry" ? (
-          <PrimaryButton label="Retry" testID="write-retry" onPress={() => mutation.retry()} />
+          <PrimaryButton
+            label={t("common.retry")}
+            testID="write-retry"
+            onPress={() => mutation.retry()}
+          />
         ) : described.recovery === "edit" ? (
           <PrimaryButton
-            label="Edit and try again"
+            label={t("invOps.editRetry")}
             testID="write-edit"
             onPress={() => mutation.reset()}
           />
         ) : (
-          <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+          <TextButton label={t("common.dismiss")} onPress={() => mutation.reset()} />
         )
       }
     />
@@ -367,27 +374,21 @@ function BlockedNotice<TResult extends object>({
   reason: "storage-unavailable" | "pending-equivalent";
   mutation: JournaledMutation<TResult>;
 }) {
+  const { t } = useI18n();
   if (reason === "pending-equivalent") {
     return (
       <View style={{ gap: 8 }} testID="write-blocked-equivalent">
-        <Title>This operation is already in progress</Title>
-        <Body>
-          A matching operation is already waiting in the unfinished operations above. Resume it
-          there to complete it safely — it reuses the original request, so it can never be counted
-          twice.
-        </Body>
-        <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+        <Title>{t("invOps.blockedEquivTitle")}</Title>
+        <Body>{t("invOps.blockedEquivMsg")}</Body>
+        <TextButton label={t("common.dismiss")} onPress={() => mutation.reset()} />
       </View>
     );
   }
   return (
     <View style={{ gap: 8 }} testID="write-blocked-storage">
-      <Title>Inventory changes temporarily unavailable</Title>
-      <Body>
-        This change could not be saved to the recovery journal, so it was not sent. No inventory was
-        changed. Try again; if it keeps happening, the recovery journal needs attention.
-      </Body>
-      <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+      <Title>{t("invOps.storagePausedTitle")}</Title>
+      <Body>{t("invOps.blockedStorageMsg")}</Body>
+      <TextButton label={t("common.dismiss")} onPress={() => mutation.reset()} />
     </View>
   );
 }
@@ -407,6 +408,7 @@ function ReceiveForm(
     onStorageUnavailable?: () => void;
   },
 ) {
+  const { t } = useI18n();
   const [variantId, setVariantId] = useState<string | null>(null);
   const [inventoryLocationId, setLocationId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState("");
@@ -418,8 +420,8 @@ function ReceiveForm(
   const suppliersEnabled = (props.supplierOptions?.length ?? 0) > 0;
   // Prepend an explicit "No supplier" choice so leaving a receipt unlinked is a deliberate selection.
   const supplierSelectOptions = useMemo<SelectOption[]>(
-    () => [{ value: NO_SUPPLIER, label: "No supplier" }, ...(props.supplierOptions ?? [])],
-    [props.supplierOptions],
+    () => [{ value: NO_SUPPLIER, label: t("invOps.noSupplier") }, ...(props.supplierOptions ?? [])],
+    [props.supplierOptions, t],
   );
   const hasSupplier = suppliersEnabled && supplierId !== NO_SUPPLIER;
 
@@ -435,7 +437,7 @@ function ReceiveForm(
     const qty = Number(quantity);
     const problem =
       !variantId || !inventoryLocationId
-        ? "Choose an item and a location."
+        ? t("invOps.chooseItemLocation")
         : validatePositiveQuantity(qty);
     setLocalError(problem);
     if (problem || !variantId || !inventoryLocationId) return;
@@ -466,21 +468,27 @@ function ReceiveForm(
           setSupplierId(NO_SUPPLIER);
           setSupplierReference("");
         }}
-        resetLabel="New receipt"
+        resetLabel={t("invOps.newReceipt")}
       >
-        <Title>Stock received</Title>
-        <InfoRow label="Item" value={`${productName} · ${sku}`} />
-        <InfoRow label="Location" value={locationName(props.locations, r.inventoryLocationId)} />
+        <Title>{t("invOps.stockReceived")}</Title>
+        <InfoRow label={t("invOps.item")} value={`${productName} · ${sku}`} />
+        <InfoRow
+          label={t("invOps.location")}
+          value={locationName(props.locations, r.inventoryLocationId)}
+        />
         {r.supplierId ? (
           <View testID="receive-supplier-result">
-            <InfoRow label="Supplier" value={supplierLabel(props.supplierOptions, r.supplierId)} />
+            <InfoRow
+              label={t("invOps.supplier")}
+              value={supplierLabel(props.supplierOptions, r.supplierId)}
+            />
           </View>
         ) : null}
         {r.supplierReference ? (
-          <InfoRow label="Supplier reference" value={r.supplierReference} />
+          <InfoRow label={t("invOps.supplierReference")} value={r.supplierReference} />
         ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Body>On hand now</Body>
+          <Body>{t("invOps.onHandNow")}</Body>
           <Badge label={String(r.observedOnHand)} testID="receive-observed-onhand" />
         </View>
       </SuccessPanel>
@@ -488,17 +496,17 @@ function ReceiveForm(
   }
 
   return (
-    <FormShell title="Receive stock" hint="Record physical stock that arrived into a location.">
+    <FormShell title={t("invOps.tabReceive")} hint={t("invOps.receiveHint")}>
       <SelectField
-        label="Item"
+        label={t("invOps.item")}
         options={props.variantOptions}
         selected={variantId}
         onSelect={setVariantId}
         testIDPrefix="receive-variant"
-        emptyLabel="No items are visible in inventory yet."
+        emptyLabel={t("invOps.noItemsVisible")}
       />
       <SelectField
-        label="Location"
+        label={t("invOps.location")}
         options={props.locationOptions}
         selected={inventoryLocationId}
         onSelect={setLocationId}
@@ -509,7 +517,7 @@ function ReceiveForm(
       {suppliersEnabled ? (
         <>
           <SelectField
-            label="Supplier (optional)"
+            label={t("invOps.supplierOptional")}
             options={supplierSelectOptions}
             selected={supplierId}
             onSelect={setSupplierId}
@@ -517,10 +525,10 @@ function ReceiveForm(
           />
           {hasSupplier ? (
             <TextField
-              label="Supplier reference (optional)"
+              label={t("invOps.supplierRefOptional")}
               value={supplierReference}
               onChangeText={setSupplierReference}
-              placeholder="e.g. GRN-2026-0012"
+              placeholder={t("invOps.supplierRefPlaceholder")}
               testID="receive-supplier-reference"
               autoCapitalize="characters"
             />
@@ -528,14 +536,14 @@ function ReceiveForm(
         </>
       ) : null}
       <NumberField
-        label="Quantity received"
+        label={t("invOps.quantityReceived")}
         value={quantity}
         onChangeText={setQuantity}
-        placeholder="e.g. 5"
+        placeholder={t("invOps.qtyPlaceholder5")}
         testID="receive-quantity"
       />
       <TextField
-        label="Note (optional)"
+        label={t("invOps.noteOptional")}
         value={note}
         onChangeText={setNote}
         testID="receive-note"
@@ -548,7 +556,9 @@ function ReceiveForm(
         <BlockedNotice reason={mutation.state.reason} mutation={mutation} />
       ) : null}
       <PrimaryButton
-        label={mutation.state.status === "submitting" ? "Receiving…" : "Receive stock"}
+        label={
+          mutation.state.status === "submitting" ? t("invOps.receiving") : t("invOps.tabReceive")
+        }
         testID="receive-submit"
         disabled={mutation.state.status === "submitting"}
         onPress={onSubmit}
@@ -562,6 +572,7 @@ function ReceiveForm(
 // ---------------------------------------------------------------------------------------------------
 
 function AdjustForm(props: InventoryOperationsProps & { onStorageUnavailable?: () => void }) {
+  const { t } = useI18n();
   const adjustableLocationIds = useMemo(
     () =>
       new Set(
@@ -607,15 +618,21 @@ function AdjustForm(props: InventoryOperationsProps & { onStorageUnavailable?: (
     () =>
       rows.map((r) => ({
         value: rowKey(r.inventoryLocationId, r.variantId),
-        label: `${r.productName} · ${r.sku} @ ${locationName(props.locations, r.inventoryLocationId)} — on hand ${r.onHand} (v${r.version})`,
+        label: t("invOps.adjustRowLabel", {
+          product: r.productName,
+          sku: r.sku,
+          location: locationName(props.locations, r.inventoryLocationId),
+          onHand: r.onHand,
+          version: r.version,
+        }),
       })),
-    [props.locations, rows],
+    [props.locations, rows, t],
   );
 
   function onSubmit() {
     const counted = Number(countedQuantity);
     const problem = !selectedRow
-      ? "Choose an item to reconcile."
+      ? t("invOps.chooseItemReconcile")
       : validateCountedQuantity(counted);
     setLocalError(problem);
     if (problem || !selectedRow) return;
@@ -639,12 +656,12 @@ function AdjustForm(props: InventoryOperationsProps & { onStorageUnavailable?: (
           mutation.reset();
           setCountedQuantity("");
         }}
-        resetLabel="New reconciliation"
+        resetLabel={t("invOps.newReconciliation")}
       >
-        <Title>{r.changed ? "Stock reconciled" : "Count confirmed (no change)"}</Title>
-        <InfoRow label="Previous on hand" value={String(r.previousOnHand)} />
+        <Title>{r.changed ? t("invOps.stockReconciled") : t("invOps.countConfirmed")}</Title>
+        <InfoRow label={t("invOps.previousOnHand")} value={String(r.previousOnHand)} />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Body>Counted on hand</Body>
+          <Body>{t("invOps.countedOnHand")}</Body>
           <Badge label={String(r.newOnHand)} testID="adjust-new-onhand" />
         </View>
       </SuccessPanel>
@@ -652,30 +669,27 @@ function AdjustForm(props: InventoryOperationsProps & { onStorageUnavailable?: (
   }
 
   return (
-    <FormShell
-      title="Adjust (reconcile)"
-      hint="State the actual physical count. It reconciles against the version in the current inventory row."
-    >
+    <FormShell title={t("invOps.tabAdjust")} hint={t("invOps.adjustHint")}>
       {options.length === 0 ? (
-        <Body>No inventory rows are available at locations where adjustment is permitted.</Body>
+        <Body>{t("invOps.noAdjustRows")}</Body>
       ) : (
         <>
           <SelectField
-            label="Item to reconcile"
+            label={t("invOps.itemToReconcile")}
             options={options}
             selected={selectedKey}
             onSelect={setSelectedKey}
             testIDPrefix="adjust-row"
           />
           <NumberField
-            label="Counted physical quantity"
+            label={t("invOps.countedPhysicalQty")}
             value={countedQuantity}
             onChangeText={setCountedQuantity}
-            placeholder="actual count"
+            placeholder={t("invOps.actualCountPlaceholder")}
             testID="adjust-counted"
           />
           <TextField
-            label="Note (optional)"
+            label={t("invOps.noteOptional")}
             value={note}
             onChangeText={setNote}
             testID="adjust-note"
@@ -688,7 +702,11 @@ function AdjustForm(props: InventoryOperationsProps & { onStorageUnavailable?: (
             <BlockedNotice reason={mutation.state.reason} mutation={mutation} />
           ) : null}
           <PrimaryButton
-            label={mutation.state.status === "submitting" ? "Reconciling…" : "Reconcile to count"}
+            label={
+              mutation.state.status === "submitting"
+                ? t("invOps.reconciling")
+                : t("invOps.reconcileToCount")
+            }
             testID="adjust-submit"
             disabled={mutation.state.status === "submitting"}
             onPress={onSubmit}
@@ -711,6 +729,7 @@ function TransferForm(
     onStorageUnavailable?: () => void;
   },
 ) {
+  const { t } = useI18n();
   const [variantId, setVariantId] = useState<string | null>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [destinationId, setDestinationId] = useState<string | null>(null);
@@ -737,7 +756,7 @@ function TransferForm(
     const qty = Number(quantity);
     const problem =
       !variantId || !sourceId || !destinationId
-        ? "Choose an item, a source and a destination."
+        ? t("invOps.chooseItemSourceDest")
         : (validateTransferLocations(sourceId, destinationId) ?? validatePositiveQuantity(qty));
     setLocalError(problem);
     if (problem || !variantId || !sourceId || !destinationId) return;
@@ -762,9 +781,9 @@ function TransferForm(
           setQuantity("");
           setNote("");
         }}
-        resetLabel="New transfer"
+        resetLabel={t("invOps.newTransfer")}
       >
-        <Title>Stock transferred</Title>
+        <Title>{t("invOps.stockTransferred")}</Title>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Body>{locationName(props.locations, r.source.inventoryLocationId)}</Body>
           <Badge label={String(r.source.observedOnHand)} testID="transfer-source-onhand" />
@@ -781,41 +800,38 @@ function TransferForm(
   }
 
   return (
-    <FormShell
-      title="Transfer stock"
-      hint="Move stock from one location to another in one operation."
-    >
+    <FormShell title={t("invOps.tabTransfer")} hint={t("invOps.transferHint")}>
       <SelectField
-        label="Item"
+        label={t("invOps.item")}
         options={props.variantOptions}
         selected={variantId}
         onSelect={setVariantId}
         testIDPrefix="transfer-variant"
-        emptyLabel="No items are visible in inventory yet."
+        emptyLabel={t("invOps.noItemsVisible")}
       />
       <SelectField
-        label="From (source)"
+        label={t("invOps.fromSource")}
         options={props.sourceOptions}
         selected={sourceId}
         onSelect={setSourceId}
         testIDPrefix="transfer-source"
       />
       <SelectField
-        label="To (destination)"
+        label={t("invOps.toDestination")}
         options={destinationOptions}
         selected={destinationId}
         onSelect={setDestinationId}
         testIDPrefix="transfer-destination"
       />
       <NumberField
-        label="Quantity to move"
+        label={t("invOps.quantityToMove")}
         value={quantity}
         onChangeText={setQuantity}
-        placeholder="e.g. 3"
+        placeholder={t("invOps.qtyPlaceholder3")}
         testID="transfer-quantity"
       />
       <TextField
-        label="Note (optional)"
+        label={t("invOps.noteOptional")}
         value={note}
         onChangeText={setNote}
         testID="transfer-note"
@@ -828,7 +844,11 @@ function TransferForm(
         <BlockedNotice reason={mutation.state.reason} mutation={mutation} />
       ) : null}
       <PrimaryButton
-        label={mutation.state.status === "submitting" ? "Transferring…" : "Transfer stock"}
+        label={
+          mutation.state.status === "submitting"
+            ? t("invOps.transferring")
+            : t("invOps.tabTransfer")
+        }
         testID="transfer-submit"
         disabled={mutation.state.status === "submitting"}
         onPress={onSubmit}
@@ -868,10 +888,11 @@ function SuccessPanel({
   resetLabel: string;
   children: React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <Surface tone="brand" testID={testID}>
       {children}
-      <Notice tone="success" message="Inventory has been refreshed from the server below." />
+      <Notice tone="success" message={t("invOps.refreshedNotice")} />
       <PrimaryButton label={resetLabel} icon="plus" onPress={onReset} />
     </Surface>
   );

@@ -21,7 +21,7 @@ describe("ReportsDashboardScreen", () => {
     expect(await screen.findByText("Africa/Cairo")).toBeTruthy();
     expect(screen.getAllByText("Gross").length).toBeGreaterThan(0);
     expect(screen.getAllByText("AOV").length).toBe(2);
-    expect(screen.getAllByText("Returns and refunds â€” separate from sales").length).toBe(2);
+    expect(screen.getAllByText("Returns and refunds — separate from sales").length).toBe(2);
     expect(screen.getAllByText("POS vs Online").length).toBe(2);
     expect(screen.getAllByText("Brand breakdown").length).toBe(2);
     expect(screen.getAllByText("Linen Shirt").length).toBe(2);

@@ -1,5 +1,6 @@
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { Body, Eyebrow, SelectField, type SelectOption } from "../ui/components";
 import type { AccessScopeOption } from "./model";
 import { accessScopeKindLabel, accessScopeTargetLines } from "./scopes";
@@ -24,6 +25,7 @@ export function AccessScopeSelector({
   onSelect,
   testIDPrefix = "staff-scope",
 }: AccessScopeSelectorProps) {
+  const { t } = useI18n();
   const options: SelectOption[] = scopes.map((scope) => ({
     value: scope.id,
     label: `${scope.label} · ${accessScopeKindLabel(scope.kind)}`,
@@ -34,16 +36,16 @@ export function AccessScopeSelector({
   return (
     <View style={{ gap: 8 }} testID={`${testIDPrefix}-selector`}>
       <SelectField
-        label="Access scope"
+        label={t("staffScope.label")}
         options={options}
         selected={selectedScopeId}
         onSelect={onSelect}
         testIDPrefix={testIDPrefix}
-        emptyLabel="No assignable access scopes are available."
+        emptyLabel={t("staffScope.emptyLabel")}
       />
       {selected ? (
         <View style={{ gap: 4 }} testID={`${testIDPrefix}-summary`}>
-          <Eyebrow>Scope covers</Eyebrow>
+          <Eyebrow>{t("staffScope.covers")}</Eyebrow>
           {accessScopeTargetLines(selected).map((line, index) => (
             <Body key={`${selected.id}-target-${index}`}>{line}</Body>
           ))}

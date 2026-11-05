@@ -189,7 +189,7 @@ describe("Phase 2R Settings preparation", () => {
     expect(screen.queryByTestId("register-code")).toBeNull();
   });
 
-  it("presents a server-returned Register currency history lock without bypassing it", async () => {
+  it("surfaces a server-returned Register history lock on save without bypassing it", async () => {
     const onSave = vi
       .fn()
       .mockRejectedValue(
@@ -209,7 +209,10 @@ describe("Phase 2R Settings preparation", () => {
         onSave={onSave}
       />,
     );
-    fireEvent.change(screen.getByTestId("register-currency"), { target: { value: "USD" } });
+    // Currency is locked to EGP and read-only; editing another field still surfaces the server lock.
+    fireEvent.change(screen.getByTestId("register-display-name"), {
+      target: { value: "Front Counter" },
+    });
     fireEvent.click(screen.getByTestId("save-register"));
     expect(await screen.findByTestId("settings-save-error-historical-lock")).toBeTruthy();
     expect(
