@@ -60,6 +60,7 @@ function customerList(overrides = {}): CustomerListResponse {
         totalSpentMinor: 120000,
         lastOrderAt: "2026-09-20T10:00:00.000Z",
         currency: "USD",
+        outstandingMinor: 0,
       },
     ],
     pageInfo: { nextCursor: null, hasMore: false },

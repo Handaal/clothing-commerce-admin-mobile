@@ -69,6 +69,7 @@ function customerDetail(overrides = {}): CustomerDetailResponse {
     totalSpentMinor: 50000,
     lastOrderAt: "2026-09-20T10:00:00.000Z",
     currency: "USD",
+    outstandingMinor: 0,
     ...overrides,
   };
 }

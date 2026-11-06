@@ -351,9 +351,13 @@ export function inventoryItem(
   return {
     inventoryLocationId: INVENTORY_LOCATION_A,
     variantId: VARIANT_A,
+    productId: PRODUCT_A,
+    brandId: BRAND_A,
     productName: "Linen Shirt",
     sku: "LS-001-M",
     onHand: 22,
+    unitCostMinor: null,
+    sellingPriceMinor: null,
     version: 1,
     ...overrides,
   };
