@@ -21,6 +21,7 @@ describe("management section registry", () => {
     expect(visibleManagementSections(context).map((section) => section.id)).toEqual([
       "dashboard",
       "products",
+      "collections",
       "orders",
       "customers",
       "activity",

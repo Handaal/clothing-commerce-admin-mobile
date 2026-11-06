@@ -54,7 +54,9 @@ describe("Promotion navigation", () => {
   it("hides navigation when Promotion read guidance is absent", async () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A, { promotions: null }));
     renderHome();
-    await screen.findByTestId("open-products");
+    // `open-more` is always present on the dashboard; `open-products` is a PRIMARY bottom-tab and is
+    // deliberately not a dashboard module card.
+    await screen.findByTestId("open-more");
     expect(screen.queryByTestId("open-promotions")).toBeNull();
   });
 
@@ -71,8 +73,8 @@ describe("Promotion navigation", () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A));
     renderHome();
     await screen.findByTestId("open-promotions");
-    expect(screen.getByTestId("open-products")).toBeTruthy();
-    expect(screen.getByTestId("open-orders")).toBeTruthy();
+    // Products and Orders are PRIMARY bottom-tabs, not dashboard module cards; the remaining
+    // secondary management areas still surface as cards.
     expect(screen.getByTestId("open-suppliers")).toBeTruthy();
     expect(screen.getByTestId("open-staff")).toBeTruthy();
   });

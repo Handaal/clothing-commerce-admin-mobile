@@ -10,10 +10,14 @@ import type { CommerceSettings } from "../settings/model";
 
 const mocks = vi.hoisted(() => ({
   getCommerce: vi.fn<() => Promise<CommerceSettings>>(),
+  // Must be a STABLE reference, mirroring the real SessionProvider: CheckoutConfig keys a
+  // useCallback (and thus useAsync's effect) on getTenantClient, so a fresh function per render
+  // would re-fire the fetch every render and spin an infinite re-render loop.
+  getTenantClient: () => ({}),
 }));
 
 vi.mock("../session/SessionProvider", () => ({
-  useSession: () => ({ getTenantClient: () => ({}) }),
+  useSession: () => ({ getTenantClient: mocks.getTenantClient }),
 }));
 vi.mock("../settings/adapter", () => ({
   resolveSettingsAdapter: () => ({ getCommerce: mocks.getCommerce }),
