@@ -15,7 +15,11 @@ export function LanguageToggle() {
   const toast = useToast();
 
   return (
-    <FormSection title={t("language.title")} description={t("language.description")} icon="translate">
+    <FormSection
+      title={t("language.title")}
+      description={t("language.description")}
+      icon="translate"
+    >
       <View style={styles.row} accessibilityRole="radiogroup">
         {LOCALES.map((code) => {
           const active = code === locale;

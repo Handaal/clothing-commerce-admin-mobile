@@ -48,7 +48,11 @@ describe("SupplierLedger", () => {
     });
     fireEvent.click(screen.getByTestId("supplier-payment-submit"));
     await waitFor(() => expect(recordSupplierPayment).toHaveBeenCalledTimes(1));
-    expect(recordSupplierPayment).toHaveBeenCalledWith(SUPPLIER_A, { amountMinor: 10000 }, "fixed-key");
+    expect(recordSupplierPayment).toHaveBeenCalledWith(
+      SUPPLIER_A,
+      { amountMinor: 10000 },
+      "fixed-key",
+    );
   });
 
   it("adds a reminder through the adapter", async () => {

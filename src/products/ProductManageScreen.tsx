@@ -182,7 +182,10 @@ function ProductManage({
           </View>
         </View>
         <View style={productStyles.badges}>
-          <Badge label={t("pm.internalStatus", { status: product.status })} testID="detail-status" />
+          <Badge
+            label={t("pm.internalStatus", { status: product.status })}
+            testID="detail-status"
+          />
           <Badge
             label={
               observation?.storefrontStatus
@@ -196,7 +199,11 @@ function ProductManage({
       </Surface>
 
       <View style={productStyles.metrics}>
-        <MetricCard label={t("pm.variantsMetric")} value={String(data.variants.length)} icon="shape-outline" />
+        <MetricCard
+          label={t("pm.variantsMetric")}
+          value={String(data.variants.length)}
+          icon="shape-outline"
+        />
         <MetricCard
           label={t("pm.pricesMetric")}
           value={String(data.prices.length)}
@@ -562,9 +569,7 @@ function EditDetailsForm({
 
   return (
     <View style={productStyles.sectionBody}>
-      {observedSlug === undefined ? (
-        <Notice tone="warning" message={t("pm.slugDescNote")} />
-      ) : null}
+      {observedSlug === undefined ? <Notice tone="warning" message={t("pm.slugDescNote")} /> : null}
       <TextField label={t("pm.name")} value={name} onChangeText={setName} testID="edit-name" />
       <TextField
         label={t("pm.slug")}

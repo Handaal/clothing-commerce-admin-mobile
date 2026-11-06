@@ -174,7 +174,11 @@ export function BrandForm({
       <SaveFeedback state={save} />
       <PrimaryButton
         label={
-          save.status === "saving" ? t("set.saving") : mode === "create" ? t("set.createBrand") : t("set.saveBrand")
+          save.status === "saving"
+            ? t("set.saving")
+            : mode === "create"
+              ? t("set.createBrand")
+              : t("set.saveBrand")
         }
         testID="save-brand"
         disabled={!draft.code.trim() || !draft.displayName.trim() || save.status === "saving"}
@@ -659,7 +663,12 @@ function CapabilityFields({
   const { t } = useI18n();
   const fields: Array<[keyof CapabilityFlags, string]> = [
     ...(includeSellable
-      ? [["sellable" as keyof CapabilityFlags, t("set.capSellable")] as [keyof CapabilityFlags, string]]
+      ? [
+          ["sellable" as keyof CapabilityFlags, t("set.capSellable")] as [
+            keyof CapabilityFlags,
+            string,
+          ],
+        ]
       : []),
     ["fulfillment", t("set.fulfillment")],
     ["receiving", t("set.capReceiving")],

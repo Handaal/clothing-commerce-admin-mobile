@@ -53,20 +53,6 @@ export function CreateCollectionScreen({
   const [fieldErrors, setFieldErrors] = useState<{ name?: string; slug?: string }>({});
   const toast = useToast();
 
-  if (!context.access.catalog.canRead) {
-    return (
-      <ScrollScreen>
-        <PageHeader
-          eyebrow={t("collections.eyebrow")}
-          title={t("createCollection.title")}
-          icon="shape-plus-outline"
-          onBack={onBack}
-        />
-        <Notice tone="warning" title={t("collections.accessTitle")} message={t("collections.accessBody")} />
-      </ScrollScreen>
-    );
-  }
-
   const effectiveSlug = slugTouched ? slug : slugify(name);
 
   const mutation = useMutation(
@@ -84,6 +70,24 @@ export function CreateCollectionScreen({
       },
     },
   );
+
+  if (!context.access.catalog.canRead) {
+    return (
+      <ScrollScreen>
+        <PageHeader
+          eyebrow={t("collections.eyebrow")}
+          title={t("createCollection.title")}
+          icon="shape-plus-outline"
+          onBack={onBack}
+        />
+        <Notice
+          tone="warning"
+          title={t("collections.accessTitle")}
+          message={t("collections.accessBody")}
+        />
+      </ScrollScreen>
+    );
+  }
 
   function onSubmit() {
     const trimmedName = name.trim();
@@ -195,9 +199,17 @@ export function CreateCollectionScreen({
           testID="create-collection-error"
           action={
             described.recovery === "retry" ? (
-              <TextButton label={t("common.retry")} icon="refresh" onPress={() => mutation.retry()} />
+              <TextButton
+                label={t("common.retry")}
+                icon="refresh"
+                onPress={() => mutation.retry()}
+              />
             ) : (
-              <TextButton label={t("common.dismiss")} icon="close" onPress={() => mutation.reset()} />
+              <TextButton
+                label={t("common.dismiss")}
+                icon="close"
+                onPress={() => mutation.reset()}
+              />
             )
           }
         />

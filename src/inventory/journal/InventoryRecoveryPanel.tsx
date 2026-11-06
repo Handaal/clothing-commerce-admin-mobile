@@ -319,9 +319,7 @@ export function InventoryRecoveryPanel({
       <Divider />
       <Title>{t("invRecovery.unfinishedTitle")}</Title>
       <Body>
-        {writesEnabled
-          ? t("invRecovery.unfinishedBody")
-          : t("invRecovery.unfinishedBodyReadOnly")}
+        {writesEnabled ? t("invRecovery.unfinishedBody") : t("invRecovery.unfinishedBodyReadOnly")}
       </Body>
       {state.entries.map((entry) => {
         const status = state.statuses[entry.commandKey] ?? { kind: "unresolved", sent: true };
@@ -332,11 +330,17 @@ export function InventoryRecoveryPanel({
             testID={`recovery-entry-${entry.commandKey}`}
           >
             <Divider />
-            <InfoRow label={t("invRecovery.operation")} value={describePayload(entry.payload, items, locations)} />
+            <InfoRow
+              label={t("invRecovery.operation")}
+              value={describePayload(entry.payload, items, locations)}
+            />
             {status.kind === "accepted" ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Body>{t("invRecovery.completed")}</Body>
-                <Badge label={t("invRecovery.applied")} testID={`recovery-resolved-${entry.commandKey}`} />
+                <Badge
+                  label={t("invRecovery.applied")}
+                  testID={`recovery-resolved-${entry.commandKey}`}
+                />
                 {writesEnabled ? (
                   <PrimaryButton
                     label={t("common.dismiss")}

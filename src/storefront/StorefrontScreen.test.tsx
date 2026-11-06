@@ -35,7 +35,12 @@ function commerce(): CommerceSettings {
   return {
     storefront,
     storefronts: [storefront],
-    returns: { enabled: true, windowDays: 14, manualRefundsEnabled: false, maxManualRefundMinor: null },
+    returns: {
+      enabled: true,
+      windowDays: 14,
+      manualRefundsEnabled: false,
+      maxManualRefundMinor: null,
+    },
   };
 }
 
@@ -49,7 +54,10 @@ function withSettings(
   return context;
 }
 
-function renderScreen(context: MeContextResponse, callbacks: Partial<Record<string, () => void>> = {}) {
+function renderScreen(
+  context: MeContextResponse,
+  callbacks: Partial<Record<string, () => void>> = {},
+) {
   return render(
     <StorefrontScreen
       tenantId={TENANT_A}

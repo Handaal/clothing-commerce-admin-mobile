@@ -122,7 +122,9 @@ function StaffDetailContent({
     generateKey,
     {
       onSuccess: () =>
-        toast.success(t("staffDetail.assignmentRemoved"), { title: t("staffDetail.accessUpdated") }),
+        toast.success(t("staffDetail.assignmentRemoved"), {
+          title: t("staffDetail.accessUpdated"),
+        }),
       onError: (error) => {
         const described = describeStaffWriteError(error);
         toast.error(described.message, { title: described.heading });
@@ -140,7 +142,11 @@ function StaffDetailContent({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("staff.eyebrow")} title={t("staffDetail.memberTitle")} onBack={onBack} />
+        <PageHeader
+          eyebrow={t("staff.eyebrow")}
+          title={t("staffDetail.memberTitle")}
+          onBack={onBack}
+        />
         <Divider />
         <LoadingBlock label={t("staffDetail.loading")} />
       </ScrollScreen>
@@ -150,7 +156,11 @@ function StaffDetailContent({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("staff.eyebrow")} title={errorHeading(state.error.kind)} onBack={onBack} />
+        <PageHeader
+          eyebrow={t("staff.eyebrow")}
+          title={errorHeading(state.error.kind)}
+          onBack={onBack}
+        />
         <Divider />
         <Body>{state.error.message}</Body>
         {isRetryable(state.error.kind) ? (
@@ -199,7 +209,9 @@ function StaffDetailContent({
       ) : null}
       <InfoRow label={t("staffDetail.membershipId")} value={staff.membershipId} />
       {staff.createdAt ? <InfoRow label={t("staffDetail.added")} value={staff.createdAt} /> : null}
-      {staff.updatedAt ? <InfoRow label={t("staffDetail.updated")} value={staff.updatedAt} /> : null}
+      {staff.updatedAt ? (
+        <InfoRow label={t("staffDetail.updated")} value={staff.updatedAt} />
+      ) : null}
       <Divider />
 
       <Eyebrow>{t("staffDetail.rolesScopes")}</Eyebrow>

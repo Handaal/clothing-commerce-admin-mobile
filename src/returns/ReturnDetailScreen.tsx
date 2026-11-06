@@ -71,7 +71,11 @@ export function ReturnDetailScreen({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("returnDetail.eyebrow")} title={t("returnDetail.title")} onBack={onBack} />
+        <PageHeader
+          eyebrow={t("returnDetail.eyebrow")}
+          title={t("returnDetail.title")}
+          onBack={onBack}
+        />
         <Divider />
         <LoadingBlock label={t("returnDetail.loading")} />
       </ScrollScreen>
@@ -81,7 +85,11 @@ export function ReturnDetailScreen({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("returnDetail.eyebrow")} title={errorHeading(state.error.kind)} onBack={onBack} />
+        <PageHeader
+          eyebrow={t("returnDetail.eyebrow")}
+          title={errorHeading(state.error.kind)}
+          onBack={onBack}
+        />
         <Divider />
         <Body>{state.error.message}</Body>
         {isRetryable(state.error.kind) ? (
@@ -123,7 +131,11 @@ function ReturnDetail({
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow={t("returnDetail.eyebrow")} title={t("returnDetail.title")} onBack={onBack} />
+      <PageHeader
+        eyebrow={t("returnDetail.eyebrow")}
+        title={t("returnDetail.title")}
+        onBack={onBack}
+      />
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Badge label={data.status} testID="return-detail-status" />
         <Badge label={returnChannelLabel(data.channel)} testID="return-detail-channel" />
@@ -133,7 +145,10 @@ function ReturnDetail({
       {onOpenOrder ? (
         <TextButton label={t("returnDetail.viewOrder")} onPress={() => onOpenOrder(data.orderId)} />
       ) : null}
-      <InfoRow label={t("returnDetail.returnedValue")} value={formatMoneyMinor(data.amountMinor, data.currency)} />
+      <InfoRow
+        label={t("returnDetail.returnedValue")}
+        value={formatMoneyMinor(data.amountMinor, data.currency)}
+      />
       <InfoRow label={t("returnDetail.accepted")} value={data.createdAt} />
       <InfoRow label={t("returnDetail.source")} value={returnSourceLabel(data.source)} />
       <InfoRow label={t("returnDetail.actor")} value={data.actorMembershipId} />
@@ -148,11 +163,16 @@ function ReturnDetail({
       </View>
       <Body>{refundStatusDetail(refund.status)}</Body>
       <InfoRow label={t("returnDetail.method")} value={refundMethodLabel(refund.method)} />
-      <InfoRow label={t("returnDetail.amount")} value={formatMoneyMinor(refund.amountMinor, refund.currency)} />
+      <InfoRow
+        label={t("returnDetail.amount")}
+        value={formatMoneyMinor(refund.amountMinor, refund.currency)}
+      />
       {refund.settlementReference ? (
         <InfoRow label={t("returnDetail.settlementRef")} value={refund.settlementReference} />
       ) : null}
-      {refund.settledAt ? <InfoRow label={t("returnDetail.settled")} value={refund.settledAt} /> : null}
+      {refund.settledAt ? (
+        <InfoRow label={t("returnDetail.settled")} value={refund.settledAt} />
+      ) : null}
 
       {canSettleRefund(refund) ? (
         <SettleRefundPanel
@@ -186,7 +206,10 @@ function ReturnDetail({
             <Title>{t("returnDetail.lineN", { n: line.lineNumber })}</Title>
             <InfoRow label={t("returnDetail.qtyReturned")} value={String(line.quantity)} />
             <InfoRow label={t("returnDetail.reason")} value={line.reason} />
-            <InfoRow label={t("returnDetail.disposition")} value={dispositionLabel(line.disposition)} />
+            <InfoRow
+              label={t("returnDetail.disposition")}
+              value={dispositionLabel(line.disposition)}
+            />
             <InfoRow
               label={t("returnDetail.lineRefund")}
               value={formatMoneyMinor(line.amountMinor, data.currency)}
@@ -280,15 +303,28 @@ function SettleRefundPanel({
           testID="settle-refund-error"
           action={
             described.recovery === "retry" ? (
-              <TextButton label={t("common.retry")} icon="refresh" testID="settle-refund-retry" onPress={() => mutation.retry()} />
+              <TextButton
+                label={t("common.retry")}
+                icon="refresh"
+                testID="settle-refund-retry"
+                onPress={() => mutation.retry()}
+              />
             ) : (
-              <TextButton label={t("common.dismiss")} icon="close" onPress={() => mutation.reset()} />
+              <TextButton
+                label={t("common.dismiss")}
+                icon="close"
+                onPress={() => mutation.reset()}
+              />
             )
           }
         />
       ) : null}
       <PrimaryButton
-        label={mutation.state.status === "submitting" ? t("settleRefund.recording") : t("settleRefund.recordCta")}
+        label={
+          mutation.state.status === "submitting"
+            ? t("settleRefund.recording")
+            : t("settleRefund.recordCta")
+        }
         icon="check"
         testID="settle-refund-submit"
         disabled={mutation.state.status === "submitting"}

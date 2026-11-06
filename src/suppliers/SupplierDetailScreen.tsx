@@ -112,7 +112,10 @@ function SupplierDetailContent({
   const loadVariants = useCallback(async (): Promise<SelectOption[]> => {
     if (!client) return [];
     const items = await loadAllInventory(client);
-    return distinctVariants(items).map((v) => ({ value: v.variantId, label: `${v.productName} · ${v.sku}` }));
+    return distinctVariants(items).map((v) => ({
+      value: v.variantId,
+      label: `${v.productName} · ${v.sku}`,
+    }));
   }, [client]);
   const load = useCallback(() => adapter.getSupplier(supplierId), [adapter, supplierId]);
   const { state, reload } = useAsync<Supplier>(load);
@@ -135,7 +138,13 @@ function SupplierDetailContent({
         toast.error(described.message, {
           title: described.heading,
           ...(described.recovery === "retry"
-            ? { action: { label: t("common.retry"), icon: "refresh" as const, onPress: () => statusMutation.retry() } }
+            ? {
+                action: {
+                  label: t("common.retry"),
+                  icon: "refresh" as const,
+                  onPress: () => statusMutation.retry(),
+                },
+              }
             : {}),
         });
       },

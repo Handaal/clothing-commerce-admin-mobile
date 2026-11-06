@@ -59,14 +59,16 @@ export function PromotionCodes({
   );
   const toast = useToast();
   const createMutation = useMutation(createProducer, generateIdempotencyKey, {
-    onSuccess: () => toast.success(t("promoCodes.createdToast"), { title: t("promoCodes.codeAdded") }),
+    onSuccess: () =>
+      toast.success(t("promoCodes.createdToast"), { title: t("promoCodes.codeAdded") }),
     onError: (error) => {
       const described = describePromotionWriteError(error);
       toast.error(described.message, { title: described.heading });
     },
   });
   const statusMutation = useMutation(statusProducer, generateIdempotencyKey, {
-    onSuccess: () => toast.success(t("promoCodes.disabledToast"), { title: t("promoCodes.codeUpdated") }),
+    onSuccess: () =>
+      toast.success(t("promoCodes.disabledToast"), { title: t("promoCodes.codeUpdated") }),
     onError: (error) => {
       const described = describePromotionWriteError(error);
       toast.error(described.message, { title: described.heading });
@@ -168,7 +170,10 @@ export function PromotionCodes({
 
       {canManage ? (
         <Surface>
-          <SectionHeading title={t("promoCodes.createTitle")} detail={t("promoCodes.voucherAccess")} />
+          <SectionHeading
+            title={t("promoCodes.createTitle")}
+            detail={t("promoCodes.voucherAccess")}
+          />
           <TextField
             label={t("promoCodes.codeLabel")}
             value={code}
@@ -203,7 +208,11 @@ export function PromotionCodes({
             <MutationError described={createError} onRetry={createMutation.retry} />
           ) : null}
           <PrimaryButton
-            label={createMutation.state.status === "submitting" ? t("promoCodes.creating") : t("promoCodes.createCode")}
+            label={
+              createMutation.state.status === "submitting"
+                ? t("promoCodes.creating")
+                : t("promoCodes.createCode")
+            }
             testID="promotion-create-code"
             icon="ticket-confirmation-outline"
             disabled={createMutation.state.status === "submitting"}

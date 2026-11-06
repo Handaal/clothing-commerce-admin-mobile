@@ -74,7 +74,11 @@ export function EligibleIdentityLookup({
         testID="eligible-identity-email"
         autoCapitalize="none"
       />
-      <PrimaryButton label={t("staffLookup.find")} testID="eligible-identity-find" onPress={findAccount} />
+      <PrimaryButton
+        label={t("staffLookup.find")}
+        testID="eligible-identity-find"
+        onPress={findAccount}
+      />
       {invalid ? (
         <Body testID="eligible-identity-invalid">{t("staffLookup.invalid")}</Body>
       ) : email === null ? (

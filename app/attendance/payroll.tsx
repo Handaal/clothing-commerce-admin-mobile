@@ -11,5 +11,7 @@ export default function PayrollRoute() {
     return <Redirect href="/" />;
   }
 
-  return <PayrollScreen tenantId={state.tenantId} context={state.context} onBack={() => router.back()} />;
+  return (
+    <PayrollScreen tenantId={state.tenantId} context={state.context} onBack={() => router.back()} />
+  );
 }

@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-import type { AttendanceClockResponse, AttendanceListResponse, MyAttendanceResponse } from "@shifted/clothing-commerce-sdk";
+import type {
+  AttendanceClockResponse,
+  AttendanceListResponse,
+  MyAttendanceResponse,
+} from "@shifted/clothing-commerce-sdk";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -89,7 +93,14 @@ function attendanceList(): AttendanceListResponse {
 function Harness({ context = meContext(TENANT_A) }: { context?: ReturnType<typeof meContext> }) {
   const { state } = useSession();
   if (state.phase !== "ready") return <span data-testid="phase">{state.phase}</span>;
-  return <AttendanceScreen tenantId={state.tenantId} context={context} onBack={onBack} onOpenPayroll={onOpenPayroll} />;
+  return (
+    <AttendanceScreen
+      tenantId={state.tenantId}
+      context={context}
+      onBack={onBack}
+      onOpenPayroll={onOpenPayroll}
+    />
+  );
 }
 
 function renderScreen(context?: ReturnType<typeof meContext>) {

@@ -43,7 +43,11 @@ export function SalesReportScreen(props: ReportScreenProps) {
   const { t } = useI18n();
   if (!props.canRead || !props.adapter) {
     return (
-      <ReportingUnavailable title={t("rpt.salesReportTitle")} canRead={props.canRead} onBack={props.onBack} />
+      <ReportingUnavailable
+        title={t("rpt.salesReportTitle")}
+        canRead={props.canRead}
+        onBack={props.onBack}
+      />
     );
   }
   return <SalesContent {...props} adapter={props.adapter} />;
@@ -118,19 +122,28 @@ function SalesData({
                 <SurfaceRow key={point.fromInclusive}>
                   <Title>{point.label}</Title>
                   <InfoRow label={t("rpt.bucketStarts")} value={point.fromInclusive} />
-                  <InfoRow label={t("rpt.net")} value={formatMoneyMinor(point.netMinor, group.currency)} />
+                  <InfoRow
+                    label={t("rpt.net")}
+                    value={formatMoneyMinor(point.netMinor, group.currency)}
+                  />
                   <InfoRow label={t("rpt.orders")} value={String(point.orders)} />
                 </SurfaceRow>
               ))
             : group.rows.map((row) => (
                 <SurfaceRow key={row.id}>
                   <Title>{row.label}</Title>
-                  <InfoRow label={t("rpt.gross")} value={formatMoneyMinor(row.grossMinor, group.currency)} />
+                  <InfoRow
+                    label={t("rpt.gross")}
+                    value={formatMoneyMinor(row.grossMinor, group.currency)}
+                  />
                   <InfoRow
                     label={t("rpt.discount")}
                     value={formatMoneyMinor(row.discountMinor, group.currency)}
                   />
-                  <InfoRow label={t("rpt.net")} value={formatMoneyMinor(row.netMinor, group.currency)} />
+                  <InfoRow
+                    label={t("rpt.net")}
+                    value={formatMoneyMinor(row.netMinor, group.currency)}
+                  />
                   <InfoRow label={t("rpt.orders")} value={String(row.orders)} />
                 </SurfaceRow>
               ))}
@@ -161,7 +174,11 @@ export function ProductsReportScreen(props: ReportScreenProps) {
   const { t } = useI18n();
   if (!props.canRead || !props.adapter) {
     return (
-      <ReportingUnavailable title={t("rpt.productSalesTitle")} canRead={props.canRead} onBack={props.onBack} />
+      <ReportingUnavailable
+        title={t("rpt.productSalesTitle")}
+        canRead={props.canRead}
+        onBack={props.onBack}
+      />
     );
   }
   return <ProductsContent {...props} adapter={props.adapter} />;
@@ -224,7 +241,9 @@ function ProductsContent({
         {(data) => (
           <View style={{ gap: 12 }}>
             <ReportMetaBlock meta={data.meta} />
-            <Title>{data.ranking === "product" ? t("rpt.rankingProduct") : t("rpt.rankingVariant")}</Title>
+            <Title>
+              {data.ranking === "product" ? t("rpt.rankingProduct") : t("rpt.rankingVariant")}
+            </Title>
             {data.items.items.map((row) => (
               <ProductRanking key={`${row.currency}-${row.id}`} row={row} />
             ))}
@@ -262,7 +281,10 @@ function ProductRanking({ row }: { row: ProductRankingRow }) {
         <InfoRow label={t("rpt.gross")} value={formatMoneyMinor(row.grossMinor, row.currency)} />
       ) : null}
       {row.currency && row.discountMinor !== undefined ? (
-        <InfoRow label={t("rpt.discount")} value={formatMoneyMinor(row.discountMinor, row.currency)} />
+        <InfoRow
+          label={t("rpt.discount")}
+          value={formatMoneyMinor(row.discountMinor, row.currency)}
+        />
       ) : null}
       {row.currency && row.netMinor !== undefined ? (
         <InfoRow label={t("rpt.net")} value={formatMoneyMinor(row.netMinor, row.currency)} />
@@ -367,16 +389,24 @@ function InventoryRow({ row }: { row: InventoryReportRow }) {
       {row.inventoryLocationName ? (
         <InfoRow label={t("rpt.inventoryLocation")} value={row.inventoryLocationName} />
       ) : null}
-      {row.onHand !== undefined ? <InfoRow label={t("rpt.onHand")} value={String(row.onHand)} /> : null}
+      {row.onHand !== undefined ? (
+        <InfoRow label={t("rpt.onHand")} value={String(row.onHand)} />
+      ) : null}
       {row.quantityDelta !== undefined ? (
         <InfoRow label={t("rpt.quantityChange")} value={String(row.quantityDelta)} />
       ) : null}
-      {row.lineCount !== undefined ? <InfoRow label={t("rpt.lines")} value={String(row.lineCount)} /> : null}
-      {row.unitsIn !== undefined ? <InfoRow label={t("rpt.unitsIn")} value={String(row.unitsIn)} /> : null}
+      {row.lineCount !== undefined ? (
+        <InfoRow label={t("rpt.lines")} value={String(row.lineCount)} />
+      ) : null}
+      {row.unitsIn !== undefined ? (
+        <InfoRow label={t("rpt.unitsIn")} value={String(row.unitsIn)} />
+      ) : null}
       {row.unitsOut !== undefined ? (
         <InfoRow label={t("rpt.unitsOut")} value={String(row.unitsOut)} />
       ) : null}
-      {row.actorMembershipId ? <InfoRow label={t("rpt.actor")} value={row.actorMembershipId} /> : null}
+      {row.actorMembershipId ? (
+        <InfoRow label={t("rpt.actor")} value={row.actorMembershipId} />
+      ) : null}
       {row.notes ? <InfoRow label={t("rpt.notes")} value={row.notes} /> : null}
       {row.occurredAt ? <InfoRow label={t("rpt.occurred")} value={row.occurredAt} /> : null}
     </SurfaceRow>
@@ -395,7 +425,11 @@ export function ReturnsReportScreen(props: ReportScreenProps) {
   const { t } = useI18n();
   if (!props.canRead || !props.adapter) {
     return (
-      <ReportingUnavailable title={t("rpt.returnsReportTitle")} canRead={props.canRead} onBack={props.onBack} />
+      <ReportingUnavailable
+        title={t("rpt.returnsReportTitle")}
+        canRead={props.canRead}
+        onBack={props.onBack}
+      />
     );
   }
   return <ReturnsContent {...props} adapter={props.adapter} />;
@@ -549,7 +583,10 @@ function PromotionsData({ data }: { data: PromotionsReport }) {
             value={formatMoneyMinor(row.discountMinor, row.currency)}
           />
           <InfoRow label={t("rpt.associatedOrders")} value={String(row.associatedOrders)} />
-          <InfoRow label={t("rpt.grossSales")} value={formatMoneyMinor(row.grossMinor, row.currency)} />
+          <InfoRow
+            label={t("rpt.grossSales")}
+            value={formatMoneyMinor(row.grossMinor, row.currency)}
+          />
           <InfoRow label={t("rpt.netSales")} value={formatMoneyMinor(row.netMinor, row.currency)} />
           <InfoRow label={t("rpt.cancelledOrders")} value={String(row.cancelledOrders)} />
         </SurfaceRow>
@@ -616,7 +653,10 @@ function SuppliersData({ data, pager }: { data: SuppliersReport; pager: CursorPa
           <Title>{row.supplierName}</Title>
           <InfoRow label={t("rpt.receiptCount")} value={String(row.receiptCount)} />
           <InfoRow label={t("rpt.unitsReceived")} value={String(row.unitsReceived)} />
-          <InfoRow label={t("rpt.lastReceipt")} value={row.lastReceiptAt ?? t("rpt.noReceiptDate")} />
+          <InfoRow
+            label={t("rpt.lastReceipt")}
+            value={row.lastReceiptAt ?? t("rpt.noReceiptDate")}
+          />
         </SurfaceRow>
       ))}
       <PaginationControls

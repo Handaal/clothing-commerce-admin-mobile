@@ -756,7 +756,10 @@ export function fakeSupplierAdapter(overrides: Partial<SupplierAdapter> = {}): S
     listSupplierPurchases: async () => page([supplierPurchase()]),
     supplierPurchaseItems: async () => [supplierPurchaseItem()],
     recordSupplierPurchase: async (args) =>
-      supplierPurchase({ supplierId: args.supplierId, inventoryLocationId: args.inventoryLocationId }),
+      supplierPurchase({
+        supplierId: args.supplierId,
+        inventoryLocationId: args.inventoryLocationId,
+      }),
     listSupplierPayments: async () => page([supplierPayment()]),
     recordSupplierPayment: async (supplierId, args) =>
       supplierPayment({ supplierId, amountMinor: args.amountMinor }),

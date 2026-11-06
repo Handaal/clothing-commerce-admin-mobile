@@ -218,7 +218,9 @@ function CreateReturnForm({
 
   function lineLabel(lineNumber: number): string {
     const info = lineInfoByNumber.get(lineNumber);
-    return info ? `${info.productName} · ${info.sku}` : t("createReturn.orderLine", { n: lineNumber });
+    return info
+      ? `${info.productName} · ${info.sku}`
+      : t("createReturn.orderLine", { n: lineNumber });
   }
 
   if (mutation.state.status === "success") {
@@ -237,7 +239,10 @@ function CreateReturnForm({
             value={formatMoneyMinor(created.amountMinor, created.currency)}
           />
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <Badge label={refundStatusLabel(created.refund.status)} testID="create-return-refund-status" />
+            <Badge
+              label={refundStatusLabel(created.refund.status)}
+              testID="create-return-refund-status"
+            />
             <Badge label={refundMethodLabel(created.refund.method)} />
           </View>
           {canSettleRefund(created.refund) ? (
@@ -280,11 +285,19 @@ function CreateReturnForm({
           label={t("createReturn.maxRefundable")}
           value={formatMoneyMinor(eligibility.maxRefundableMinor, eligibility.currency)}
         />
-        <TextButton label={t("createReturn.refreshEligibility")} icon="refresh" onPress={onReloadEligibility} />
+        <TextButton
+          label={t("createReturn.refreshEligibility")}
+          icon="refresh"
+          onPress={onReloadEligibility}
+        />
       </Surface>
 
       {!eligibility.eligible ? (
-        <Notice tone="warning" title={t("createReturn.notEligibleTitle")} message={t("createReturn.notEligibleMsg")} />
+        <Notice
+          tone="warning"
+          title={t("createReturn.notEligibleTitle")}
+          message={t("createReturn.notEligibleMsg")}
+        />
       ) : eligibility.lines.length === 0 ? (
         <EmptyState
           icon="format-list-bulleted"
@@ -293,7 +306,10 @@ function CreateReturnForm({
         />
       ) : (
         <>
-          <SectionHeading title={t("createReturn.selectItems")} detail={t("createReturn.selectItemsDetail")} />
+          <SectionHeading
+            title={t("createReturn.selectItems")}
+            detail={t("createReturn.selectItemsDetail")}
+          />
           <View style={{ gap: 12 }}>
             {eligibility.lines.map((line) => {
               const selected = selection[line.orderLineId];
@@ -407,11 +423,24 @@ function CreateReturnForm({
               testID="create-return-error"
               action={
                 described.recovery === "retry" ? (
-                  <TextButton label={t("common.retry")} icon="refresh" testID="create-return-retry" onPress={() => mutation.retry()} />
+                  <TextButton
+                    label={t("common.retry")}
+                    icon="refresh"
+                    testID="create-return-retry"
+                    onPress={() => mutation.retry()}
+                  />
                 ) : described.recovery === "reload" ? (
-                  <TextButton label={t("createReturn.reloadEligibility")} icon="refresh" onPress={onReloadEligibility} />
+                  <TextButton
+                    label={t("createReturn.reloadEligibility")}
+                    icon="refresh"
+                    onPress={onReloadEligibility}
+                  />
                 ) : (
-                  <TextButton label={t("common.dismiss")} icon="close" onPress={() => mutation.reset()} />
+                  <TextButton
+                    label={t("common.dismiss")}
+                    icon="close"
+                    onPress={() => mutation.reset()}
+                  />
                 )
               }
             />
@@ -426,10 +455,15 @@ function CreateReturnForm({
             />
           ) : (
             <Surface tone="brand" testID="create-return-review-panel">
-              <SectionHeading title={t("createReturn.confirmTitle")} detail={t("createReturn.confirmDetail")} />
+              <SectionHeading
+                title={t("createReturn.confirmTitle")}
+                detail={t("createReturn.confirmDetail")}
+              />
               <View style={{ gap: 8 }}>
                 {lines.map((line) => {
-                  const info = eligibility.lines.find((item) => item.orderLineId === line.orderLineId);
+                  const info = eligibility.lines.find(
+                    (item) => item.orderLineId === line.orderLineId,
+                  );
                   return (
                     <View key={line.orderLineId}>
                       <Body>
@@ -445,9 +479,17 @@ function CreateReturnForm({
                 })}
               </View>
               <Divider />
-              <TextButton label={t("createReturn.editCta")} icon="pencil" onPress={() => setReview(false)} />
+              <TextButton
+                label={t("createReturn.editCta")}
+                icon="pencil"
+                onPress={() => setReview(false)}
+              />
               <PrimaryButton
-                label={mutation.state.status === "submitting" ? t("createReturn.creating") : t("createReturn.confirmCta")}
+                label={
+                  mutation.state.status === "submitting"
+                    ? t("createReturn.creating")
+                    : t("createReturn.confirmCta")
+                }
                 icon="check"
                 testID="create-return-submit"
                 disabled={!valid || mutation.state.status === "submitting"}

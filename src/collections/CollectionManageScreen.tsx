@@ -1,7 +1,4 @@
-import type {
-  CollectionDetailResponse,
-  ProductListResponse,
-} from "@shifted/clothing-commerce-sdk";
+import type { CollectionDetailResponse, ProductListResponse } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -68,7 +65,12 @@ export function CollectionManageScreen({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("collections.eyebrow")} title={t("manageCollection.title")} icon="shape-outline" onBack={onBack} />
+        <PageHeader
+          eyebrow={t("collections.eyebrow")}
+          title={t("manageCollection.title")}
+          icon="shape-outline"
+          onBack={onBack}
+        />
         <LoadingBlock label={t("manageCollection.loading")} />
       </ScrollScreen>
     );
@@ -76,7 +78,12 @@ export function CollectionManageScreen({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("collections.eyebrow")} title={t("manageCollection.title")} icon="shape-outline" onBack={onBack} />
+        <PageHeader
+          eyebrow={t("collections.eyebrow")}
+          title={t("manageCollection.title")}
+          icon="shape-outline"
+          onBack={onBack}
+        />
         <Notice
           tone="danger"
           title={errorHeading(state.error.kind)}
@@ -91,14 +98,7 @@ export function CollectionManageScreen({
     );
   }
 
-  return (
-    <ManageContent
-      client={client}
-      data={state.data}
-      onBack={onBack}
-      reload={reload}
-    />
-  );
+  return <ManageContent client={client} data={state.data} onBack={onBack} reload={reload} />;
 }
 
 function ManageContent({
@@ -119,7 +119,11 @@ function ManageContent({
 
   const membership = useMutation(
     (productIds: string[], key) =>
-      client.setCollectionProducts({ collectionId: collection.id, productIds, idempotencyKey: key }),
+      client.setCollectionProducts({
+        collectionId: collection.id,
+        productIds,
+        idempotencyKey: key,
+      }),
     secureIdempotencyKey,
     {
       onSuccess: () => {
@@ -135,7 +139,11 @@ function ManageContent({
 
   const status = useMutation(
     (next: "draft" | "active" | "archived", key) =>
-      client.setCollectionStatus({ collectionId: collection.id, status: next, idempotencyKey: key }),
+      client.setCollectionStatus({
+        collectionId: collection.id,
+        status: next,
+        idempotencyKey: key,
+      }),
     secureIdempotencyKey,
     {
       onSuccess: () => {
@@ -210,7 +218,11 @@ function ManageContent({
       <Body>{t("manageCollection.membershipDesc")}</Body>
 
       {products.length === 0 ? (
-        <EmptyState icon="tag-outline" title={t("manageCollection.noProducts")} message={t("manageCollection.noProducts")} />
+        <EmptyState
+          icon="tag-outline"
+          title={t("manageCollection.noProducts")}
+          message={t("manageCollection.noProducts")}
+        />
       ) : (
         <View style={styles.list}>
           {products.map((product) => {
@@ -232,7 +244,9 @@ function ManageContent({
                   </View>
                   <View style={styles.copy}>
                     <Text style={styles.name}>{product.name}</Text>
-                    {product.styleCode ? <Text style={styles.meta}>{product.styleCode}</Text> : null}
+                    {product.styleCode ? (
+                      <Text style={styles.meta}>{product.styleCode}</Text>
+                    ) : null}
                   </View>
                   {isSelected ? <Badge label={String(index + 1)} tone="brand" /> : null}
                 </View>

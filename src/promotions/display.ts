@@ -65,7 +65,9 @@ export function formatPercentBasisPoints(basisPoints: number): string {
 export function benefitLabel(promotion: PromotionDetail | PromotionSummary): string {
   if (promotion.benefitType === "percentage") {
     return "benefitPercentBp" in promotion && promotion.benefitPercentBp !== null
-      ? t("promoBenefit.percentOff", { percent: formatPercentBasisPoints(promotion.benefitPercentBp) })
+      ? t("promoBenefit.percentOff", {
+          percent: formatPercentBasisPoints(promotion.benefitPercentBp),
+        })
       : t("promoBenefit.percentDiscount");
   }
   return "benefitAmountMinor" in promotion &&

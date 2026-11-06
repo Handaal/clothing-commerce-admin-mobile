@@ -72,7 +72,8 @@ export function SettingsHomeScreen({
   onBack: () => void;
 }) {
   const { t } = useI18n();
-  if (!canRead) return <SettingsUnavailable title={t("set.title")} canRead={false} onBack={onBack} />;
+  if (!canRead)
+    return <SettingsUnavailable title={t("set.title")} canRead={false} onBack={onBack} />;
   const sections: Array<{ key: SettingsSectionKey; title: string; description: string }> = [
     {
       key: "business",
@@ -121,7 +122,9 @@ export function SettingsHomeScreen({
 export function BusinessSettingsScreen({ adapter, canRead, canManage, onBack }: BaseProps) {
   const { t } = useI18n();
   if (!canRead || !adapter)
-    return <Pending title={t("set.business")} canRead={canRead} adapter={adapter} onBack={onBack} />;
+    return (
+      <Pending title={t("set.business")} canRead={canRead} adapter={adapter} onBack={onBack} />
+    );
   return <BusinessContent adapter={adapter} canManage={canManage} onBack={onBack} />;
 }
 function BusinessContent({
@@ -314,7 +317,9 @@ export function BranchesSettingsScreen({
 }: BaseProps & { onOpen: (id: string) => void; onCreate: () => void }) {
   const { t } = useI18n();
   if (!canRead || !adapter)
-    return <Pending title={t("set.branches")} canRead={canRead} adapter={adapter} onBack={onBack} />;
+    return (
+      <Pending title={t("set.branches")} canRead={canRead} adapter={adapter} onBack={onBack} />
+    );
   return (
     <EntityList<BranchSettings[]>
       title={t("set.branches")}
@@ -387,7 +392,10 @@ function BranchFormContent({
   );
   const { state, reload } = useAsync(load);
   return (
-    <SettingsFrame title={branchId ? t("set.branchDetails") : t("set.createBranch")} onBack={onBack}>
+    <SettingsFrame
+      title={branchId ? t("set.branchDetails") : t("set.createBranch")}
+      onBack={onBack}
+    >
       <SettingsAsync state={state} reload={reload} empty={() => false}>
         {({ branch, locations, brands }) => (
           <>
@@ -479,7 +487,12 @@ export function InventorySettingsScreen({
   const { t } = useI18n();
   if (!canRead || !adapter)
     return (
-      <Pending title={t("set.inventorySettings")} canRead={canRead} adapter={adapter} onBack={onBack} />
+      <Pending
+        title={t("set.inventorySettings")}
+        canRead={canRead}
+        adapter={adapter}
+        onBack={onBack}
+      />
     );
   return (
     <InventoryContent
@@ -589,7 +602,14 @@ function InventoryContent({
 export function WarehouseCreateScreen({ adapter, canRead, canManage, onBack }: BaseProps) {
   const { t } = useI18n();
   if (!canRead || !adapter)
-    return <Pending title={t("set.createWarehouse")} canRead={canRead} adapter={adapter} onBack={onBack} />;
+    return (
+      <Pending
+        title={t("set.createWarehouse")}
+        canRead={canRead}
+        adapter={adapter}
+        onBack={onBack}
+      />
+    );
   return (
     <SettingsFrame title={t("set.createWarehouse")} onBack={onBack}>
       {canManage ? (
@@ -763,7 +783,12 @@ export function RegistersSettingsScreen({
   const { t } = useI18n();
   if (!canRead || !adapter)
     return (
-      <Pending title={t("set.registersDevices")} canRead={canRead} adapter={adapter} onBack={onBack} />
+      <Pending
+        title={t("set.registersDevices")}
+        canRead={canRead}
+        adapter={adapter}
+        onBack={onBack}
+      />
     );
   return (
     <EntityList<RegisterSettings[]>
@@ -774,7 +799,9 @@ export function RegistersSettingsScreen({
       onCreate={onCreate}
       onBack={onBack}
       empty={(items) => items.length === 0}
-      before={<PrimaryButton label={t("set.viewDevices")} testID="open-devices" onPress={onDevices} />}
+      before={
+        <PrimaryButton label={t("set.viewDevices")} testID="open-devices" onPress={onDevices} />
+      }
       render={(items) =>
         items.map((item) => (
           <EntityRow
@@ -838,7 +865,10 @@ function RegisterFormContent({
   );
   const { state, reload } = useAsync(load);
   return (
-    <SettingsFrame title={registerId ? t("set.registerDetails") : t("set.createRegister")} onBack={onBack}>
+    <SettingsFrame
+      title={registerId ? t("set.registerDetails") : t("set.createRegister")}
+      onBack={onBack}
+    >
       <SettingsAsync state={state} reload={reload} empty={() => false}>
         {({ register, branches, locations }) => (
           <>
@@ -928,7 +958,10 @@ export function DevicesSettingsScreen({
           <PressableRow key={d.id} testID={`device-${d.id}`} onPress={() => onOpen(d.id)}>
             <Title>{d.displayName}</Title>
             <Badge label={d.status} />
-            <InfoRow label={t("set.assignedRegister")} value={d.registerName ?? t("set.unassigned")} />
+            <InfoRow
+              label={t("set.assignedRegister")}
+              value={d.registerName ?? t("set.unassigned")}
+            />
           </PressableRow>
         ))
       }
@@ -990,7 +1023,9 @@ function DeviceDetailContent({
 export function CommerceSettingsScreen({ adapter, canRead, canManage, onBack }: BaseProps) {
   const { t } = useI18n();
   if (!canRead || !adapter)
-    return <Pending title={t("set.commerce")} canRead={canRead} adapter={adapter} onBack={onBack} />;
+    return (
+      <Pending title={t("set.commerce")} canRead={canRead} adapter={adapter} onBack={onBack} />
+    );
   return <CommerceSettingsContent adapter={adapter} canManage={canManage} onBack={onBack} />;
 }
 
@@ -1037,7 +1072,10 @@ function CommerceSettingsContent({
                         value={storefront.fulfillmentInventoryLocationId}
                       />
                       <InfoRow label={t("set.currency")} value={storefront.currency} />
-                      <InfoRow label={t("set.codShort")} value={storefront.codEnabled ? t("set.enabled") : t("set.disabled")} />
+                      <InfoRow
+                        label={t("set.codShort")}
+                        value={storefront.codEnabled ? t("set.enabled") : t("set.disabled")}
+                      />
                     </View>
                   ))
                 ) : (
@@ -1045,7 +1083,10 @@ function CommerceSettingsContent({
                 )}
               </SettingsSection>
               <SettingsSection title={t("set.returns")}>
-                <InfoRow label={t("set.returns")} value={value.returns.enabled ? t("set.enabled") : t("set.disabled")} />
+                <InfoRow
+                  label={t("set.returns")}
+                  value={value.returns.enabled ? t("set.enabled") : t("set.disabled")}
+                />
                 <InfoRow
                   label={t("set.window")}
                   value={
@@ -1215,8 +1256,14 @@ function LifecycleActions({
     <SettingsSection title={t("set.lifecycle")}>
       <Body>{t("set.lifecycleNote")}</Body>
       <ConfirmButton
-        label={status === "active" ? t("set.deactivateNoun", { noun }) : t("set.reactivateNoun", { noun })}
-        confirmLabel={status === "active" ? t("set.confirmDeactivation") : t("set.confirmReactivation")}
+        label={
+          status === "active"
+            ? t("set.deactivateNoun", { noun })
+            : t("set.reactivateNoun", { noun })
+        }
+        confirmLabel={
+          status === "active" ? t("set.confirmDeactivation") : t("set.confirmReactivation")
+        }
         testID="settings-lifecycle"
         disabled={action.status === "saving"}
         onConfirm={() =>
@@ -1238,7 +1285,10 @@ function BranchSummary({ value }: { value: BranchSettings }) {
       <InfoRow label={t("set.address")} value={value.address} />
       <InfoRow label={t("set.contactEmail")} value={value.contactEmail} />
       <InfoRow label={t("set.contactPhone")} value={value.contactPhone} />
-      <InfoRow label={t("set.fulfillment")} value={value.fulfillmentEnabled ? t("set.enabled") : t("set.disabled")} />
+      <InfoRow
+        label={t("set.fulfillment")}
+        value={value.fulfillmentEnabled ? t("set.enabled") : t("set.disabled")}
+      />
       <InfoRow
         label={t("set.clickCollect")}
         value={value.clickAndCollectEnabled ? t("set.enabled") : t("set.disabled")}
@@ -1497,8 +1547,14 @@ function DevicePanel({
       <InfoRow label={t("set.deviceType")} value={device.deviceType} />
       <InfoRow label={t("set.platform")} value={device.platform ?? t("set.notReported")} />
       <InfoRow label={t("set.osVersion")} value={device.osVersion ?? t("set.notReported")} />
-      <InfoRow label={t("set.clientVersion")} value={device.clientVersion ?? t("set.notReported")} />
-      <InfoRow label={t("set.currentRegister")} value={device.registerName ?? t("set.unassigned")} />
+      <InfoRow
+        label={t("set.clientVersion")}
+        value={device.clientVersion ?? t("set.notReported")}
+      />
+      <InfoRow
+        label={t("set.currentRegister")}
+        value={device.registerName ?? t("set.unassigned")}
+      />
       <InfoRow label={t("set.lastSeen")} value={device.lastSeenAt ?? t("set.never")} />
       {canManage && device.status !== "revoked" ? (
         <>

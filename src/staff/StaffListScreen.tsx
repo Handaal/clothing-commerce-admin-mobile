@@ -160,7 +160,11 @@ function StaffListContent({
           testIDPrefix="staff-role-filter"
         />
       ) : null}
-      <PrimaryButton label={t("staff.searchCta")} testID="staff-search-submit" onPress={applySearch} />
+      <PrimaryButton
+        label={t("staff.searchCta")}
+        testID="staff-search-submit"
+        onPress={applySearch}
+      />
       <Divider />
 
       {state.status === "loading" ? <LoadingBlock label={t("staff.loading")} /> : null}
@@ -227,7 +231,9 @@ function StaffRow({ member, onOpen }: { member: StaffSummary; onOpen: () => void
           testID={`staff-status-${member.membershipId}`}
         />
       </View>
-      {member.primaryEmail ? <InfoRow label={t("staff.email")} value={member.primaryEmail} /> : null}
+      {member.primaryEmail ? (
+        <InfoRow label={t("staff.email")} value={member.primaryEmail} />
+      ) : null}
       <InfoRow label={t("staff.roles")} value={roleSummary} />
       <InfoRow label={t("staff.scopes")} value={scopeSummary} />
       {/* Deactivated staff stay listed — they are retained history, never hidden as if deleted. */}

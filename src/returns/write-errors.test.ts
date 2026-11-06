@@ -14,7 +14,9 @@ describe("describeReturnWriteError", () => {
   });
 
   it("maps stale returnable quantity to reload", () => {
-    expect(describeReturnWriteError(err({ code: "RETURN_QUANTITY_EXCEEDED" })).recovery).toBe("reload");
+    expect(describeReturnWriteError(err({ code: "RETURN_QUANTITY_EXCEEDED" })).recovery).toBe(
+      "reload",
+    );
     expect(describeReturnWriteError(err({ code: "ORDER_LINE_MISMATCH" })).recovery).toBe("reload");
   });
 
@@ -23,8 +25,12 @@ describe("describeReturnWriteError", () => {
   });
 
   it("maps correctable rejections to edit", () => {
-    expect(describeReturnWriteError(err({ code: "RESTOCK_LOCATION_UNAVAILABLE" })).recovery).toBe("edit");
-    expect(describeReturnWriteError(err({ code: "RETURN_REASON_NOT_ALLOWED" })).recovery).toBe("edit");
+    expect(describeReturnWriteError(err({ code: "RESTOCK_LOCATION_UNAVAILABLE" })).recovery).toBe(
+      "edit",
+    );
+    expect(describeReturnWriteError(err({ code: "RETURN_REASON_NOT_ALLOWED" })).recovery).toBe(
+      "edit",
+    );
     expect(describeReturnWriteError(err({ code: "INVALID_RETURN" })).recovery).toBe("edit");
   });
 
@@ -47,6 +53,8 @@ describe("describeReturnWriteError", () => {
   });
 
   it("falls back to retry for an unmapped server error", () => {
-    expect(describeReturnWriteError(err({ kind: "server", code: "WHATEVER" })).recovery).toBe("retry");
+    expect(describeReturnWriteError(err({ kind: "server", code: "WHATEVER" })).recovery).toBe(
+      "retry",
+    );
   });
 });

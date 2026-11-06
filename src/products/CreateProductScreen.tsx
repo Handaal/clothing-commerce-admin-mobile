@@ -158,7 +158,13 @@ function CreateProductForm({
         toast.error(described.message, {
           title: described.heading,
           ...(described.recovery === "retry"
-            ? { action: { label: t("common.retry"), icon: "refresh" as const, onPress: () => mutation.retry() } }
+            ? {
+                action: {
+                  label: t("common.retry"),
+                  icon: "refresh" as const,
+                  onPress: () => mutation.retry(),
+                },
+              }
             : {}),
         });
       },
@@ -223,7 +229,11 @@ function CreateProductForm({
             icon="arrow-right"
             onPress={() => onCreated(created.productId)}
           />
-          <TextButton label={t("createProduct.backToProducts")} icon="arrow-left" onPress={onBack} />
+          <TextButton
+            label={t("createProduct.backToProducts")}
+            icon="arrow-left"
+            onPress={onBack}
+          />
         </Surface>
       </ScrollScreen>
     );
@@ -248,7 +258,10 @@ function CreateProductForm({
         icon="tag-outline"
       >
         {brandContext.kind === "single" ? (
-          <Notice tone="info" message={t("createProduct.brandFixed", { name: brandContext.brand.name })} />
+          <Notice
+            tone="info"
+            message={t("createProduct.brandFixed", { name: brandContext.brand.name })}
+          />
         ) : (
           <SelectField
             label={t("createProduct.brandLabel")}
@@ -296,7 +309,8 @@ function CreateProductForm({
           value={styleCode}
           onChangeText={(next) => {
             setStyleCode(next);
-            if (fieldErrors.styleCode) setFieldErrors((prev) => ({ ...prev, styleCode: undefined }));
+            if (fieldErrors.styleCode)
+              setFieldErrors((prev) => ({ ...prev, styleCode: undefined }));
           }}
           placeholder={t("createProduct.stylePlaceholder")}
           testID="create-style-code"
@@ -335,7 +349,11 @@ function CreateProductForm({
                 onPress={() => mutation.retry()}
               />
             ) : (
-              <TextButton label={t("common.dismiss")} icon="close" onPress={() => mutation.reset()} />
+              <TextButton
+                label={t("common.dismiss")}
+                icon="close"
+                onPress={() => mutation.reset()}
+              />
             )
           }
         />
@@ -344,7 +362,11 @@ function CreateProductForm({
       <Surface tone="brand">
         <Body>{t("createProduct.draftNote")}</Body>
         <PrimaryButton
-          label={mutation.state.status === "submitting" ? t("createProduct.creating") : t("products.createCta")}
+          label={
+            mutation.state.status === "submitting"
+              ? t("createProduct.creating")
+              : t("products.createCta")
+          }
           icon="plus"
           testID="create-submit"
           disabled={mutation.state.status === "submitting"}

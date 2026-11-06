@@ -76,7 +76,10 @@ export interface SupplierAdapter {
   /** Line items for one recorded purchase. */
   supplierPurchaseItems(purchaseId: string): Promise<SupplierPurchaseItem[]>;
   /** Record a purchase (accrues dues and creates the backing stock receipt). */
-  recordSupplierPurchase(args: RecordPurchaseArgs, idempotencyKey: string): Promise<SupplierPurchase>;
+  recordSupplierPurchase(
+    args: RecordPurchaseArgs,
+    idempotencyKey: string,
+  ): Promise<SupplierPurchase>;
   /** Payments made against a supplier's balance, newest first. */
   listSupplierPayments(
     supplierId: string,
@@ -101,7 +104,12 @@ export interface SupplierAdapter {
   ): Promise<SupplierReminder>;
   updateSupplierReminder(
     reminderId: string,
-    args: { status?: SupplierReminderStatus; dueDate?: string; amountMinor?: number | null; note?: string | null },
+    args: {
+      status?: SupplierReminderStatus;
+      dueDate?: string;
+      amountMinor?: number | null;
+      note?: string | null;
+    },
     idempotencyKey: string,
   ): Promise<SupplierReminder>;
   deleteSupplierReminder(reminderId: string, idempotencyKey: string): Promise<void>;

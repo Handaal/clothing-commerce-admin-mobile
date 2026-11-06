@@ -55,7 +55,11 @@ export function CollectionsListScreen({
           icon="shape-outline"
           onBack={onBack}
         />
-        <Notice tone="warning" title={t("collections.accessTitle")} message={t("collections.accessBody")} />
+        <Notice
+          tone="warning"
+          title={t("collections.accessTitle")}
+          message={t("collections.accessBody")}
+        />
       </ScrollScreen>
     );
   }
@@ -110,7 +114,11 @@ function CollectionsListContent({
 
       {state.status === "success" ? (
         <View style={styles.metrics}>
-          <MetricCard label={t("collections.loadedMetric")} value={String(items.length)} icon="shape-outline" />
+          <MetricCard
+            label={t("collections.loadedMetric")}
+            value={String(items.length)}
+            icon="shape-outline"
+          />
           <MetricCard
             label={t("collections.activeMetric")}
             value={String(publishedCount)}

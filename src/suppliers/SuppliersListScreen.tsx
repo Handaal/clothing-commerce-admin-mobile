@@ -97,7 +97,10 @@ function SuppliersListContent({
         onBack={onBack}
       />
       <Surface tone="accent">
-        <SectionHeading title={t("suppliers.workspaceTitle")} detail={t("suppliers.managementOnly")} />
+        <SectionHeading
+          title={t("suppliers.workspaceTitle")}
+          detail={t("suppliers.managementOnly")}
+        />
         <Body>{t("suppliers.workspaceBody")}</Body>
         {canManage ? (
           <PrimaryButton

@@ -102,7 +102,13 @@ export function SupplierForm({
         toast.error(described.message, {
           title: described.heading,
           ...(described.recovery === "retry"
-            ? { action: { label: t("common.retry"), icon: "refresh" as const, onPress: () => mutation.retry() } }
+            ? {
+                action: {
+                  label: t("common.retry"),
+                  icon: "refresh" as const,
+                  onPress: () => mutation.retry(),
+                },
+              }
             : {}),
         });
       },
@@ -143,7 +149,9 @@ export function SupplierForm({
         <PageTitle mode={mode} onBack={onBack} />
         <EmptyState
           icon="check-circle-outline"
-          title={mode === "create" ? t("supplierForm.createdTitle") : t("supplierForm.updatedTitle")}
+          title={
+            mode === "create" ? t("supplierForm.createdTitle") : t("supplierForm.updatedTitle")
+          }
           message={t("supplierForm.savedMessage", {
             name: saved.name,
             action:

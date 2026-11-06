@@ -36,7 +36,11 @@ export interface CustomersListScreenProps {
  * server-backed search (phone/name/email). There is no customer mutation surface — the Commerce API
  * exposes no create/update for customers, and this screen invents none.
  */
-export function CustomersListScreen({ tenantId, onOpenCustomer, onBack }: CustomersListScreenProps) {
+export function CustomersListScreen({
+  tenantId,
+  onOpenCustomer,
+  onBack,
+}: CustomersListScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
   const { t } = useI18n();
@@ -124,7 +128,12 @@ function CustomerRow({ customer, onOpen }: { customer: CustomerSummary; onOpen: 
   return (
     <PressableRow testID={`customer-row-${customer.id}`} onPress={onOpen}>
       <View
-        style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+        }}
       >
         <Text style={{ flex: 1, color: colors.ink, fontSize: 18, fontWeight: "800" }}>
           {customer.name}

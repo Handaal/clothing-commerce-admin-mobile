@@ -90,7 +90,9 @@ function ReportExportOperation({
         onPress={run}
       />
       {state.status === "success" ? (
-        <Body testID="report-export-success">{t("rpt.exportReady", { filename: state.filename })}</Body>
+        <Body testID="report-export-success">
+          {t("rpt.exportReady", { filename: state.filename })}
+        </Body>
       ) : null}
       {state.status === "failure" ? (
         <Body testID="report-export-error">{state.message}</Body>

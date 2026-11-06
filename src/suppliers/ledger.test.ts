@@ -42,7 +42,10 @@ describe("validatePurchaseDraft", () => {
   });
   it("rejects a non-positive / NaN unit cost", () => {
     expect(
-      validatePurchaseDraft({ inventoryLocationId: "loc-1", lines: [{ ...line, unitCostMinor: Number.NaN }] }),
+      validatePurchaseDraft({
+        inventoryLocationId: "loc-1",
+        lines: [{ ...line, unitCostMinor: Number.NaN }],
+      }),
     ).not.toBeNull();
   });
 });
@@ -66,7 +69,9 @@ describe("validateReminderDraft", () => {
     expect(validateReminderDraft({ dueDate: "2026-13-40", amount: "", note: "" })).not.toBeNull();
   });
   it("rejects an invalid optional amount", () => {
-    expect(validateReminderDraft({ dueDate: "2026-10-01", amount: "abc", note: "" })).not.toBeNull();
+    expect(
+      validateReminderDraft({ dueDate: "2026-10-01", amount: "abc", note: "" }),
+    ).not.toBeNull();
   });
 });
 

@@ -224,7 +224,11 @@ function AddStaffContent({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("staff.eyebrow")} title={errorHeading(state.error.kind)} onBack={onBack} />
+        <PageHeader
+          eyebrow={t("staff.eyebrow")}
+          title={errorHeading(state.error.kind)}
+          onBack={onBack}
+        />
         <Divider />
         <Body>{state.error.message}</Body>
         {isRetryable(state.error.kind) ? (
@@ -385,7 +389,11 @@ function SubmitError({
       <Body>{described.message}</Body>
       {described.recovery === "retry" ? (
         // Ambiguous failure: retry reuses the SAME idempotency key (at-most-once at the API).
-        <PrimaryButton label={t("common.retry")} testID="add-staff-retry" onPress={() => mutation.retry()} />
+        <PrimaryButton
+          label={t("common.retry")}
+          testID="add-staff-retry"
+          onPress={() => mutation.retry()}
+        />
       ) : described.recovery === "edit" ? (
         <PrimaryButton
           label={t("addStaff.editRetry")}
@@ -434,7 +442,9 @@ function PartialAssignment({
       <Divider />
       <Body>{t("addStaff.finishBody", { name: person })}</Body>
       {selectedRoleLabel ? <InfoRow label={t("addStaff.role")} value={selectedRoleLabel} /> : null}
-      {selectedScopeLabel ? <InfoRow label={t("addStaff.scope")} value={selectedScopeLabel} /> : null}
+      {selectedScopeLabel ? (
+        <InfoRow label={t("addStaff.scope")} value={selectedScopeLabel} />
+      ) : null}
 
       {assigning ? <LoadingBlock label={t("addStaff.assigning")} /> : null}
 

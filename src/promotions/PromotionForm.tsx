@@ -83,16 +83,21 @@ export function PromotionForm({
   );
   const mutation = useMutation(producer, generateIdempotencyKey, {
     onSuccess: () =>
-      toast.success(
-        mode === "create" ? t("promoForm.createdToast") : t("promoForm.savedToast"),
-        { title: mode === "create" ? t("promoForm.createdTitle") : t("promoForm.updatedTitle") },
-      ),
+      toast.success(mode === "create" ? t("promoForm.createdToast") : t("promoForm.savedToast"), {
+        title: mode === "create" ? t("promoForm.createdTitle") : t("promoForm.updatedTitle"),
+      }),
     onError: (error) => {
       const described = describePromotionWriteError(error);
       toast.error(described.message, {
         title: described.heading,
         ...(described.recovery === "retry"
-          ? { action: { label: t("common.retry"), icon: "refresh" as const, onPress: () => mutation.retry() } }
+          ? {
+              action: {
+                label: t("common.retry"),
+                icon: "refresh" as const,
+                onPress: () => mutation.retry(),
+              },
+            }
           : {}),
       });
     },
@@ -244,7 +249,10 @@ export function PromotionForm({
             testIDPrefix="promotion-benefit-type"
           />
         ) : (
-          <InfoRow label={t("promoForm.discountType")} value={benefitLabel(initial as PromotionDetail)} />
+          <InfoRow
+            label={t("promoForm.discountType")}
+            value={benefitLabel(initial as PromotionDetail)}
+          />
         )}
         {economicsLocked ? (
           <Notice
@@ -256,7 +264,11 @@ export function PromotionForm({
         ) : (
           <>
             <TextField
-              label={form.benefitType === "percentage" ? t("promoForm.percentOff") : t("promoForm.fixedOff")}
+              label={
+                form.benefitType === "percentage"
+                  ? t("promoForm.percentOff")
+                  : t("promoForm.fixedOff")
+              }
               value={form.benefitValue}
               onChangeText={(value) => update("benefitValue", value)}
               placeholder={form.benefitType === "percentage" ? "10" : "25.00"}
@@ -505,7 +517,10 @@ function contextBrandOptions(context: MeContextResponse): SelectOption[] {
   for (const brand of [...context.access.catalog.brands, ...context.access.orders.brands]) {
     byId.set(brand.id, brand.name);
   }
-  return [{ value: "", label: t("promoForm.allBrands") }, ...[...byId].map(([value, label]) => ({ value, label }))];
+  return [
+    { value: "", label: t("promoForm.allBrands") },
+    ...[...byId].map(([value, label]) => ({ value, label })),
+  ];
 }
 
 function contextBranchOptions(context: MeContextResponse): SelectOption[] {

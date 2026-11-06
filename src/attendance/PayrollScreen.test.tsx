@@ -84,7 +84,13 @@ function payrollReport(): PayrollReportResponse {
         currency: "USD",
       },
     ],
-    totals: { baseSalaryMinor: 200000, overtimeAmountMinor: 0, bonusMinor: 5000, deductionMinor: 0, netPayMinor: 205000 },
+    totals: {
+      baseSalaryMinor: 200000,
+      overtimeAmountMinor: 0,
+      bonusMinor: 5000,
+      deductionMinor: 0,
+      netPayMinor: 205000,
+    },
   };
 }
 
@@ -166,7 +172,10 @@ describe("PayrollScreen", () => {
     fireEvent.change(normal, { target: { value: "45" } });
     fireEvent.click(screen.getByTestId("payroll-settings-submit"));
     await waitFor(() => expect(mocks.updatePayrollSettings).toHaveBeenCalledTimes(1));
-    expect(mocks.updatePayrollSettings).toHaveBeenCalledWith({ normalHours: 45, shiftDurationHours: 8 });
+    expect(mocks.updatePayrollSettings).toHaveBeenCalledWith({
+      normalHours: 45,
+      shiftDurationHours: 8,
+    });
   });
 
   it("sets compensation for a member", async () => {

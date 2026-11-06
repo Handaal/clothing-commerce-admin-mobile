@@ -124,7 +124,13 @@ function PromotionDetailContent({
       toast.error(described.message, {
         title: described.heading,
         ...(described.recovery === "retry"
-          ? { action: { label: t("common.retry"), icon: "refresh" as const, onPress: () => statusMutation.retry() } }
+          ? {
+              action: {
+                label: t("common.retry"),
+                icon: "refresh" as const,
+                onPress: () => statusMutation.retry(),
+              },
+            }
           : {}),
       });
     },
@@ -189,7 +195,10 @@ function PromotionDetailContent({
           label={effectiveStateLabel(promotionEffectiveState(promotion))}
           testID="promotion-detail-status"
         />
-        <InfoRow label={t("promoForm.activation")} value={activationLabel(promotion.activationType)} />
+        <InfoRow
+          label={t("promoForm.activation")}
+          value={activationLabel(promotion.activationType)}
+        />
       </Surface>
       {promotion.economicsLocked ? (
         <Notice
@@ -235,7 +244,11 @@ function PromotionDetailContent({
           message={statusError.message}
           action={
             statusError.recovery === "retry" ? (
-              <PrimaryButton label={t("common.retrySafely")} icon="refresh" onPress={statusMutation.retry} />
+              <PrimaryButton
+                label={t("common.retrySafely")}
+                icon="refresh"
+                onPress={statusMutation.retry}
+              />
             ) : undefined
           }
         />
@@ -247,7 +260,10 @@ function PromotionDetailContent({
           label={t("promoDetail.persistedLifecycle")}
           value={t(promotion.status === "active" ? "promoState.active" : "promoState.inactive")}
         />
-        <InfoRow label={t("promoForm.activation")} value={activationLabel(promotion.activationType)} />
+        <InfoRow
+          label={t("promoForm.activation")}
+          value={activationLabel(promotion.activationType)}
+        />
         <InfoRow label={t("promoForm.channel")} value={channelLabel(promotion.channel)} />
       </DetailSection>
       <DetailSection title={t("promoForm.sectionBenefit")} icon="sale-outline">
@@ -263,15 +279,25 @@ function PromotionDetailContent({
       </DetailSection>
       <DetailSection title={t("promoForm.sectionEligibility")} icon="target">
         <InfoRow label={t("promoForm.target")} value={targetTypeLabel(promotion.targetType)} />
-        <InfoRow label={t("promoDetail.brand")} value={restrictionName(context, "brand", promotion.brandId)} />
-        <InfoRow label={t("promoDetail.branch")} value={restrictionName(context, "branch", promotion.branchId)} />
+        <InfoRow
+          label={t("promoDetail.brand")}
+          value={restrictionName(context, "brand", promotion.brandId)}
+        />
+        <InfoRow
+          label={t("promoDetail.branch")}
+          value={restrictionName(context, "branch", promotion.branchId)}
+        />
         {promotion.targetType === "variant_scope" ? (
           promotion.targets.length > 0 ? (
             promotion.targets.map((target, index) => (
               <SurfaceRow key={`${target.productId ?? target.variantId}-${index}`}>
                 <InfoRow
                   label={t("promoDetail.targetN", { n: index + 1 })}
-                  value={target.productId ? t("promoDetail.selectedProduct") : t("promoDetail.selectedVariant")}
+                  value={
+                    target.productId
+                      ? t("promoDetail.selectedProduct")
+                      : t("promoDetail.selectedVariant")
+                  }
                 />
               </SurfaceRow>
             ))
@@ -336,7 +362,8 @@ function restrictionName(
   kind: "brand" | "branch",
   id: string | null,
 ): string {
-  if (id === null) return kind === "brand" ? translate("promoForm.allBrands") : translate("promoForm.allBranches");
+  if (id === null)
+    return kind === "brand" ? translate("promoForm.allBrands") : translate("promoForm.allBranches");
   if (kind === "branch") {
     return (
       context.access.orders.branches.find((item) => item.id === id)?.name ??

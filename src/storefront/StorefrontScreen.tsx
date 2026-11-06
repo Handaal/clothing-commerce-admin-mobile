@@ -157,7 +157,11 @@ function CheckoutConfig({
     <View style={styles.config}>
       {storefronts.length ? (
         storefronts.map((storefront) => (
-          <Surface key={storefront.brandId} style={styles.brandCard} testID={`storefront-brand-${storefront.brandId}`}>
+          <Surface
+            key={storefront.brandId}
+            style={styles.brandCard}
+            testID={`storefront-brand-${storefront.brandId}`}
+          >
             <View style={styles.brandHead}>
               <Text style={styles.brandName}>{storefront.brandName}</Text>
               <Badge

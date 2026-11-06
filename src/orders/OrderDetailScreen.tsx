@@ -161,12 +161,19 @@ function OrderDetail({
             </View>
           </View>
         </View>
-        <InfoRow label={t("orders.total")} value={formatMoneyMinor(header.totalMinor, header.currency)} />
+        <InfoRow
+          label={t("orders.total")}
+          value={formatMoneyMinor(header.totalMinor, header.currency)}
+        />
         <InfoRow label={t("orderDetail.placed")} value={formatOrderDate(header.placedAt)} />
       </Surface>
 
       <View style={detailStyles.metrics}>
-        <MetricCard label={t("orderDetail.orderLines")} value={String(lines.length)} icon="format-list-numbered" />
+        <MetricCard
+          label={t("orderDetail.orderLines")}
+          value={String(lines.length)}
+          icon="format-list-numbered"
+        />
         <MetricCard
           label={t("orderDetail.fulfillment")}
           value={fulfillmentStatusLabel(fulfillmentProgress.status)}
@@ -181,7 +188,10 @@ function OrderDetail({
 
       {cancellation ? (
         <Surface>
-          <SectionHeading title={t("orderDetail.cancellation")} detail={t("orderDetail.terminalState")} />
+          <SectionHeading
+            title={t("orderDetail.cancellation")}
+            detail={t("orderDetail.terminalState")}
+          />
           <InfoRow label={t("orderDetail.cancelled")} value={cancellation.cancelledAt} />
           {cancellation.reason ? (
             <InfoRow label={t("orderDetail.reason")} value={cancellation.reason} />
@@ -260,7 +270,10 @@ function OrderDetail({
 
       {hasReturnActivity(data.returns) && data.returns ? (
         <Surface>
-          <SectionHeading title={t("orderDetail.returnsRefunds")} detail={t("orderDetail.readOnly")} />
+          <SectionHeading
+            title={t("orderDetail.returnsRefunds")}
+            detail={t("orderDetail.readOnly")}
+          />
           <InfoRow
             label={t("orderDetail.pendingRefunds")}
             value={formatMoneyMinor(data.returns.pendingRefundMinor, header.currency)}
@@ -274,7 +287,10 @@ function OrderDetail({
 
       {onCreateReturn ? (
         <Surface tone="accent">
-          <SectionHeading title={t("orderDetail.startReturn")} detail={t("orderDetail.startReturnDetail")} />
+          <SectionHeading
+            title={t("orderDetail.startReturn")}
+            detail={t("orderDetail.startReturnDetail")}
+          />
           <PrimaryButton
             label={t("orderDetail.newReturn")}
             icon="keyboard-return"

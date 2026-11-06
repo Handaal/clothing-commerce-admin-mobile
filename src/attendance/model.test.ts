@@ -56,7 +56,9 @@ describe("parseHours", () => {
 describe("attendanceCapabilities", () => {
   it("derives from the staff capability", () => {
     expect(attendanceCapabilities(meContext(TENANT_A))).toEqual({ canRead: true, canManage: true });
-    expect(attendanceCapabilities(meContext(TENANT_A, { staff: { canRead: true, canManage: false } }))).toEqual({
+    expect(
+      attendanceCapabilities(meContext(TENANT_A, { staff: { canRead: true, canManage: false } })),
+    ).toEqual({
       canRead: true,
       canManage: false,
     });

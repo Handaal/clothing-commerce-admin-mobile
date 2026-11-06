@@ -35,25 +35,41 @@ export function describeSettingsError(error: unknown): SettingsErrorMessage {
       // mirror the same rules public checkout and POS enforce; the UI only maps them to guidance and
       // never restates the server rule. See docs/settings/operational-settings-core.md.
       if (error.code === "STOREFRONT_LOCATION_NOT_OPERATIONAL") {
-        return message("topology-conflict", t("set.errStorefrontLoc"), t("set.errStorefrontLocMsg"));
+        return message(
+          "topology-conflict",
+          t("set.errStorefrontLoc"),
+          t("set.errStorefrontLocMsg"),
+        );
       }
       if (error.code === "REGISTER_LOCATION_NOT_OPERATIONAL") {
         return message("topology-conflict", t("set.errRegisterLoc"), t("set.errRegisterLocMsg"));
       }
       if (error.code === "STOREFRONT_DEPENDENCY_CONFLICT") {
-        return message("topology-conflict", t("set.errStorefrontDep"), t("set.errStorefrontDepMsg"));
+        return message(
+          "topology-conflict",
+          t("set.errStorefrontDep"),
+          t("set.errStorefrontDepMsg"),
+        );
       }
       if (error.code === "REGISTER_DEPENDENCY_CONFLICT") {
         return message("topology-conflict", t("set.errRegisterDep"), t("set.errRegisterDepMsg"));
       }
       if (error.code === "CURRENCY_LOCKED" || /currency|history|sales/i.test(error.message)) {
-        return message("historical-lock", t("set.errCurrencyLocked"), t("set.errCurrencyLockedMsg"));
+        return message(
+          "historical-lock",
+          t("set.errCurrencyLocked"),
+          t("set.errCurrencyLockedMsg"),
+        );
       }
       if (error.code === "IMMUTABLE_FIELD" || /immutable/i.test(error.message)) {
         return message("immutable", t("set.errImmutable"), t("set.errImmutableMsg"));
       }
       if (error.code === "DEVICE_CONFLICT") {
-        return message("device-conflict", t("set.errDeviceConflict"), t("set.errDeviceConflictMsg"));
+        return message(
+          "device-conflict",
+          t("set.errDeviceConflict"),
+          t("set.errDeviceConflictMsg"),
+        );
       }
       if (error.code === "IDEMPOTENCY_CONFLICT") {
         return message("idempotency-conflict", t("set.errIdempotency"), t("set.errIdempotencyMsg"));

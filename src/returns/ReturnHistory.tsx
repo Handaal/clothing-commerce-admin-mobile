@@ -90,7 +90,10 @@ export function ReturnHistory({ client, orderId, onOpenReturn }: ReturnHistoryPr
               </View>
               <InfoRow label={t("returnHistory.return")} value={entry.id} />
               <InfoRow label={t("returnHistory.date")} value={entry.createdAt} />
-              <InfoRow label={t("returnHistory.disposition")} value={dispositionSummary(entry.lines)} />
+              <InfoRow
+                label={t("returnHistory.disposition")}
+                value={dispositionSummary(entry.lines)}
+              />
             </>
           );
           return onOpenReturn ? (

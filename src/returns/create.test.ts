@@ -37,16 +37,32 @@ describe("buildReturnLines", () => {
 
 describe("requiresRestockLocation", () => {
   it("is true when any line restocks", () => {
-    expect(requiresRestockLocation([{ orderLineId: "x", quantity: 1, reason: "r", disposition: "restock" }])).toBe(true);
+    expect(
+      requiresRestockLocation([
+        { orderLineId: "x", quantity: 1, reason: "r", disposition: "restock" },
+      ]),
+    ).toBe(true);
   });
   it("is false when no line restocks", () => {
-    expect(requiresRestockLocation([{ orderLineId: "x", quantity: 1, reason: "r", disposition: "non_restock" }])).toBe(false);
+    expect(
+      requiresRestockLocation([
+        { orderLineId: "x", quantity: 1, reason: "r", disposition: "non_restock" },
+      ]),
+    ).toBe(false);
   });
 });
 
 describe("validateReturnDraft", () => {
-  function draft(selection: ReturnLineSelection, restockLocationId: string | null = null, eligibility = returnEligibility()) {
-    return validateReturnDraft({ eligibility, lines: buildReturnLines(eligibility, selection), restockLocationId });
+  function draft(
+    selection: ReturnLineSelection,
+    restockLocationId: string | null = null,
+    eligibility = returnEligibility(),
+  ) {
+    return validateReturnDraft({
+      eligibility,
+      lines: buildReturnLines(eligibility, selection),
+      restockLocationId,
+    });
   }
 
   it("accepts a valid non-restock selection", () => {
@@ -62,23 +78,46 @@ describe("validateReturnDraft", () => {
   });
 
   it("rejects a non-positive quantity", () => {
-    expect(draft({ [ORDER_LINE_A]: { quantity: "0", reason: "r", disposition: "non_restock" } })).not.toBeNull();
+    expect(
+      draft({ [ORDER_LINE_A]: { quantity: "0", reason: "r", disposition: "non_restock" } }),
+    ).not.toBeNull();
   });
 
   it("rejects a quantity beyond the eligible remaining quantity", () => {
-    expect(draft({ [ORDER_LINE_A]: { quantity: "99", reason: "r", disposition: "non_restock" } })).not.toBeNull();
+    expect(
+      draft({ [ORDER_LINE_A]: { quantity: "99", reason: "r", disposition: "non_restock" } }),
+    ).not.toBeNull();
   });
 
   it("rejects a missing reason", () => {
-    expect(draft({ [ORDER_LINE_A]: { quantity: "1", reason: "  ", disposition: "non_restock" } })).not.toBeNull();
+    expect(
+      draft({ [ORDER_LINE_A]: { quantity: "1", reason: "  ", disposition: "non_restock" } }),
+    ).not.toBeNull();
   });
 
   it("rejects a reason outside the policy's allowed set", () => {
     const eligibility = returnEligibility({
-      policy: { windowDays: 30, allowedReasons: ["Damaged"], manualRefundsEnabled: true, maxManualRefundMinor: null },
+      policy: {
+        windowDays: 30,
+        allowedReasons: ["Damaged"],
+        manualRefundsEnabled: true,
+        maxManualRefundMinor: null,
+      },
     });
-    expect(draft({ [ORDER_LINE_A]: { quantity: "1", reason: "Other", disposition: "non_restock" } }, null, eligibility)).not.toBeNull();
-    expect(draft({ [ORDER_LINE_A]: { quantity: "1", reason: "Damaged", disposition: "non_restock" } }, null, eligibility)).toBeNull();
+    expect(
+      draft(
+        { [ORDER_LINE_A]: { quantity: "1", reason: "Other", disposition: "non_restock" } },
+        null,
+        eligibility,
+      ),
+    ).not.toBeNull();
+    expect(
+      draft(
+        { [ORDER_LINE_A]: { quantity: "1", reason: "Damaged", disposition: "non_restock" } },
+        null,
+        eligibility,
+      ),
+    ).toBeNull();
   });
 
   it("requires a receiving location when a line restocks", () => {
@@ -97,7 +136,9 @@ describe("submitCreateReturn", () => {
       { createReturn },
       {
         orderId: ORDER_A,
-        lines: [{ orderLineId: ORDER_LINE_A, quantity: 1, reason: "Wrong size", disposition: "restock" }],
+        lines: [
+          { orderLineId: ORDER_LINE_A, quantity: 1, reason: "Wrong size", disposition: "restock" },
+        ],
         inventoryLocationId: "loc-1",
       },
       "idem-key-1",
@@ -105,7 +146,9 @@ describe("submitCreateReturn", () => {
     expect(createReturn).toHaveBeenCalledWith({
       orderId: ORDER_A,
       idempotencyKey: "idem-key-1",
-      lines: [{ orderLineId: ORDER_LINE_A, quantity: 1, reason: "Wrong size", disposition: "restock" }],
+      lines: [
+        { orderLineId: ORDER_LINE_A, quantity: 1, reason: "Wrong size", disposition: "restock" },
+      ],
       inventoryLocationId: "loc-1",
       refundMode: "pending",
       settlementReference: null,
@@ -131,12 +174,28 @@ describe("submitSettleRefund", () => {
 
 describe("canSettleRefund", () => {
   it("allows a pending non-electronic refund", () => {
-    expect(canSettleRefund(returnDetail({ refund: { ...returnDetail().refund, status: "pending", method: "cash" } }).refund)).toBe(true);
+    expect(
+      canSettleRefund(
+        returnDetail({ refund: { ...returnDetail().refund, status: "pending", method: "cash" } })
+          .refund,
+      ),
+    ).toBe(true);
   });
   it("blocks an electronic refund", () => {
-    expect(canSettleRefund(returnDetail({ refund: { ...returnDetail().refund, status: "pending", method: "electronic" } }).refund)).toBe(false);
+    expect(
+      canSettleRefund(
+        returnDetail({
+          refund: { ...returnDetail().refund, status: "pending", method: "electronic" },
+        }).refund,
+      ),
+    ).toBe(false);
   });
   it("blocks an already-succeeded refund", () => {
-    expect(canSettleRefund(returnDetail({ refund: { ...returnDetail().refund, status: "succeeded", method: "cash" } }).refund)).toBe(false);
+    expect(
+      canSettleRefund(
+        returnDetail({ refund: { ...returnDetail().refund, status: "succeeded", method: "cash" } })
+          .refund,
+      ),
+    ).toBe(false);
   });
 });

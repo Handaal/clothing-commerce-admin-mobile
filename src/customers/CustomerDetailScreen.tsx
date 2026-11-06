@@ -50,7 +50,12 @@ export function CustomerDetailScreen({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("customers.eyebrow")} title={t("customerDetail.title")} icon="account-outline" onBack={onBack} />
+        <PageHeader
+          eyebrow={t("customers.eyebrow")}
+          title={t("customerDetail.title")}
+          icon="account-outline"
+          onBack={onBack}
+        />
         <LoadingBlock label={t("customerDetail.loading")} />
       </ScrollScreen>
     );
@@ -59,7 +64,12 @@ export function CustomerDetailScreen({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("customers.eyebrow")} title={errorHeading(state.error.kind)} icon="account-outline" onBack={onBack} />
+        <PageHeader
+          eyebrow={t("customers.eyebrow")}
+          title={errorHeading(state.error.kind)}
+          icon="account-outline"
+          onBack={onBack}
+        />
         <Notice
           tone="danger"
           message={state.error.message}
@@ -102,7 +112,10 @@ export function CustomerDetailScreen({
         {customer.email ? <InfoRow label={t("customers.email")} value={customer.email} /> : null}
         <InfoRow label={t("customerDetail.since")} value={formatOrderDate(customer.createdAt)} />
         {customer.lastOrderAt ? (
-          <InfoRow label={t("customerDetail.lastOrder")} value={formatOrderDate(customer.lastOrderAt)} />
+          <InfoRow
+            label={t("customerDetail.lastOrder")}
+            value={formatOrderDate(customer.lastOrderAt)}
+          />
         ) : null}
       </FormSection>
 
@@ -129,8 +142,13 @@ function CustomerOrders({
 
   return (
     <>
-      <SectionHeading title={t("customerDetail.ordersSection")} detail={t("customerDetail.ordersDetail")} />
-      {state.status === "loading" ? <LoadingBlock label={t("customerDetail.ordersLoading")} /> : null}
+      <SectionHeading
+        title={t("customerDetail.ordersSection")}
+        detail={t("customerDetail.ordersDetail")}
+      />
+      {state.status === "loading" ? (
+        <LoadingBlock label={t("customerDetail.ordersLoading")} />
+      ) : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -144,7 +162,11 @@ function CustomerOrders({
         />
       ) : null}
       {state.status === "success" && state.data.length === 0 ? (
-        <EmptyState icon="receipt-text-outline" title={t("customerDetail.noOrdersTitle")} message={t("customerDetail.noOrdersBody")} />
+        <EmptyState
+          icon="receipt-text-outline"
+          title={t("customerDetail.noOrdersTitle")}
+          message={t("customerDetail.noOrdersBody")}
+        />
       ) : null}
       {state.status === "success" && state.data.length > 0 ? (
         <View style={{ gap: 12 }}>
@@ -155,13 +177,20 @@ function CustomerOrders({
                   <Title>{order.orderNumber}</Title>
                   <Badge label={order.channel.toUpperCase()} tone="brand" />
                 </View>
-                <InfoRow label={t("customerDetail.orderTotal")} value={formatMoneyMinor(order.totalMinor, order.currency)} />
+                <InfoRow
+                  label={t("customerDetail.orderTotal")}
+                  value={formatMoneyMinor(order.totalMinor, order.currency)}
+                />
                 <InfoRow label={t("customerDetail.orderStatus")} value={order.status} />
                 <Body>{formatOrderDate(order.placedAt)}</Body>
               </>
             );
             return onOpenOrder ? (
-              <PressableRow key={order.id} testID={`customer-order-${order.id}`} onPress={() => onOpenOrder(order.id)}>
+              <PressableRow
+                key={order.id}
+                testID={`customer-order-${order.id}`}
+                onPress={() => onOpenOrder(order.id)}
+              >
                 {content}
               </PressableRow>
             ) : (

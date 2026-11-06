@@ -79,13 +79,19 @@ export function formatMinutes(minutes: number | null): string {
 }
 
 /** Parse a major-unit money input to minor, or a message. Zero/negative is rejected. */
-export function parseMoneyInput(input: string): { ok: true; amountMinor: number } | { ok: false; error: string } {
+export function parseMoneyInput(
+  input: string,
+): { ok: true; amountMinor: number } | { ok: false; error: string } {
   const parsed = parseAmountToMinor(input);
-  return parsed.ok ? { ok: true, amountMinor: parsed.amountMinor } : { ok: false, error: parsed.error };
+  return parsed.ok
+    ? { ok: true, amountMinor: parsed.amountMinor }
+    : { ok: false, error: parsed.error };
 }
 
 /** Parse a positive whole number of normal hours, or a message. */
-export function parseHours(input: string): { ok: true; hours: number } | { ok: false; error: string } {
+export function parseHours(
+  input: string,
+): { ok: true; hours: number } | { ok: false; error: string } {
   const hours = Number(input);
   if (!Number.isFinite(hours) || hours <= 0) return { ok: false, error: t("attendance.errHours") };
   return { ok: true, hours };

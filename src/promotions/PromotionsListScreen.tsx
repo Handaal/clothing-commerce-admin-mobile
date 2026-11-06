@@ -149,7 +149,9 @@ function PromotionsListContent({
 
       <SectionHeading
         title={t("promotions.catalogHeading")}
-        detail={state.status === "success" ? t("common.shown", { count: state.data.length }) : undefined}
+        detail={
+          state.status === "success" ? t("common.shown", { count: state.data.length }) : undefined
+        }
       />
       {state.status === "loading" ? <LoadingBlock label={t("promotions.loading")} /> : null}
       {state.status === "error" ? (
@@ -211,7 +213,10 @@ function PromotionRow({ promotion, onOpen }: { promotion: PromotionSummary; onOp
           <Body>{benefitLabel(promotion)}</Body>
         </View>
       </View>
-      <InfoRow label={t("promotions.activation")} value={activationLabel(promotion.activationType)} />
+      <InfoRow
+        label={t("promotions.activation")}
+        value={activationLabel(promotion.activationType)}
+      />
       <InfoRow label={t("promotions.target")} value={targetTypeLabel(promotion.targetType)} />
       <InfoRow label={t("promotions.channel")} value={channelLabel(promotion.channel)} />
       <InfoRow

@@ -70,7 +70,13 @@ function customerList(overrides = {}): CustomerListResponse {
 function Harness() {
   const { state } = useSession();
   if (state.phase !== "ready") return <span data-testid="phase">{state.phase}</span>;
-  return <CustomersListScreen tenantId={state.tenantId} onOpenCustomer={onOpenCustomer} onBack={onBack} />;
+  return (
+    <CustomersListScreen
+      tenantId={state.tenantId}
+      onOpenCustomer={onOpenCustomer}
+      onBack={onBack}
+    />
+  );
 }
 
 function renderScreen() {

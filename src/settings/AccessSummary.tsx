@@ -56,9 +56,16 @@ export function AccessSummary({ context }: { context: MeContextResponse }) {
         />
         <InfoRow
           label={t("home.access.suppliers")}
-          value={describeReadManage(t, access.suppliers?.canRead === true, access.suppliers?.canManage === true)}
+          value={describeReadManage(
+            t,
+            access.suppliers?.canRead === true,
+            access.suppliers?.canManage === true,
+          )}
         />
-        <InfoRow label={t("home.access.staff")} value={describeReadManage(t, staff.canRead, staff.canManage)} />
+        <InfoRow
+          label={t("home.access.staff")}
+          value={describeReadManage(t, staff.canRead, staff.canManage)}
+        />
         <InfoRow
           label={t("home.access.promotions")}
           value={describeReadManage(t, promotions.canRead, promotions.canManage)}

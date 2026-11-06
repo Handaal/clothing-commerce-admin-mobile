@@ -75,7 +75,13 @@ export function SupplierLedger(props: SupplierLedgerProps) {
 
 // ── Outstanding balance ──────────────────────────────────────────────────────────────────────────
 
-function SupplierBalance({ adapter, supplierId }: { adapter: SupplierAdapter; supplierId: string }) {
+function SupplierBalance({
+  adapter,
+  supplierId,
+}: {
+  adapter: SupplierAdapter;
+  supplierId: string;
+}) {
   const { t } = useI18n();
   const load = useCallback(() => adapter.supplierDues(), [adapter]);
   const { state, reload } = useAsync<SupplierDue[]>(load);
@@ -88,11 +94,18 @@ function SupplierBalance({ adapter, supplierId }: { adapter: SupplierAdapter; su
       ) : state.status === "success" ? (
         (() => {
           const due = state.data.find((item) => item.supplierId === supplierId);
-          if (!due) return <Notice testID="supplier-balance-empty" message={t("supLedger.noBalance")} />;
+          if (!due)
+            return <Notice testID="supplier-balance-empty" message={t("supLedger.noBalance")} />;
           return (
             <View testID="supplier-balance">
-              <InfoRow label={t("supLedger.purchased")} value={formatMoneyMinor(due.purchasedMinor, due.currency)} />
-              <InfoRow label={t("supLedger.paid")} value={formatMoneyMinor(due.paidMinor, due.currency)} />
+              <InfoRow
+                label={t("supLedger.purchased")}
+                value={formatMoneyMinor(due.purchasedMinor, due.currency)}
+              />
+              <InfoRow
+                label={t("supLedger.paid")}
+                value={formatMoneyMinor(due.paidMinor, due.currency)}
+              />
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Body>{t("supLedger.outstanding")}</Body>
                 <Badge
@@ -114,7 +127,10 @@ function SupplierBalance({ adapter, supplierId }: { adapter: SupplierAdapter; su
 function SupplierPurchases(props: SupplierLedgerProps) {
   const { adapter, supplierId } = props;
   const { t } = useI18n();
-  const load = useCallback(() => loadAllSupplierPurchases(adapter, supplierId), [adapter, supplierId]);
+  const load = useCallback(
+    () => loadAllSupplierPurchases(adapter, supplierId),
+    [adapter, supplierId],
+  );
   const { state, reload } = useAsync<SupplierPurchase[]>(load);
 
   return (
@@ -141,7 +157,13 @@ function SupplierPurchases(props: SupplierLedgerProps) {
   );
 }
 
-function PurchaseRow({ adapter, purchase }: { adapter: SupplierAdapter; purchase: SupplierPurchase }) {
+function PurchaseRow({
+  adapter,
+  purchase,
+}: {
+  adapter: SupplierAdapter;
+  purchase: SupplierPurchase;
+}) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   return (
@@ -167,7 +189,9 @@ function PurchaseRow({ adapter, purchase }: { adapter: SupplierAdapter; purchase
         testID={`supplier-purchase-items-toggle-${purchase.id}`}
         onPress={() => setExpanded((v) => !v)}
       />
-      {expanded ? <PurchaseItems adapter={adapter} purchaseId={purchase.id} currency={purchase.currency} /> : null}
+      {expanded ? (
+        <PurchaseItems adapter={adapter} purchaseId={purchase.id} currency={purchase.currency} />
+      ) : null}
     </SurfaceRow>
   );
 }
@@ -294,7 +318,9 @@ function RecordPurchaseForm({
           required
         />
       )}
-      {variants.state.status === "loading" ? <LoadingBlock label={t("supLedger.itemsLoading")} /> : null}
+      {variants.state.status === "loading" ? (
+        <LoadingBlock label={t("supLedger.itemsLoading")} />
+      ) : null}
       {variantOptions.length === 0 && variants.state.status === "success" ? (
         <Notice tone="warning" message={t("supLedger.noVariants")} />
       ) : null}
@@ -363,10 +389,19 @@ function RecordPurchaseForm({
       />
       {localError ? <Body>{localError}</Body> : null}
       {described ? (
-        <LedgerWriteError described={described} onRetry={() => mutation.retry()} onDismiss={() => mutation.reset()} testID="supplier-purchase-error" />
+        <LedgerWriteError
+          described={described}
+          onRetry={() => mutation.retry()}
+          onDismiss={() => mutation.reset()}
+          testID="supplier-purchase-error"
+        />
       ) : null}
       <PrimaryButton
-        label={mutation.state.status === "submitting" ? t("supLedger.recording") : t("supLedger.recordPurchaseCta")}
+        label={
+          mutation.state.status === "submitting"
+            ? t("supLedger.recording")
+            : t("supLedger.recordPurchaseCta")
+        }
         icon="check"
         testID="supplier-purchase-submit"
         disabled={mutation.state.status === "submitting"}
@@ -382,7 +417,10 @@ function RecordPurchaseForm({
 function SupplierPayments(props: SupplierLedgerProps) {
   const { adapter, supplierId } = props;
   const { t } = useI18n();
-  const load = useCallback(() => loadAllSupplierPayments(adapter, supplierId), [adapter, supplierId]);
+  const load = useCallback(
+    () => loadAllSupplierPayments(adapter, supplierId),
+    [adapter, supplierId],
+  );
   const { state, reload } = useAsync<SupplierPayment[]>(load);
 
   return (
@@ -405,7 +443,9 @@ function SupplierPayments(props: SupplierLedgerProps) {
                   <Title>{formatMoneyMinor(payment.amountMinor, payment.currency)}</Title>
                 </View>
                 <InfoRow label={t("supLedger.paymentDate")} value={formatDate(payment.paidAt)} />
-                {payment.notes ? <InfoRow label={t("supLedger.notesOptional")} value={payment.notes} /> : null}
+                {payment.notes ? (
+                  <InfoRow label={t("supLedger.notesOptional")} value={payment.notes} />
+                ) : null}
               </SurfaceRow>
             ))}
           </View>
@@ -446,7 +486,10 @@ function RecordPaymentForm({
       return;
     }
     setLocalError(null);
-    mutation.submit({ amountMinor: parsed.amountMinor, ...(notes.trim() ? { notes: notes.trim() } : {}) });
+    mutation.submit({
+      amountMinor: parsed.amountMinor,
+      ...(notes.trim() ? { notes: notes.trim() } : {}),
+    });
   }
 
   const described =
@@ -472,10 +515,19 @@ function RecordPaymentForm({
       />
       {localError ? <Body>{localError}</Body> : null}
       {described ? (
-        <LedgerWriteError described={described} onRetry={() => mutation.retry()} onDismiss={() => mutation.reset()} testID="supplier-payment-error" />
+        <LedgerWriteError
+          described={described}
+          onRetry={() => mutation.retry()}
+          onDismiss={() => mutation.reset()}
+          testID="supplier-payment-error"
+        />
       ) : null}
       <PrimaryButton
-        label={mutation.state.status === "submitting" ? t("supLedger.recording") : t("supLedger.recordPaymentCta")}
+        label={
+          mutation.state.status === "submitting"
+            ? t("supLedger.recording")
+            : t("supLedger.recordPaymentCta")
+        }
         icon="cash-plus"
         testID="supplier-payment-submit"
         disabled={mutation.state.status === "submitting"}
@@ -546,24 +598,37 @@ function ReminderRow({
     generateKey,
     { onSuccess: onChanged },
   );
-  const remove = useMutation((_: void, key) => adapter.deleteSupplierReminder(reminder.id, key), generateKey, {
-    onSuccess: onChanged,
-  });
+  const remove = useMutation(
+    (_: void, key) => adapter.deleteSupplierReminder(reminder.id, key),
+    generateKey,
+    {
+      onSuccess: onChanged,
+    },
+  );
   const busy = markDone.state.status === "submitting" || remove.state.status === "submitting";
 
   return (
     <SurfaceRow testID={`supplier-reminder-${reminder.id}`}>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Badge
-          label={reminder.status === "done" ? t("supLedger.statusDone") : t("supLedger.statusPending")}
+          label={
+            reminder.status === "done" ? t("supLedger.statusDone") : t("supLedger.statusPending")
+          }
           tone={reminder.status === "done" ? "success" : "neutral"}
           testID={`supplier-reminder-status-${reminder.id}`}
         />
-        {reminder.isOverdue ? <Badge label={t("supLedger.overdue")} tone="danger" /> : reminder.isDue ? <Badge label={t("supLedger.dueSoon")} tone="warning" /> : null}
+        {reminder.isOverdue ? (
+          <Badge label={t("supLedger.overdue")} tone="danger" />
+        ) : reminder.isDue ? (
+          <Badge label={t("supLedger.dueSoon")} tone="warning" />
+        ) : null}
       </View>
       <InfoRow label={t("supLedger.reminderDue")} value={reminder.dueDate} />
       {reminder.amountMinor !== null ? (
-        <InfoRow label={t("supLedger.reminderAmount")} value={formatMoneyMinor(reminder.amountMinor, reminder.currency)} />
+        <InfoRow
+          label={t("supLedger.reminderAmount")}
+          value={formatMoneyMinor(reminder.amountMinor, reminder.currency)}
+        />
       ) : null}
       {reminder.note ? <InfoRow label={t("supLedger.reminderNote")} value={reminder.note} /> : null}
       {canManage ? (
@@ -659,10 +724,19 @@ function AddReminderForm({
       />
       {localError ? <Body>{localError}</Body> : null}
       {described ? (
-        <LedgerWriteError described={described} onRetry={() => mutation.retry()} onDismiss={() => mutation.reset()} testID="supplier-reminder-error" />
+        <LedgerWriteError
+          described={described}
+          onRetry={() => mutation.retry()}
+          onDismiss={() => mutation.reset()}
+          testID="supplier-reminder-error"
+        />
       ) : null}
       <PrimaryButton
-        label={mutation.state.status === "submitting" ? t("supLedger.recording") : t("supLedger.addReminderCta")}
+        label={
+          mutation.state.status === "submitting"
+            ? t("supLedger.recording")
+            : t("supLedger.addReminderCta")
+        }
         icon="bell-plus-outline"
         testID="supplier-reminder-submit"
         disabled={mutation.state.status === "submitting"}
@@ -674,13 +748,7 @@ function AddReminderForm({
 
 // ── Shared ─────────────────────────────────────────────────────────────────────────────────────
 
-function LedgerError({
-  error,
-  onRetry,
-}: {
-  error: ClassifiedCommerceError;
-  onRetry: () => void;
-}) {
+function LedgerError({ error, onRetry }: { error: ClassifiedCommerceError; onRetry: () => void }) {
   const { t } = useI18n();
   return (
     <Notice

@@ -133,7 +133,10 @@ function DashboardData({
           <Title>{product.productName}</Title>
           <InfoRow label={t("reportDash.unitsSold")} value={String(product.unitsSold ?? 0)} />
           {product.currency !== undefined && product.netMinor !== undefined ? (
-            <InfoRow label={t("reportDash.net")} value={formatMoneyMinor(product.netMinor, product.currency)} />
+            <InfoRow
+              label={t("reportDash.net")}
+              value={formatMoneyMinor(product.netMinor, product.currency)}
+            />
           ) : null}
         </SurfaceRow>
       ))}
@@ -142,12 +145,17 @@ function DashboardData({
       <Title>{t("reportDash.stockSummary")}</Title>
       <InfoRow label={t("reportDash.onHand")} value={String(data.stock.totalOnHand)} />
       <InfoRow label={t("reportDash.variants")} value={String(data.stock.variantCount)} />
-      <InfoRow label={t("reportDash.inventoryLocations")} value={String(data.stock.locationCount)} />
+      <InfoRow
+        label={t("reportDash.inventoryLocations")}
+        value={String(data.stock.locationCount)}
+      />
       <InfoRow label={t("reportDash.inventoryAsOf")} value={data.stock.asOf} />
 
       <Divider />
       <Title>{t("reportDash.noSalesWithStock")}</Title>
-      {data.noSalesWithCurrentStock.length === 0 ? <Body>{t("reportDash.noMatchingProducts")}</Body> : null}
+      {data.noSalesWithCurrentStock.length === 0 ? (
+        <Body>{t("reportDash.noMatchingProducts")}</Body>
+      ) : null}
       {data.noSalesWithCurrentStock.map((item) => (
         <SurfaceRow key={item.id}>
           <Title>{item.productName}</Title>
@@ -178,12 +186,18 @@ function CurrencyDashboard({ group }: { group: CurrencySalesGroup }) {
     <View testID={`currency-group-${group.currency}`} style={{ gap: 10 }}>
       <Title>{group.currency}</Title>
       <View style={{ gap: 8 }}>
-        <InfoRow label={t("reportDash.gross")} value={formatMoneyMinor(group.sales.grossMinor, group.currency)} />
+        <InfoRow
+          label={t("reportDash.gross")}
+          value={formatMoneyMinor(group.sales.grossMinor, group.currency)}
+        />
         <InfoRow
           label={t("reportDash.discounts")}
           value={formatMoneyMinor(group.sales.discountMinor, group.currency)}
         />
-        <InfoRow label={t("reportDash.net")} value={formatMoneyMinor(group.sales.netMinor, group.currency)} />
+        <InfoRow
+          label={t("reportDash.net")}
+          value={formatMoneyMinor(group.sales.netMinor, group.currency)}
+        />
         <InfoRow label={t("reportDash.orders")} value={String(group.sales.orders)} />
         <InfoRow
           label={t("reportDash.aov")}
@@ -218,13 +232,24 @@ function CurrencyDashboard({ group }: { group: CurrencySalesGroup }) {
         <SurfaceRow key={`${group.currency}-${point.fromInclusive}`}>
           <Title>{point.label}</Title>
           <InfoRow label={t("reportDash.bucketStarts")} value={point.fromInclusive} />
-          <InfoRow label={t("reportDash.net")} value={formatMoneyMinor(point.netMinor, group.currency)} />
+          <InfoRow
+            label={t("reportDash.net")}
+            value={formatMoneyMinor(point.netMinor, group.currency)}
+          />
           <InfoRow label={t("reportDash.orders")} value={String(point.orders)} />
         </SurfaceRow>
       ))}
 
-      <Breakdown title={t("reportDash.posVsOnline")} rows={group.channels} currency={group.currency} />
-      <Breakdown title={t("reportDash.brandBreakdown")} rows={group.brands} currency={group.currency} />
+      <Breakdown
+        title={t("reportDash.posVsOnline")}
+        rows={group.channels}
+        currency={group.currency}
+      />
+      <Breakdown
+        title={t("reportDash.brandBreakdown")}
+        rows={group.brands}
+        currency={group.currency}
+      />
     </View>
   );
 }

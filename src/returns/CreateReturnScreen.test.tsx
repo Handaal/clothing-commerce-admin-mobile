@@ -101,7 +101,9 @@ describe("CreateReturnScreen", () => {
     renderScreen();
     fireEvent.click(await screen.findByTestId("create-return-select-1"));
     fireEvent.change(screen.getByTestId("create-return-qty-1"), { target: { value: "2" } });
-    fireEvent.change(screen.getByTestId("create-return-reason-1"), { target: { value: "Wrong size" } });
+    fireEvent.change(screen.getByTestId("create-return-reason-1"), {
+      target: { value: "Wrong size" },
+    });
     fireEvent.click(screen.getByTestId("create-return-review"));
     fireEvent.click(screen.getByTestId("create-return-submit"));
 
@@ -109,7 +111,14 @@ describe("CreateReturnScreen", () => {
     expect(mocks.createReturn).toHaveBeenCalledWith({
       orderId: ORDER_A,
       idempotencyKey: "fixed-key",
-      lines: [{ orderLineId: ORDER_LINE_A, quantity: 2, reason: "Wrong size", disposition: "non_restock" }],
+      lines: [
+        {
+          orderLineId: ORDER_LINE_A,
+          quantity: 2,
+          reason: "Wrong size",
+          disposition: "non_restock",
+        },
+      ],
       inventoryLocationId: null,
       refundMode: "pending",
       settlementReference: null,
@@ -121,7 +130,9 @@ describe("CreateReturnScreen", () => {
     renderScreen();
     fireEvent.click(await screen.findByTestId("create-return-select-1"));
     fireEvent.change(screen.getByTestId("create-return-qty-1"), { target: { value: "1" } });
-    fireEvent.change(screen.getByTestId("create-return-reason-1"), { target: { value: "Damaged" } });
+    fireEvent.change(screen.getByTestId("create-return-reason-1"), {
+      target: { value: "Damaged" },
+    });
     fireEvent.click(screen.getByTestId("create-return-disposition-1-restock"));
 
     // No receive capability in the default context → explicit notice and a disabled review action.
@@ -158,7 +169,9 @@ describe("CreateReturnScreen", () => {
     renderScreen();
     fireEvent.click(await screen.findByTestId("create-return-select-1"));
     fireEvent.change(screen.getByTestId("create-return-qty-1"), { target: { value: "1" } });
-    fireEvent.change(screen.getByTestId("create-return-reason-1"), { target: { value: "Damaged" } });
+    fireEvent.change(screen.getByTestId("create-return-reason-1"), {
+      target: { value: "Damaged" },
+    });
     fireEvent.click(screen.getByTestId("create-return-disposition-1-restock"));
     fireEvent.click(await screen.findByTestId(`create-return-location-${INVENTORY_LOCATION_A}`));
     fireEvent.click(screen.getByTestId("create-return-review"));

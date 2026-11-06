@@ -46,7 +46,12 @@ export interface AttendanceScreenProps {
  * tenant-scoped SDK client and the Commerce API authorizes each one; manage affordances appear only
  * when the caller's staff capability allows it.
  */
-export function AttendanceScreen({ tenantId, context, onBack, onOpenPayroll }: AttendanceScreenProps) {
+export function AttendanceScreen({
+  tenantId,
+  context,
+  onBack,
+  onOpenPayroll,
+}: AttendanceScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
   const { t } = useI18n();
@@ -55,8 +60,17 @@ export function AttendanceScreen({ tenantId, context, onBack, onOpenPayroll }: A
   if (!caps.canRead) {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow={t("attendance.eyebrow")} title={t("attendance.title")} icon="clock-outline" onBack={onBack} />
-        <Notice tone="warning" title={t("attendance.accessTitle")} message={t("attendance.accessBody")} />
+        <PageHeader
+          eyebrow={t("attendance.eyebrow")}
+          title={t("attendance.title")}
+          icon="clock-outline"
+          onBack={onBack}
+        />
+        <Notice
+          tone="warning"
+          title={t("attendance.accessTitle")}
+          message={t("attendance.accessBody")}
+        />
       </ScrollScreen>
     );
   }
@@ -71,8 +85,17 @@ export function AttendanceScreen({ tenantId, context, onBack, onOpenPayroll }: A
         onBack={onBack}
       />
       <Surface tone="accent">
-        <SectionHeading title={t("attendance.payrollLink")} detail={t("attendance.payrollLinkDetail")} />
-        <PrimaryButton label={t("attendance.openPayroll")} icon="cash-multiple" variant="secondary" testID="attendance-open-payroll" onPress={onOpenPayroll} />
+        <SectionHeading
+          title={t("attendance.payrollLink")}
+          detail={t("attendance.payrollLinkDetail")}
+        />
+        <PrimaryButton
+          label={t("attendance.openPayroll")}
+          icon="cash-multiple"
+          variant="secondary"
+          testID="attendance-open-payroll"
+          onPress={onOpenPayroll}
+        />
       </Surface>
 
       <MyAttendance client={client} />
@@ -84,7 +107,11 @@ export function AttendanceScreen({ tenantId, context, onBack, onOpenPayroll }: A
 
 // ── My attendance (self clock in / out) ──────────────────────────────────────────────────────────
 
-function MyAttendance({ client }: { client: Pick<TenantCommerceClient, "getMyAttendance" | "clockIn" | "clockOut"> }) {
+function MyAttendance({
+  client,
+}: {
+  client: Pick<TenantCommerceClient, "getMyAttendance" | "clockIn" | "clockOut">;
+}) {
   const { t } = useI18n();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -108,7 +135,9 @@ function MyAttendance({ client }: { client: Pick<TenantCommerceClient, "getMyAtt
   return (
     <FormSection title={t("attendance.mySection")} icon="account-clock-outline">
       {state.status === "loading" ? <LoadingBlock label={t("attendance.loading")} /> : null}
-      {state.status === "error" ? <RangeError kind={state.error.kind} message={state.error.message} onRetry={reload} /> : null}
+      {state.status === "error" ? (
+        <RangeError kind={state.error.kind} message={state.error.message} onRetry={reload} />
+      ) : null}
       {state.status === "success" ? (
         <View style={{ gap: 8 }} testID="attendance-my">
           {state.data.openEntry ? (
@@ -138,11 +167,17 @@ function MyAttendance({ client }: { client: Pick<TenantCommerceClient, "getMyAtt
             </>
           )}
           <Divider />
-          <SectionHeading title={t("attendance.recentMine")} detail={t("common.shown", { count: state.data.entries.length })} />
+          <SectionHeading
+            title={t("attendance.recentMine")}
+            detail={t("common.shown", { count: state.data.entries.length })}
+          />
           {state.data.entries.map((entry) => (
             <SurfaceRow key={entry.id} testID={`attendance-my-entry-${entry.id}`}>
               <InfoRow label={t("attendance.clockInLabel")} value={entry.clockIn} />
-              <InfoRow label={t("attendance.clockOutLabel")} value={entry.clockOut ?? t("attendance.open")} />
+              <InfoRow
+                label={t("attendance.clockOutLabel")}
+                value={entry.clockOut ?? t("attendance.open")}
+              />
               <InfoRow label={t("attendance.worked")} value={formatMinutes(entry.workedMinutes)} />
             </SurfaceRow>
           ))}
@@ -173,7 +208,11 @@ function LeaveSelf({ client }: { client: Pick<TenantCommerceClient, "startLeave"
   }
 
   return (
-    <FormSection title={t("attendance.leaveSection")} description={t("attendance.leaveDesc")} icon="walk">
+    <FormSection
+      title={t("attendance.leaveSection")}
+      description={t("attendance.leaveDesc")}
+      icon="walk"
+    >
       <View style={{ flexDirection: "row", gap: 8 }}>
         <PrimaryButton
           label={t("attendance.startLeave")}
@@ -256,20 +295,56 @@ function WorkforceRoster({
   }
 
   return (
-    <FormSection title={t("attendance.rosterSection")} description={t("attendance.rosterDesc")} icon="account-group-outline">
+    <FormSection
+      title={t("attendance.rosterSection")}
+      description={t("attendance.rosterDesc")}
+      icon="account-group-outline"
+    >
       {canManage ? (
         <Surface testID="attendance-add-entry-form">
-          <SectionHeading title={t("attendance.addEntry")} detail={t("attendance.addEntryDetail")} />
-          <TextField label={t("attendance.membershipId")} value={membershipId} onChangeText={setMembershipId} testID="attendance-entry-membership" autoCapitalize="none" />
-          <TextField label={t("attendance.clockInLabel")} value={clockIn} onChangeText={setClockIn} placeholder="2026-10-01T09:00:00Z" testID="attendance-entry-clockin" autoCapitalize="none" hint={t("attendance.datetimeHint")} />
-          <TextField label={t("attendance.clockOutOptional")} value={clockOut} onChangeText={setClockOut} placeholder="2026-10-01T17:00:00Z" testID="attendance-entry-clockout" autoCapitalize="none" />
+          <SectionHeading
+            title={t("attendance.addEntry")}
+            detail={t("attendance.addEntryDetail")}
+          />
+          <TextField
+            label={t("attendance.membershipId")}
+            value={membershipId}
+            onChangeText={setMembershipId}
+            testID="attendance-entry-membership"
+            autoCapitalize="none"
+          />
+          <TextField
+            label={t("attendance.clockInLabel")}
+            value={clockIn}
+            onChangeText={setClockIn}
+            placeholder="2026-10-01T09:00:00Z"
+            testID="attendance-entry-clockin"
+            autoCapitalize="none"
+            hint={t("attendance.datetimeHint")}
+          />
+          <TextField
+            label={t("attendance.clockOutOptional")}
+            value={clockOut}
+            onChangeText={setClockOut}
+            placeholder="2026-10-01T17:00:00Z"
+            testID="attendance-entry-clockout"
+            autoCapitalize="none"
+          />
           {formError ? <Body>{formError}</Body> : null}
-          <PrimaryButton label={busy ? t("common.saving") : t("attendance.addEntry")} icon="plus" testID="attendance-entry-submit" disabled={busy} onPress={onAdd} />
+          <PrimaryButton
+            label={busy ? t("common.saving") : t("attendance.addEntry")}
+            icon="plus"
+            testID="attendance-entry-submit"
+            disabled={busy}
+            onPress={onAdd}
+          />
         </Surface>
       ) : null}
 
       {state.status === "loading" ? <LoadingBlock label={t("attendance.loading")} /> : null}
-      {state.status === "error" ? <RangeError kind={state.error.kind} message={state.error.message} onRetry={reload} /> : null}
+      {state.status === "error" ? (
+        <RangeError kind={state.error.kind} message={state.error.message} onRetry={reload} />
+      ) : null}
       {state.status === "success" ? (
         state.data.items.length === 0 ? (
           <Notice testID="attendance-roster-empty" message={t("attendance.rosterEmpty")} />
@@ -279,9 +354,17 @@ function WorkforceRoster({
               <SurfaceRow key={entry.id} testID={`attendance-entry-${entry.id}`}>
                 <Title>{entry.memberDisplayName ?? entry.memberEmail ?? entry.membershipId}</Title>
                 <InfoRow label={t("attendance.clockInLabel")} value={entry.clockIn} />
-                <InfoRow label={t("attendance.clockOutLabel")} value={entry.clockOut ?? t("attendance.open")} />
-                <InfoRow label={t("attendance.worked")} value={formatMinutes(entry.workedMinutes)} />
-                {entry.branchName ? <InfoRow label={t("attendance.branch")} value={entry.branchName} /> : null}
+                <InfoRow
+                  label={t("attendance.clockOutLabel")}
+                  value={entry.clockOut ?? t("attendance.open")}
+                />
+                <InfoRow
+                  label={t("attendance.worked")}
+                  value={formatMinutes(entry.workedMinutes)}
+                />
+                {entry.branchName ? (
+                  <InfoRow label={t("attendance.branch")} value={entry.branchName} />
+                ) : null}
                 {canManage ? (
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     {!entry.clockOut ? (
@@ -293,7 +376,11 @@ function WorkforceRoster({
                         testID={`attendance-entry-close-${entry.id}`}
                         onPress={() =>
                           run(
-                            () => client.updateAttendanceEntry({ entryId: entry.id, clockOut: new Date().toISOString() }),
+                            () =>
+                              client.updateAttendanceEntry({
+                                entryId: entry.id,
+                                clockOut: new Date().toISOString(),
+                              }),
                             t("attendance.entryUpdatedToast"),
                           )
                         }
@@ -304,7 +391,12 @@ function WorkforceRoster({
                       confirmLabel={t("attendance.removeEntry")}
                       disabled={busy}
                       testID={`attendance-entry-remove-${entry.id}`}
-                      onConfirm={() => run(() => client.removeAttendanceEntry(entry.id), t("attendance.entryRemovedToast"))}
+                      onConfirm={() =>
+                        run(
+                          () => client.removeAttendanceEntry(entry.id),
+                          t("attendance.entryRemovedToast"),
+                        )
+                      }
                     />
                   </View>
                 ) : null}
@@ -317,14 +409,26 @@ function WorkforceRoster({
   );
 }
 
-function RangeError({ kind, message, onRetry }: { kind: Parameters<typeof errorHeading>[0]; message: string; onRetry: () => void }) {
+function RangeError({
+  kind,
+  message,
+  onRetry,
+}: {
+  kind: Parameters<typeof errorHeading>[0];
+  message: string;
+  onRetry: () => void;
+}) {
   const { t } = useI18n();
   return (
     <Notice
       tone="danger"
       title={errorHeading(kind)}
       message={message}
-      action={isRetryable(kind) ? <TextButton label={t("common.tryAgain")} icon="refresh" onPress={onRetry} /> : undefined}
+      action={
+        isRetryable(kind) ? (
+          <TextButton label={t("common.tryAgain")} icon="refresh" onPress={onRetry} />
+        ) : undefined
+      }
     />
   );
 }

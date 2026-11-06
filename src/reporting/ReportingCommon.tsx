@@ -240,7 +240,11 @@ export function PaginationControls({
   const { t } = useI18n();
   return (
     <View testID="report-pagination" style={{ gap: 8 }}>
-      <PrimaryButton label={t("report.previousPage")} disabled={!canPrevious} onPress={onPrevious} />
+      <PrimaryButton
+        label={t("report.previousPage")}
+        disabled={!canPrevious}
+        onPress={onPrevious}
+      />
       <PrimaryButton label={t("report.nextPage")} disabled={!canNext} onPress={onNext} />
     </View>
   );

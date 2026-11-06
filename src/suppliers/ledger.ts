@@ -105,7 +105,9 @@ export interface RecordPaymentArgs {
 }
 
 /** Parse + validate a payment amount. Returns the minor amount or a message. */
-export function parsePaymentAmount(input: string): { ok: true; amountMinor: number } | { ok: false; error: string } {
+export function parsePaymentAmount(
+  input: string,
+): { ok: true; amountMinor: number } | { ok: false; error: string } {
   const parsed = parseAmountToMinor(input);
   if (!parsed.ok) return { ok: false, error: parsed.error };
   return { ok: true, amountMinor: parsed.amountMinor };

@@ -233,7 +233,9 @@ describe("ReturnDetailScreen settle-refund", () => {
 
   it("hides the settle panel for an electronic refund", async () => {
     mocks.getReturn.mockResolvedValue(
-      returnDetail({ refund: { ...returnDetail().refund, status: "pending", method: "electronic" } }),
+      returnDetail({
+        refund: { ...returnDetail().refund, status: "pending", method: "electronic" },
+      }),
     );
     renderDetail();
     await screen.findByTestId("return-detail-status");

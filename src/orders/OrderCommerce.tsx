@@ -23,10 +23,7 @@ const paymentMethodKey: Record<NonNullable<OrderCommerceDetails["payment"]>["met
     electronic: "payMethod.electronic",
   };
 
-const reservationKey: Record<
-  OrderCommerceDetails["reservations"][number]["status"],
-  MessageKey
-> = {
+const reservationKey: Record<OrderCommerceDetails["reservations"][number]["status"], MessageKey> = {
   active: "reservation.active",
   consumed: "reservation.consumed",
   released: "reservation.released",
@@ -60,7 +57,10 @@ export function OrderCommerce({ data }: { data: OrderDetailResponse }) {
           <View>
             <InfoRow label={t("orderCommerce.name")} value={customer.name} />
             <InfoRow label={t("orderCommerce.phone")} value={customer.phone} />
-            <InfoRow label={t("orderCommerce.email")} value={customer.email ?? t("orderCommerce.notProvided")} />
+            <InfoRow
+              label={t("orderCommerce.email")}
+              value={customer.email ?? t("orderCommerce.notProvided")}
+            />
           </View>
         ) : (
           <Body>{t("orderCommerce.customerUnavailable")}</Body>
@@ -94,11 +94,17 @@ export function OrderCommerce({ data }: { data: OrderDetailResponse }) {
       </FormSection>
 
       <Surface>
-        <SectionHeading title={t("orderCommerce.paymentSection")} detail={t("orderCommerce.recordedState")} />
+        <SectionHeading
+          title={t("orderCommerce.paymentSection")}
+          detail={t("orderCommerce.recordedState")}
+        />
         {payment ? (
           <View style={commerceStyles.payment}>
             <Badge label={payment.status} testID="order-payment-status" />
-            <InfoRow label={t("orderCommerce.method")} value={t(paymentMethodKey[payment.method])} />
+            <InfoRow
+              label={t("orderCommerce.method")}
+              value={t(paymentMethodKey[payment.method])}
+            />
             <InfoRow
               label={t("orderCommerce.paymentAmount")}
               value={formatMoneyMinor(payment.amountMinor, payment.currency)}
@@ -116,7 +122,10 @@ export function OrderCommerce({ data }: { data: OrderDetailResponse }) {
       </Surface>
 
       <Surface tone="accent">
-        <SectionHeading title={t("orderCommerce.stockCommitment")} detail={t("orderCommerce.reservationState")} />
+        <SectionHeading
+          title={t("orderCommerce.stockCommitment")}
+          detail={t("orderCommerce.reservationState")}
+        />
         {commerce && commerce.reservations.length > 0 ? (
           <View style={commerceStyles.reservations}>
             {commerce.reservations.map((reservation, index) => {
@@ -126,12 +135,17 @@ export function OrderCommerce({ data }: { data: OrderDetailResponse }) {
                   key={`${reservation.variantId}-${reservation.inventoryLocationId}-${index}`}
                 >
                   <View style={commerceStyles.reservationCopy}>
-                    <Body>{line ? `${line.productName} · ${line.sku}` : t("orderCommerce.orderItem")}</Body>
+                    <Body>
+                      {line ? `${line.productName} · ${line.sku}` : t("orderCommerce.orderItem")}
+                    </Body>
                     <Badge
                       label={t(reservationKey[reservation.status])}
                       testID={`order-reservation-${index}`}
                     />
-                    <InfoRow label={t("orderCommerce.committedQty")} value={String(reservation.quantity)} />
+                    <InfoRow
+                      label={t("orderCommerce.committedQty")}
+                      value={String(reservation.quantity)}
+                    />
                     <InfoRow
                       label={t("orderCommerce.consumedQty")}
                       value={String(reservation.consumedQuantity)}

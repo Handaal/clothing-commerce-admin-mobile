@@ -1,9 +1,19 @@
 // @vitest-environment jsdom
-import type { CustomerDetailResponse, CustomerOrdersResponse } from "@shifted/clothing-commerce-sdk";
+import type {
+  CustomerDetailResponse,
+  CustomerOrdersResponse,
+} from "@shifted/clothing-commerce-sdk";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BRAND_A, MEMBERSHIP_A, ORDER_A, TENANT_A, meContext, tenant } from "../test-support/fixtures";
+import {
+  BRAND_A,
+  MEMBERSHIP_A,
+  ORDER_A,
+  TENANT_A,
+  meContext,
+  tenant,
+} from "../test-support/fixtures";
 import { createMemoryTenantStorage } from "../tenant/storage";
 import { CustomerDetailScreen } from "./CustomerDetailScreen";
 
