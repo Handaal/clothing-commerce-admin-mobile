@@ -38,7 +38,7 @@ All pricing, eligibility, authorization, redemption counts, and post-redemption 
 server-authoritative.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.19.0)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.26.0)
   → GET /me/tenants → tenant selection → GET /me/context
   → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
   → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
@@ -282,18 +282,18 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.19.0**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.19.0.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.19.0.tgz`
-- SHA-256: `78ca20340b19364ccba6936c048492e05fc2d7d6c444a2ee0ef52380e38f3c30`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.26.0**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.26.0.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.26.0.tgz`
+- SHA-256: `98968377fb9d4f2bb8f37ea7e75979639b8af12df25eccbb4e90de0dffefbadc`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.19.0.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.26.0.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.19.0.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.26.0.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
