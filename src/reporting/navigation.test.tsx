@@ -54,7 +54,8 @@ describe("Reporting navigation", () => {
   it("is hidden when reports guidance is missing", async () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A));
     renderHome();
-    await screen.findByTestId("open-products");
+    // `open-more` always renders; `open-products` is a PRIMARY bottom-tab, not a dashboard card.
+    await screen.findByTestId("open-more");
     expect(screen.queryByTestId("open-reports")).toBeNull();
   });
 
@@ -67,8 +68,7 @@ describe("Reporting navigation", () => {
     renderHome();
     fireEvent.click(await screen.findByTestId("open-reports"));
     expect(mocks.push).toHaveBeenCalledWith("/reports");
-    expect(screen.getByTestId("open-products")).toBeTruthy();
-    expect(screen.getByTestId("open-orders")).toBeTruthy();
+    // Products and Orders are PRIMARY bottom-tabs; Promotions remains a secondary dashboard card.
     expect(screen.getByTestId("open-promotions")).toBeTruthy();
   });
 });

@@ -164,6 +164,8 @@ describe("InventoryScreen", () => {
     expect(screen.getByText("LS-001-M")).toBeTruthy();
     // Location id resolved to its human name via /me/context access.
     expect(screen.getByText("Flagship Stockroom")).toBeTruthy();
+    expect(screen.queryByText("Back")).toBeNull();
+    expect(screen.getByTestId("inventory-action-receive").textContent).toBe("");
     // The call went through the tenant-scoped client for the resolved tenant, exactly once.
     expect(mocks.withTenant).toHaveBeenCalledWith(TENANT_A);
     expect(mocks.listInventory).toHaveBeenCalledTimes(1);
@@ -293,6 +295,12 @@ describe("InventoryScreen", () => {
     expect(await screen.findByTestId("open-receive")).toBeTruthy();
     expect(await screen.findByTestId("open-adjust")).toBeTruthy();
     expect(await screen.findByTestId("open-transfer")).toBeTruthy();
+    expect(screen.getByTestId("inventory-action-receive")).toBeTruthy();
+    expect(screen.getByTestId("inventory-action-adjust")).toBeTruthy();
+    expect(screen.getByTestId("inventory-action-transfer")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("inventory-action-receive"));
+    expect(await screen.findByTestId("receive-submit")).toBeTruthy();
   });
 
   it("loads ACTIVE suppliers and offers them in the Receive form", async () => {

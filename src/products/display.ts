@@ -1,28 +1,33 @@
 import type { CommerceErrorKind } from "../commerce/errors";
+import { t } from "../i18n";
 
-/** Human heading for a classified Commerce failure, shared by the product read surfaces. */
+/**
+ * Human heading for a classified Commerce failure, shared by the product read surfaces. Localized via
+ * the standalone `t()` (reads the active locale); callers re-render on a language switch through their
+ * own `useI18n` usage, so no call-site change was needed.
+ */
 export function errorHeading(kind: CommerceErrorKind): string {
   switch (kind) {
     case "auth":
-      return "Session problem";
+      return t("errorHead.auth");
     case "forbidden":
-      return "Access denied";
+      return t("errorHead.forbidden");
     case "not-found":
-      return "Not found";
+      return t("errorHead.notFound");
     case "validation":
-      return "Invalid request";
+      return t("errorHead.validation");
     case "network":
-      return "Cannot reach the Commerce API";
+      return t("errorHead.network");
     case "contract":
-      return "Unexpected response";
+      return t("errorHead.contract");
     case "server":
     case "unknown":
-      return "Something went wrong";
+      return t("errorHead.unknown");
   }
 }
 
 /**
- * Formats a minor-unit amount for read-only display, e.g. `(2599, "USD") → "USD 25.99"`. The API
+ * Formats a minor-unit amount for read-only display, e.g. `(2599, "EGP") → "EGP 25.99"`. The API
  * returns `amountMinor` in the currency's minor units; we render two fraction digits, which is
  * correct for the currencies this catalog uses. No rounding or currency conversion is invented.
  */

@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { View } from "react-native";
 
+import { OPERATING_CURRENCY } from "../commerce/currency";
+import { useI18n } from "../i18n";
+import { tenantDisplayName } from "../tenant/presentation";
 import {
   Body,
   InfoRow,
@@ -38,80 +41,76 @@ export function BusinessForm({
   value: BusinessSettings;
   onSave: (draft: BusinessSettingsDraft) => Promise<unknown>;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<BusinessSettingsDraft>(() => ({
-    displayName: value.displayName,
+    displayName: tenantDisplayName(value.displayName),
     legalName: value.legalName,
     contactEmail: value.contactEmail,
     contactPhone: value.contactPhone,
     timezone: value.timezone,
     country: value.country,
     taxIdentifier: value.taxIdentifier,
-    defaultCurrency: value.defaultCurrency,
+    // Currency is locked to the single operating currency; the field below is read-only.
+    defaultCurrency: OPERATING_CURRENCY,
   }));
   const [save, setSave] = useState<SaveState>({ status: "idle" });
-  const valid =
-    draft.displayName.trim() && draft.timezone.trim() && /^[A-Z]{3}$/.test(draft.defaultCurrency);
+  const valid = draft.displayName.trim() && draft.timezone.trim();
   return (
     <View style={{ gap: 12 }}>
-      <InfoRow label="Tenant identifier" value={value.id} />
-      <InfoRow label="Tenant slug · read-only" value={value.slug} />
+      <InfoRow label={t("set.tenantIdentifier")} value={value.id} />
+      <InfoRow label={t("set.tenantSlugRO")} value={value.slug} />
       <TextField
-        label="Display name"
+        label={t("set.displayName")}
         value={draft.displayName}
         onChangeText={(v) => setDraft({ ...draft, displayName: v })}
         testID="business-display-name"
       />
       <TextField
-        label="Legal name"
+        label={t("set.legalName")}
         value={draft.legalName}
         onChangeText={(v) => setDraft({ ...draft, legalName: v })}
         testID="business-legal-name"
       />
       <TextField
-        label="Contact email"
+        label={t("set.contactEmail")}
         value={draft.contactEmail}
         onChangeText={(v) => setDraft({ ...draft, contactEmail: v })}
         testID="business-email"
         autoCapitalize="none"
       />
       <TextField
-        label="Contact phone"
+        label={t("set.contactPhone")}
         value={draft.contactPhone}
         onChangeText={(v) => setDraft({ ...draft, contactPhone: v })}
         testID="business-phone"
       />
       <TextField
-        label="Timezone"
+        label={t("set.timezone")}
         value={draft.timezone}
         onChangeText={(v) => setDraft({ ...draft, timezone: v })}
         testID="business-timezone"
       />
       <TextField
-        label="Country"
+        label={t("set.country")}
         value={draft.country}
         onChangeText={(v) => setDraft({ ...draft, country: v })}
         testID="business-country"
       />
       <TextField
-        label="Tax identifier"
+        label={t("set.taxIdentifier")}
         value={draft.taxIdentifier}
         onChangeText={(v) => setDraft({ ...draft, taxIdentifier: v })}
         testID="business-tax-id"
       />
-      <TextField
-        label="Default currency"
+      <InfoRow
+        label={t("set.defaultCurrency")}
         value={draft.defaultCurrency}
-        onChangeText={(v) => setDraft({ ...draft, defaultCurrency: v.toUpperCase() })}
         testID="business-currency"
-        autoCapitalize="characters"
       />
-      <Body testID="business-currency-warning">
-        Changing the default currency may be restricted after commercial history exists. The server
-        decides whether the change is allowed.
-      </Body>
+      <Body testID="business-currency-warning">{t("set.currencyWarning")}</Body>
       <SaveFeedback state={save} />
       <PrimaryButton
-        label={save.status === "saving" ? "Saving…" : "Save business settings"}
+        label={save.status === "saving" ? t("set.saving") : t("set.saveBusiness")}
         testID="save-business"
         disabled={!valid || save.status === "saving"}
         onPress={() => void runSave(onSave(draft), setSave)}
@@ -129,6 +128,7 @@ export function BrandForm({
   initial?: BrandSettings;
   onSave: (draft: BrandSettingsDraft) => Promise<unknown>;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<BrandSettingsDraft>(() => ({
     code: initial?.code ?? "",
     displayName: initial?.displayName ?? "",
@@ -140,32 +140,32 @@ export function BrandForm({
     <View style={{ gap: 12 }}>
       {mode === "create" ? (
         <TextField
-          label="Code"
+          label={t("set.code")}
           value={draft.code}
           onChangeText={(v) => setDraft({ ...draft, code: v.toUpperCase() })}
           testID="brand-code"
           autoCapitalize="characters"
         />
       ) : (
-        <InfoRow label="Brand code · read-only" value={draft.code} />
+        <InfoRow label={t("set.brandCodeRO")} value={draft.code} />
       )}
       <TextField
-        label="Display name"
+        label={t("set.displayName")}
         value={draft.displayName}
         onChangeText={(v) => setDraft({ ...draft, displayName: v })}
         testID="brand-display-name"
       />
       <TextField
-        label="Legal name"
+        label={t("set.legalName")}
         value={draft.legalName}
         onChangeText={(v) => setDraft({ ...draft, legalName: v })}
         testID="brand-legal-name"
       />
       <SelectField
-        label="Status"
+        label={t("set.status")}
         options={[
-          { value: "active", label: "Active" },
-          { value: "inactive", label: "Inactive" },
+          { value: "active", label: t("set.active") },
+          { value: "inactive", label: t("set.inactive") },
         ]}
         selected={draft.status}
         onSelect={(v) => setDraft({ ...draft, status: v as BrandSettingsDraft["status"] })}
@@ -174,7 +174,11 @@ export function BrandForm({
       <SaveFeedback state={save} />
       <PrimaryButton
         label={
-          save.status === "saving" ? "Saving…" : mode === "create" ? "Create Brand" : "Save Brand"
+          save.status === "saving"
+            ? t("set.saving")
+            : mode === "create"
+              ? t("set.createBrand")
+              : t("set.saveBrand")
         }
         testID="save-brand"
         disabled={!draft.code.trim() || !draft.displayName.trim() || save.status === "saving"}
@@ -197,6 +201,7 @@ export function BranchForm({
   brandOptions?: SettingsOption[];
   onSave: (draft: BranchSettingsDraft) => Promise<unknown>;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<BranchSettingsDraft>(() => ({
     code: initial?.code ?? "",
     displayName: initial?.displayName ?? "",
@@ -225,91 +230,91 @@ export function BranchForm({
     <View style={{ gap: 12 }}>
       {mode === "create" ? (
         <TextField
-          label="Code"
+          label={t("set.code")}
           value={draft.code}
           onChangeText={(v) => setDraft({ ...draft, code: v.toUpperCase() })}
           testID="branch-code"
         />
       ) : (
-        <InfoRow label="Branch code · read-only" value={draft.code} />
+        <InfoRow label={t("set.branchCodeRO")} value={draft.code} />
       )}
       <TextField
-        label="Display name"
+        label={t("set.displayName")}
         value={draft.displayName}
         onChangeText={(v) => setDraft({ ...draft, displayName: v })}
         testID="branch-display-name"
       />
       <TextField
-        label="Timezone"
+        label={t("set.timezone")}
         value={draft.timezone}
         onChangeText={(v) => setDraft({ ...draft, timezone: v })}
         testID="branch-timezone"
       />
       <TextField
-        label="Address line 1"
+        label={t("set.addressLine1")}
         value={draft.addressLine1}
         onChangeText={(v) => setDraft({ ...draft, addressLine1: v, address: v })}
         testID="branch-address"
       />
       <TextField
-        label="Address line 2"
+        label={t("set.addressLine2")}
         value={draft.addressLine2}
         onChangeText={(v) => setDraft({ ...draft, addressLine2: v })}
         testID="branch-address-2"
       />
       <TextField
-        label="City"
+        label={t("set.city")}
         value={draft.city}
         onChangeText={(v) => setDraft({ ...draft, city: v })}
         testID="branch-city"
       />
       <TextField
-        label="Region"
+        label={t("set.region")}
         value={draft.region}
         onChangeText={(v) => setDraft({ ...draft, region: v })}
         testID="branch-region"
       />
       <TextField
-        label="Postal code"
+        label={t("set.postalCode")}
         value={draft.postalCode}
         onChangeText={(v) => setDraft({ ...draft, postalCode: v })}
         testID="branch-postal-code"
       />
       <TextField
-        label="Country code"
+        label={t("set.countryCode")}
         value={draft.countryCode}
         onChangeText={(v) => setDraft({ ...draft, countryCode: v.toUpperCase() })}
         testID="branch-country-code"
       />
       <TextField
-        label="Contact email"
+        label={t("set.contactEmail")}
         value={draft.contactEmail}
         onChangeText={(v) => setDraft({ ...draft, contactEmail: v })}
         testID="branch-email"
         autoCapitalize="none"
       />
       <TextField
-        label="Contact phone"
+        label={t("set.contactPhone")}
         value={draft.contactPhone}
         onChangeText={(v) => setDraft({ ...draft, contactPhone: v })}
         testID="branch-phone"
       />
       <BooleanField
-        label="Fulfillment"
+        label={t("set.fulfillment")}
         value={draft.fulfillmentEnabled}
         onChange={(v) => setDraft({ ...draft, fulfillmentEnabled: v })}
         testID="branch-fulfillment"
       />
       <BooleanField
-        label="Click-and-collect"
+        label={t("set.clickCollect")}
         value={draft.clickAndCollectEnabled}
         onChange={(v) => setDraft({ ...draft, clickAndCollectEnabled: v })}
         testID="branch-collect"
       />
       <SelectField
-        label="Default InventoryLocation"
+        label={t("set.defaultInvLocation")}
         options={[
-          { value: "", label: "None" },
+          { value: "", label: t("set.none") },
           ...eligibleLocations.map((o) => ({ value: o.id, label: o.label })),
         ]}
         selected={draft.defaultInventoryLocationId ?? ""}
@@ -317,14 +322,14 @@ export function BranchForm({
         testIDPrefix="branch-location"
       />
       <TextField
-        label="Receipt footer"
+        label={t("set.receiptFooter")}
         value={draft.receiptFooter}
         onChangeText={(v) => setDraft({ ...draft, receiptFooter: v })}
         testID="branch-receipt-footer"
         multiline
       />
       {brandOptions.length ? (
-        <SettingsSection title="Eligible Brands">
+        <SettingsSection title={t("set.eligibleBrands")}>
           {brandOptions.map((brand) => {
             const selected = draft.eligibleBrandIds?.includes(brand.id) ?? false;
             return (
@@ -348,7 +353,7 @@ export function BranchForm({
       ) : null}
       <SaveFeedback state={save} />
       <PrimaryButton
-        label={mode === "create" ? "Create Branch" : "Save Branch"}
+        label={mode === "create" ? t("set.createBranch") : t("set.saveBranch")}
         testID="save-branch"
         disabled={
           !draft.code.trim() ||
@@ -375,12 +380,14 @@ export function RegisterForm({
   locationOptions: SettingsOption[];
   onSave: (draft: RegisterSettingsDraft) => Promise<unknown>;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<RegisterSettingsDraft>(() => ({
     code: initial?.code ?? "",
     displayName: initial?.displayName ?? "",
     branchId: initial?.branchId ?? "",
     defaultInventoryLocationId: initial?.defaultInventoryLocationId ?? null,
-    sellingCurrency: initial?.sellingCurrency ?? "",
+    // Selling currency is locked to the single operating currency; the field below is read-only.
+    sellingCurrency: OPERATING_CURRENCY,
     status: initial?.status ?? "active",
   }));
   const [save, setSave] = useState<SaveState>({ status: "idle" });
@@ -392,59 +399,55 @@ export function RegisterForm({
     <View style={{ gap: 12 }}>
       {mode === "create" ? (
         <TextField
-          label="Code"
+          label={t("set.code")}
           value={draft.code}
           onChangeText={(v) => setDraft({ ...draft, code: v.toUpperCase() })}
           testID="register-code"
         />
       ) : (
-        <InfoRow label="Register code · read-only" value={draft.code} />
+        <InfoRow label={t("set.registerCodeRO")} value={draft.code} />
       )}
       <TextField
-        label="Display name"
+        label={t("set.displayName")}
         value={draft.displayName}
         onChangeText={(v) => setDraft({ ...draft, displayName: v })}
         testID="register-display-name"
       />
       {mode === "create" ? (
         <SelectField
-          label="Branch"
+          label={t("set.branch")}
           options={branchOptions.map((o) => ({ value: o.id, label: o.label }))}
           selected={draft.branchId}
           onSelect={(v) => setDraft({ ...draft, branchId: v })}
           testIDPrefix="register-branch"
         />
       ) : (
-        <InfoRow label="Branch · read-only" value={initial?.branchName ?? draft.branchId} />
+        <InfoRow label={t("set.branchRO")} value={initial?.branchName ?? draft.branchId} />
       )}
       <SelectField
-        label="Default InventoryLocation"
+        label={t("set.defaultInvLocation")}
         options={[
-          { value: "", label: "None" },
+          { value: "", label: t("set.none") },
           ...eligibleLocations.map((o) => ({ value: o.id, label: o.label })),
         ]}
         selected={draft.defaultInventoryLocationId ?? ""}
         onSelect={(v) => setDraft({ ...draft, defaultInventoryLocationId: v || null })}
         testIDPrefix="register-location"
       />
-      <TextField
-        label="Selling currency"
+      <InfoRow
+        label={t("set.sellingCurrency")}
         value={draft.sellingCurrency}
-        onChangeText={(v) => setDraft({ ...draft, sellingCurrency: v.toUpperCase() })}
         testID="register-currency"
       />
-      <Body>
-        Currency changes may be rejected after this Register records sales. The server decides.
-      </Body>
+      <Body>{t("set.registerCurrencyNote")}</Body>
       <SaveFeedback state={save} />
       <PrimaryButton
-        label={mode === "create" ? "Create Register" : "Save Register"}
+        label={mode === "create" ? t("set.createRegister") : t("set.saveRegister")}
         testID="save-register"
         disabled={
           !draft.code.trim() ||
           !draft.displayName.trim() ||
           !draft.branchId ||
-          !/^[A-Z]{3}$/.test(draft.sellingCurrency) ||
           save.status === "saving"
         }
         onPress={() => void runSave(onSave(draft), setSave)}
@@ -466,6 +469,7 @@ export function WarehouseCreateForm({
 }: {
   onSave: (draft: WarehouseSettingsDraft) => Promise<unknown>;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<WarehouseSettingsDraft>({
     code: "",
     displayName: "",
@@ -484,64 +488,64 @@ export function WarehouseCreateForm({
   return (
     <View style={{ gap: 12 }}>
       <TextField
-        label="Code"
+        label={t("set.code")}
         value={draft.code}
         onChangeText={(code) => setDraft({ ...draft, code: code.toUpperCase() })}
         testID="warehouse-code"
       />
       <TextField
-        label="Display name"
+        label={t("set.displayName")}
         value={draft.displayName}
         onChangeText={(displayName) => setDraft({ ...draft, displayName })}
         testID="warehouse-display-name"
       />
       <TextField
-        label="Timezone"
+        label={t("set.timezone")}
         value={draft.timezone}
         onChangeText={(timezone) => setDraft({ ...draft, timezone })}
         testID="warehouse-timezone"
       />
       <TextField
-        label="Address line 1"
+        label={t("set.addressLine1")}
         value={draft.addressLine1}
         onChangeText={(addressLine1) => setDraft({ ...draft, addressLine1 })}
         testID="warehouse-address"
       />
       <TextField
-        label="Address line 2"
+        label={t("set.addressLine2")}
         value={draft.addressLine2}
         onChangeText={(addressLine2) => setDraft({ ...draft, addressLine2 })}
       />
       <TextField
-        label="City"
+        label={t("set.city")}
         value={draft.city}
         onChangeText={(city) => setDraft({ ...draft, city })}
       />
       <TextField
-        label="Region"
+        label={t("set.region")}
         value={draft.region}
         onChangeText={(region) => setDraft({ ...draft, region })}
       />
       <TextField
-        label="Postal code"
+        label={t("set.postalCode")}
         value={draft.postalCode}
         onChangeText={(postalCode) => setDraft({ ...draft, postalCode })}
       />
       <TextField
-        label="Country code"
+        label={t("set.countryCode")}
         value={draft.countryCode}
         onChangeText={(countryCode) =>
           setDraft({ ...draft, countryCode: countryCode.toUpperCase() })
         }
       />
       <TextField
-        label="Contact email"
+        label={t("set.contactEmail")}
         value={draft.contactEmail}
         onChangeText={(contactEmail) => setDraft({ ...draft, contactEmail })}
         autoCapitalize="none"
       />
       <TextField
-        label="Contact phone"
+        label={t("set.contactPhone")}
         value={draft.contactPhone}
         onChangeText={(contactPhone) => setDraft({ ...draft, contactPhone })}
       />
@@ -552,7 +556,7 @@ export function WarehouseCreateForm({
       />
       <SaveFeedback state={save} />
       <PrimaryButton
-        label={save.status === "saving" ? "Creating…" : "Create Warehouse"}
+        label={save.status === "saving" ? t("set.creating") : t("set.createWarehouse")}
         testID="save-warehouse"
         disabled={
           !draft.code.trim() ||
@@ -575,6 +579,7 @@ export function InventoryLocationCreateForm({
   warehouseOptions: SettingsOption[];
   onSave: (draft: InventoryLocationSettingsDraft) => Promise<unknown>;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<InventoryLocationSettingsDraft>({
     code: "",
     displayName: "",
@@ -588,27 +593,27 @@ export function InventoryLocationCreateForm({
   return (
     <View style={{ gap: 12 }}>
       <TextField
-        label="Code"
+        label={t("set.code")}
         value={draft.code}
         onChangeText={(code) => setDraft({ ...draft, code: code.toUpperCase() })}
         testID="location-code"
       />
       <TextField
-        label="Display name"
+        label={t("set.displayName")}
         value={draft.displayName}
         onChangeText={(displayName) => setDraft({ ...draft, displayName })}
         testID="location-display-name"
       />
       <SelectField
-        label="Parent (Branch or Warehouse)"
+        label={t("set.parentBranchOrWarehouse")}
         options={[
           ...branchOptions.map((item) => ({
             value: `branch:${item.id}`,
-            label: `Branch · ${item.label}`,
+            label: t("set.branchDot", { label: item.label }),
           })),
           ...warehouseOptions.map((item) => ({
             value: `warehouse:${item.id}`,
-            label: `Warehouse · ${item.label}`,
+            label: t("set.warehouseDot", { label: item.label }),
           })),
         ]}
         selected={parent}
@@ -619,7 +624,7 @@ export function InventoryLocationCreateForm({
         testIDPrefix="location-parent"
       />
       <TextField
-        label="Location type"
+        label={t("set.locationType")}
         value={draft.locationType}
         onChangeText={(locationType) => setDraft({ ...draft, locationType })}
         testID="location-type"
@@ -631,7 +636,7 @@ export function InventoryLocationCreateForm({
       />
       <SaveFeedback state={save} />
       <PrimaryButton
-        label={save.status === "saving" ? "Creating…" : "Create InventoryLocation"}
+        label={save.status === "saving" ? t("set.creating") : t("set.createInvLocation")}
         testID="save-location"
         disabled={
           !draft.code.trim() ||
@@ -655,17 +660,23 @@ function CapabilityFields({
   onChange: (value: CapabilityFlags) => void;
   includeSellable: boolean;
 }) {
+  const { t } = useI18n();
   const fields: Array<[keyof CapabilityFlags, string]> = [
     ...(includeSellable
-      ? [["sellable" as keyof CapabilityFlags, "Sellable"] as [keyof CapabilityFlags, string]]
+      ? [
+          ["sellable" as keyof CapabilityFlags, t("set.capSellable")] as [
+            keyof CapabilityFlags,
+            string,
+          ],
+        ]
       : []),
-    ["fulfillment", "Fulfillment"],
-    ["receiving", "Receiving"],
-    ["transferOrigin", "Transfer origin"],
-    ["transferDestination", "Transfer destination"],
+    ["fulfillment", t("set.fulfillment")],
+    ["receiving", t("set.capReceiving")],
+    ["transferOrigin", t("set.capTransferOrigin")],
+    ["transferDestination", t("set.capTransferDestination")],
   ];
   return (
-    <SettingsSection title="Capability flags">
+    <SettingsSection title={t("set.capabilityFlags")}>
       {fields.map(([key, label]) => (
         <BooleanField
           key={key}
@@ -690,7 +701,12 @@ export function CommerceForm({
   locationOptions?: SettingsOption[];
   onSave: (value: CommerceSettings) => Promise<unknown>;
 }) {
-  const [draft, setDraft] = useState(value);
+  const { t } = useI18n();
+  // Storefront currency is locked to the single operating currency; the field below is read-only.
+  const [draft, setDraft] = useState<CommerceSettings>(() => ({
+    ...value,
+    storefront: { ...value.storefront, currency: OPERATING_CURRENCY },
+  }));
   const [windowDays, setWindowDays] = useState(
     value.returns.windowDays === null ? "" : String(value.returns.windowDays),
   );
@@ -715,9 +731,9 @@ export function CommerceForm({
   };
   return (
     <View style={{ gap: 12 }}>
-      <SettingsSection title="Storefront">
+      <SettingsSection title={t("set.storefront")}>
         <SelectField
-          label="Brand/context"
+          label={t("set.brandContext")}
           options={brandOptions.map((option) => ({ value: option.id, label: option.label }))}
           selected={draft.storefront.brandId}
           onSelect={(brandId) => {
@@ -731,7 +747,7 @@ export function CommerceForm({
           testIDPrefix="storefront-brand"
         />
         <SelectField
-          label="Fulfillment InventoryLocation"
+          label={t("set.fulfillmentInvLocation")}
           options={locationOptions.map((option) => ({ value: option.id, label: option.label }))}
           selected={draft.storefront.fulfillmentInventoryLocationId}
           onSelect={(fulfillmentInventoryLocationId) =>
@@ -742,17 +758,14 @@ export function CommerceForm({
           }
           testIDPrefix="storefront-location"
         />
-        <TextField
-          label="Currency"
+        <InfoRow
+          label={t("set.currency")}
           value={draft.storefront.currency}
-          onChangeText={(v) =>
-            setDraft({ ...draft, storefront: { ...draft.storefront, currency: v.toUpperCase() } })
-          }
           testID="storefront-currency"
         />
-        <Body>Currency changes may be locked by commercial history. The server decides.</Body>
+        <Body>{t("set.currencyLockNote")}</Body>
         <BooleanField
-          label="Cash on delivery (COD)"
+          label={t("set.cod")}
           value={draft.storefront.codEnabled}
           onChange={(v) =>
             setDraft({ ...draft, storefront: { ...draft.storefront, codEnabled: v } })
@@ -760,21 +773,21 @@ export function CommerceForm({
           testID="storefront-cod"
         />
       </SettingsSection>
-      <SettingsSection title="Returns">
+      <SettingsSection title={t("set.returns")}>
         <BooleanField
-          label="Returns enabled"
+          label={t("set.returnsEnabled")}
           value={draft.returns.enabled}
           onChange={(v) => setDraft({ ...draft, returns: { ...draft.returns, enabled: v } })}
           testID="returns-enabled"
         />
         <NumberField
-          label="Return window days"
+          label={t("set.returnWindowDays")}
           value={windowDays}
           onChangeText={setWindowDays}
           testID="returns-window"
         />
         <BooleanField
-          label="Manual refunds enabled"
+          label={t("set.manualRefundsEnabled")}
           value={draft.returns.manualRefundsEnabled}
           onChange={(v) =>
             setDraft({ ...draft, returns: { ...draft.returns, manualRefundsEnabled: v } })
@@ -782,13 +795,13 @@ export function CommerceForm({
           testID="manual-refunds"
         />
         <NumberField
-          label="Maximum manual refund (minor units, optional)"
+          label={t("set.maxManualRefund")}
           value={maxRefund}
           onChangeText={setMaxRefund}
           testID="max-manual-refund"
         />
         <TextField
-          label="Allowed reasons (comma separated)"
+          label={t("set.allowedReasons")}
           value={allowedReasons}
           onChangeText={setAllowedReasons}
           testID="returns-reasons"
@@ -796,12 +809,11 @@ export function CommerceForm({
       </SettingsSection>
       <SaveFeedback state={save} />
       <PrimaryButton
-        label="Save commerce settings"
+        label={t("set.saveCommerce")}
         testID="save-commerce"
         disabled={
           !draft.storefront.brandId ||
           !draft.storefront.fulfillmentInventoryLocationId ||
-          !/^[A-Z]{3}$/.test(draft.storefront.currency) ||
           (windowDays !== "" &&
             (!Number.isInteger(Number(windowDays)) || Number(windowDays) < 0)) ||
           save.status === "saving"
@@ -823,102 +835,111 @@ export function ReceiptForm({
   onBranchChange?: (branchId: string) => Promise<ReceiptSettings>;
   onSave: (value: ReceiptSettings) => Promise<unknown>;
 }) {
-  const [draft, setDraft] = useState(value);
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(() => ({
+    ...value,
+    businessDisplayName: tenantDisplayName(value.businessDisplayName),
+  }));
   const [save, setSave] = useState<SaveState>({ status: "idle" });
   return (
     <View style={{ gap: 12 }}>
-      <SettingsSection title="Tenant identity">
+      <SettingsSection title={t("set.tenantIdentity")}>
         <TextField
-          label="Business/display name"
+          label={t("set.businessDisplayName")}
           value={draft.businessDisplayName}
           onChangeText={(v) => setDraft({ ...draft, businessDisplayName: v })}
           testID="receipt-business-name"
         />
         <TextField
-          label="Legal name"
+          label={t("set.legalName")}
           value={draft.legalName}
           onChangeText={(v) => setDraft({ ...draft, legalName: v })}
           testID="receipt-legal-name"
         />
         <TextField
-          label="Tax identifier"
+          label={t("set.taxIdentifier")}
           value={draft.taxIdentifier}
           onChangeText={(v) => setDraft({ ...draft, taxIdentifier: v })}
           testID="receipt-tax-id"
         />
       </SettingsSection>
-      <SettingsSection title="Branch identity">
+      <SettingsSection title={t("set.branchIdentity")}>
         {branchOptions.length ? (
           <SelectField
-            label="Branch context"
+            label={t("set.branchContext")}
             options={branchOptions.map((option) => ({ value: option.id, label: option.label }))}
             selected={draft.branchId}
             onSelect={(branchId) => {
               if (onBranchChange) {
-                void onBranchChange(branchId).then(setDraft, (error: unknown) =>
-                  setSave({ status: "error", error }),
+                void onBranchChange(branchId).then(
+                  (next) =>
+                    setDraft({
+                      ...next,
+                      businessDisplayName: tenantDisplayName(next.businessDisplayName),
+                    }),
+                  (error: unknown) => setSave({ status: "error", error }),
                 );
               }
             }}
             testIDPrefix="receipt-branch"
           />
         ) : (
-          <InfoRow label="Branch context" value={draft.branchId ?? "Not selected"} />
+          <InfoRow label={t("set.branchContext")} value={draft.branchId ?? t("set.notSelected")} />
         )}
         <TextField
-          label="Branch address line 1"
+          label={t("set.branchAddr1")}
           value={draft.branchAddressLine1}
           onChangeText={(v) => setDraft({ ...draft, branchAddressLine1: v })}
           testID="receipt-address"
         />
         <TextField
-          label="Branch address line 2"
+          label={t("set.branchAddr2")}
           value={draft.branchAddressLine2}
           onChangeText={(v) => setDraft({ ...draft, branchAddressLine2: v })}
         />
         <TextField
-          label="Branch city"
+          label={t("set.branchCity")}
           value={draft.branchCity}
           onChangeText={(v) => setDraft({ ...draft, branchCity: v })}
         />
         <TextField
-          label="Branch region"
+          label={t("set.branchRegion")}
           value={draft.branchRegion}
           onChangeText={(v) => setDraft({ ...draft, branchRegion: v })}
         />
         <TextField
-          label="Branch postal code"
+          label={t("set.branchPostal")}
           value={draft.branchPostalCode}
           onChangeText={(v) => setDraft({ ...draft, branchPostalCode: v })}
         />
         <TextField
-          label="Branch country code"
+          label={t("set.branchCountryCode")}
           value={draft.branchCountryCode}
           onChangeText={(v) => setDraft({ ...draft, branchCountryCode: v.toUpperCase() })}
         />
         <TextField
-          label="Branch contact email"
+          label={t("set.branchContactEmail")}
           value={draft.branchContactEmail}
           onChangeText={(v) => setDraft({ ...draft, branchContactEmail: v })}
           autoCapitalize="none"
         />
         <TextField
-          label="Branch contact phone"
+          label={t("set.branchContactPhone")}
           value={draft.branchContactPhone}
           onChangeText={(v) => setDraft({ ...draft, branchContactPhone: v })}
           testID="receipt-contact"
         />
         <TextField
-          label="Receipt footer"
+          label={t("set.receiptFooter")}
           value={draft.footer}
           onChangeText={(v) => setDraft({ ...draft, footer: v })}
           testID="receipt-footer"
           multiline
         />
       </SettingsSection>
-      <SettingsSection title="Fixed-layout preview">
+      <SettingsSection title={t("set.fixedLayoutPreview")}>
         <View testID="receipt-preview" style={{ gap: 4 }}>
-          <Title>{draft.businessDisplayName || "Business name"}</Title>
+          <Title>{draft.businessDisplayName || t("set.businessNamePlaceholder")}</Title>
           <Body>{draft.legalName}</Body>
           <Body>{draft.taxIdentifier}</Body>
           <Body>
@@ -941,7 +962,7 @@ export function ReceiptForm({
       </SettingsSection>
       <SaveFeedback state={save} />
       <PrimaryButton
-        label="Save receipt identity"
+        label={t("set.saveReceipt")}
         testID="save-receipt"
         disabled={!draft.businessDisplayName.trim() || save.status === "saving"}
         onPress={() => void runSave(onSave(draft), setSave)}
@@ -961,12 +982,13 @@ function BooleanField({
   onChange: (value: boolean) => void;
   testID: string;
 }) {
+  const { t } = useI18n();
   return (
     <SelectField
       label={label}
       options={[
-        { value: "yes", label: "Enabled" },
-        { value: "no", label: "Disabled" },
+        { value: "yes", label: t("set.enabled") },
+        { value: "no", label: t("set.disabled") },
       ]}
       selected={value ? "yes" : "no"}
       onSelect={(v) => onChange(v === "yes")}

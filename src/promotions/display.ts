@@ -1,5 +1,6 @@
 import type { PromotionDetail, PromotionSummary } from "@shifted/clothing-commerce-sdk";
 
+import { t } from "../i18n";
 import { formatMoneyMinor } from "../products/display";
 
 export type PromotionEffectiveState = "active" | "inactive" | "scheduled" | "expired" | "exhausted";
@@ -27,22 +28,30 @@ export function promotionSummaryState(promotion: PromotionSummary): PromotionEff
   return "active";
 }
 
+const STATE_KEYS = {
+  active: "promoState.active",
+  inactive: "promoState.inactive",
+  scheduled: "promoState.scheduled",
+  expired: "promoState.expired",
+  exhausted: "promoState.exhausted",
+} as const;
+
 export function effectiveStateLabel(state: PromotionEffectiveState): string {
-  return state.charAt(0).toUpperCase() + state.slice(1);
+  return t(STATE_KEYS[state]);
 }
 
 export function activationLabel(value: PromotionDetail["activationType"]): string {
-  return value === "automatic" ? "Automatic" : "Promotion code";
+  return value === "automatic" ? t("promoActivation.automatic") : t("promoActivation.code");
 }
 
 export function targetTypeLabel(value: PromotionDetail["targetType"]): string {
-  return value === "order" ? "Whole order" : "Selected products / variants";
+  return value === "order" ? t("promoTarget.order") : t("promoTarget.scope");
 }
 
 export function channelLabel(value: PromotionDetail["channel"]): string {
-  if (value === "online") return "Online";
-  if (value === "pos") return "POS";
-  return "All channels";
+  if (value === "online") return t("promoChannel.online");
+  if (value === "pos") return t("promoChannel.pos");
+  return t("promoChannel.all");
 }
 
 export function formatPercentBasisPoints(basisPoints: number): string {
@@ -56,29 +65,36 @@ export function formatPercentBasisPoints(basisPoints: number): string {
 export function benefitLabel(promotion: PromotionDetail | PromotionSummary): string {
   if (promotion.benefitType === "percentage") {
     return "benefitPercentBp" in promotion && promotion.benefitPercentBp !== null
-      ? `${formatPercentBasisPoints(promotion.benefitPercentBp)} off`
-      : "Percentage discount";
+      ? t("promoBenefit.percentOff", {
+          percent: formatPercentBasisPoints(promotion.benefitPercentBp),
+        })
+      : t("promoBenefit.percentDiscount");
   }
   return "benefitAmountMinor" in promotion &&
     promotion.benefitAmountMinor !== null &&
     promotion.benefitCurrency !== null
-    ? `${formatMoneyMinor(promotion.benefitAmountMinor, promotion.benefitCurrency)} off`
-    : "Fixed amount discount";
+    ? t("promoBenefit.amountOff", {
+        amount: formatMoneyMinor(promotion.benefitAmountMinor, promotion.benefitCurrency),
+      })
+    : t("promoBenefit.fixedDiscount");
 }
 
 export function usageLabel(redemptionCount: number, limit: number | null): string {
   return limit === null
-    ? `${redemptionCount} redeemed · unlimited`
-    : `${redemptionCount} redeemed · ${Math.max(0, limit - redemptionCount)} remaining`;
+    ? t("promoUsage.unlimited", { count: redemptionCount })
+    : t("promoUsage.limited", {
+        count: redemptionCount,
+        remaining: Math.max(0, limit - redemptionCount),
+      });
 }
 
 export function formatPromotionDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : "No limit";
+  return value ? new Date(value).toLocaleString() : t("promoDate.noLimit");
 }
 
 export function formatPromotionMoney(amountMinor: number | null, currency: string | null): string {
-  if (amountMinor === null) return "None";
+  if (amountMinor === null) return t("promoMoney.none");
   return currency
     ? formatMoneyMinor(amountMinor, currency)
-    : `${(amountMinor / 100).toFixed(2)} in order currency`;
+    : t("promoMoney.orderCurrency", { amount: (amountMinor / 100).toFixed(2) });
 }

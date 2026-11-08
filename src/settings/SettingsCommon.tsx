@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { View } from "react-native";
 
 import type { ClassifiedCommerceError } from "../commerce/errors";
+import { useI18n } from "../i18n";
 import {
   Body,
   Divider,
@@ -22,9 +23,10 @@ export function SettingsFrame({
   children: ReactNode;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Settings" title={title} onBack={onBack} />
+      <PageHeader eyebrow={t("set.eyebrow")} title={title} onBack={onBack} />
       {children}
     </ScrollScreen>
   );
@@ -39,24 +41,20 @@ export function SettingsUnavailable({
   canRead: boolean;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <SettingsFrame title={title} onBack={onBack}>
-      <Title>{canRead ? "Settings unavailable" : "Access denied"}</Title>
+      <Title>{canRead ? t("set.unavailable") : t("errorHead.forbidden")}</Title>
       <Body testID={canRead ? "settings-unavailable" : "settings-access-denied"}>
-        {canRead
-          ? "Settings could not be opened. Check your connection and try again."
-          : "Your current business access does not include Settings."}
+        {canRead ? t("set.unavailableBody") : t("set.accessDeniedBody")}
       </Body>
     </SettingsFrame>
   );
 }
 
 export function ReadOnlyNotice() {
-  return (
-    <Body testID="settings-read-only">
-      Read-only access · create, edit, lifecycle, revoke, and assignment actions are hidden.
-    </Body>
-  );
+  const { t } = useI18n();
+  return <Body testID="settings-read-only">{t("set.readOnly")}</Body>;
 }
 
 export function SettingsAsync<T>({
@@ -70,13 +68,14 @@ export function SettingsAsync<T>({
   empty: (data: T) => boolean;
   children: (data: T) => ReactNode;
 }) {
-  if (state.status === "loading") return <LoadingBlock label="Loading settings…" />;
+  const { t } = useI18n();
+  if (state.status === "loading") return <LoadingBlock label={t("set.loading")} />;
   if (state.status === "error") return <SettingsLoadError error={state.error} reload={reload} />;
   if (empty(state.data)) {
     return (
       <View style={{ gap: 10 }}>
-        <Body testID="settings-empty">No settings records yet.</Body>
-        <PrimaryButton label="Refresh" onPress={reload} />
+        <Body testID="settings-empty">{t("set.empty")}</Body>
+        <PrimaryButton label={t("set.refresh")} onPress={reload} />
       </View>
     );
   }
@@ -90,18 +89,19 @@ function SettingsLoadError({
   error: ClassifiedCommerceError;
   reload: () => void;
 }) {
+  const { t } = useI18n();
   const denied = error.kind === "forbidden" || error.kind === "auth";
   return (
     <View testID="settings-error" style={{ gap: 10 }}>
-      <Title>{denied ? "Access denied" : "Settings unavailable"}</Title>
+      <Title>{denied ? t("errorHead.forbidden") : t("set.unavailable")}</Title>
       <Body>
         {denied
-          ? "You do not have access to these settings."
+          ? t("set.loadDenied")
           : error.kind === "network"
-            ? "Check your connection and try again. Settings require connectivity."
-            : "The settings could not be loaded. Try again."}
+            ? t("set.loadNetwork")
+            : t("set.loadGeneric")}
       </Body>
-      {!denied ? <PrimaryButton label="Try again" onPress={reload} /> : null}
+      {!denied ? <PrimaryButton label={t("common.tryAgain")} onPress={reload} /> : null}
     </View>
   );
 }

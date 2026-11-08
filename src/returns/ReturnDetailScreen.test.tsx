@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   getMyTenants: vi.fn(),
   getContext: vi.fn(),
   getReturn: vi.fn(),
+  settleRefund: vi.fn(),
   withTenant: vi.fn(),
   signOut: vi.fn(async () => {}),
 }));
@@ -39,7 +40,12 @@ vi.mock("../commerce/client", () => ({
     getMyTenants: mocks.getMyTenants,
     withTenant: (tenantId: string) => {
       mocks.withTenant(tenantId);
-      return { tenantId, getContext: mocks.getContext, getReturn: mocks.getReturn };
+      return {
+        tenantId,
+        getContext: mocks.getContext,
+        getReturn: mocks.getReturn,
+        settleRefund: mocks.settleRefund,
+      };
     },
   }),
 }));
@@ -47,6 +53,9 @@ vi.mock("../commerce/client", () => ({
 vi.mock("../tenant/secure-storage", () => ({
   createSecureTenantStorage: () => createMemoryTenantStorage(),
 }));
+
+// Keep expo-crypto (native module needing __DEV__) out of the jsdom module graph; tests inject keys.
+vi.mock("expo-crypto", () => ({ randomUUID: () => "mock-uuid" }));
 
 import { SessionProvider, useSession } from "../session/SessionProvider";
 
@@ -62,6 +71,7 @@ function Harness({ returnId }: { returnId: string }) {
       returnId={returnId}
       onBack={onBack}
       onOpenOrder={onOpenOrder}
+      generateIdempotencyKey={() => "fixed-key"}
     />
   );
 }
@@ -169,12 +179,66 @@ describe("ReturnDetailScreen", () => {
     expect(screen.getByText("Try again")).toBeTruthy();
   });
 
-  it("exposes no return or refund mutation controls", async () => {
+  it("exposes no refund mutation control for a settled refund", async () => {
+    // The default fixture is a succeeded refund; settlement is offered only for a pending one.
     mocks.getReturn.mockResolvedValue(returnDetail());
     renderDetail();
     await screen.findByTestId("return-detail-status");
-    expect(
-      screen.queryByRole("button", { name: /refund|settle|create|return|save|accept/i }),
-    ).toBeNull();
+    expect(screen.queryByTestId("settle-refund-submit")).toBeNull();
+  });
+});
+
+const pendingCashRefund = () =>
+  returnDetail({
+    refund: {
+      ...returnDetail().refund,
+      status: "pending",
+      method: "cash",
+      settledAt: null,
+      settlementReference: null,
+    },
+  });
+
+describe("ReturnDetailScreen settle-refund", () => {
+  it("records a manual refund for a pending cash return and re-reads the detail", async () => {
+    mocks.getReturn.mockResolvedValue(pendingCashRefund());
+    mocks.settleRefund.mockResolvedValue(returnDetail());
+    renderDetail();
+
+    fireEvent.change(await screen.findByTestId("settle-refund-reference"), {
+      target: { value: "till-42" },
+    });
+    fireEvent.click(screen.getByTestId("settle-refund-confirm"));
+    fireEvent.click(screen.getByTestId("settle-refund-submit"));
+
+    await waitFor(() => expect(mocks.settleRefund).toHaveBeenCalledTimes(1));
+    expect(mocks.settleRefund).toHaveBeenCalledWith({
+      returnId: RETURN_A,
+      idempotencyKey: "fixed-key",
+      settlementReference: "till-42",
+    });
+    // On success the detail is re-read (initial load + post-settle reload).
+    await waitFor(() => expect(mocks.getReturn).toHaveBeenCalledTimes(2));
+  });
+
+  it("requires the attestation before recording", async () => {
+    mocks.getReturn.mockResolvedValue(pendingCashRefund());
+    renderDetail();
+    fireEvent.change(await screen.findByTestId("settle-refund-reference"), {
+      target: { value: "till-42" },
+    });
+    fireEvent.click(screen.getByTestId("settle-refund-submit"));
+    expect(mocks.settleRefund).not.toHaveBeenCalled();
+  });
+
+  it("hides the settle panel for an electronic refund", async () => {
+    mocks.getReturn.mockResolvedValue(
+      returnDetail({
+        refund: { ...returnDetail().refund, status: "pending", method: "electronic" },
+      }),
+    );
+    renderDetail();
+    await screen.findByTestId("return-detail-status");
+    expect(screen.queryByTestId("settle-refund-submit")).toBeNull();
   });
 });

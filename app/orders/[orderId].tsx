@@ -21,6 +21,7 @@ export default function OrderDetailRoute() {
       orderId={orderId}
       onBack={() => router.back()}
       onOpenReturn={(returnId) => router.push(`/returns/${returnId}`)}
+      onCreateReturn={(id) => router.push(`/returns/new?orderId=${id}`)}
     />
   );
 }

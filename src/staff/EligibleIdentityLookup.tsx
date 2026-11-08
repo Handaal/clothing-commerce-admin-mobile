@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import {
   Badge,
@@ -23,9 +24,6 @@ export interface EligibleIdentityLookupProps {
   onSelect: (identity: EligibleIdentity) => void;
 }
 
-/** One neutral, non-enumerating result for every "not eligible" case (see {@link StaffAdapter}). */
-const NO_RESULT_MESSAGE = "No eligible account was found for this email.";
-
 /**
  * Step 1 of Add-Staff: resolve EXISTING account(s) by an EXACT email, then confirm/select one.
  *
@@ -44,6 +42,7 @@ export function EligibleIdentityLookup({
   selectedIdentityId,
   onSelect,
 }: EligibleIdentityLookupProps) {
+  const { t } = useI18n();
   const [input, setInput] = useState("");
   const [invalid, setInvalid] = useState(false);
   // The committed, validated+normalized email the lookup runs against. `null` means "nothing looked up
@@ -65,24 +64,25 @@ export function EligibleIdentityLookup({
   return (
     <View style={{ gap: 12 }}>
       <TextField
-        label="Account email"
+        label={t("staffLookup.email")}
         value={input}
         onChangeText={(value) => {
           setInput(value);
           if (invalid) setInvalid(false);
         }}
-        placeholder="name@business.example"
+        placeholder={t("staffLookup.emailPlaceholder")}
         testID="eligible-identity-email"
         autoCapitalize="none"
       />
-      <PrimaryButton label="Find account" testID="eligible-identity-find" onPress={findAccount} />
+      <PrimaryButton
+        label={t("staffLookup.find")}
+        testID="eligible-identity-find"
+        onPress={findAccount}
+      />
       {invalid ? (
-        <Body testID="eligible-identity-invalid">Enter a valid email address.</Body>
+        <Body testID="eligible-identity-invalid">{t("staffLookup.invalid")}</Body>
       ) : email === null ? (
-        <Body testID="eligible-identity-prompt">
-          Enter the exact email of an existing platform account to add as staff. Only people who
-          already have an account can be linked — no invitations are sent from here.
-        </Body>
+        <Body testID="eligible-identity-prompt">{t("staffLookup.prompt")}</Body>
       ) : (
         <EligibleIdentityResult
           adapter={adapter}
@@ -106,10 +106,11 @@ function EligibleIdentityResult({
   selectedIdentityId: string | null;
   onSelect: (identity: EligibleIdentity) => void;
 }) {
+  const { t } = useI18n();
   const load = useCallback(() => adapter.findEligibleIdentitiesByEmail(email), [adapter, email]);
   const { state, reload } = useAsync<EligibleIdentity[]>(load);
 
-  if (state.status === "loading") return <LoadingBlock label="Finding account…" />;
+  if (state.status === "loading") return <LoadingBlock label={t("staffLookup.finding")} />;
 
   if (state.status === "error") {
     return (
@@ -117,7 +118,7 @@ function EligibleIdentityResult({
         <Title>{errorHeading(state.error.kind)}</Title>
         <Body>{state.error.message}</Body>
         {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
+          <PrimaryButton label={t("common.tryAgain")} onPress={reload} />
         ) : null}
       </View>
     );
@@ -127,7 +128,7 @@ function EligibleIdentityResult({
   if (identities.length === 0) {
     // One neutral message for every not-eligible case — never distinguish "doesn't exist" from
     // "inactive" or "already a staff member", so the screen cannot be used to probe the directory.
-    return <Body testID="eligible-identity-none">{NO_RESULT_MESSAGE}</Body>;
+    return <Body testID="eligible-identity-none">{t("staffLookup.noResult")}</Body>;
   }
 
   // 1 or N matches render identically: a row PER returned identity, NONE auto-selected. Because a
@@ -139,10 +140,7 @@ function EligibleIdentityResult({
   return (
     <View style={{ gap: 12 }} testID="eligible-identity-result">
       {multiple ? (
-        <Body testID="eligible-identity-multiple">
-          More than one account uses this exact email. Choose the person you mean to add — nothing
-          is selected automatically.
-        </Body>
+        <Body testID="eligible-identity-multiple">{t("staffLookup.multiple")}</Body>
       ) : null}
       {identities.map((identity) => (
         <PressableRow
@@ -161,13 +159,14 @@ function EligibleIdentityResult({
             <Title>{identity.displayName}</Title>
             {identity.identityId === selectedIdentityId ? (
               <Badge
-                label="Selected"
+                label={t("staffLookup.selected")}
+                tone="success"
                 testID={`eligible-identity-selected-${identity.identityId}`}
               />
             ) : null}
           </View>
-          {identity.email ? <InfoRow label="Email" value={identity.email} /> : null}
-          <InfoRow label="Status" value={identity.identityStatus} />
+          {identity.email ? <InfoRow label={t("staff.email")} value={identity.email} /> : null}
+          <InfoRow label={t("staffLookup.status")} value={identity.identityStatus} />
         </PressableRow>
       ))}
     </View>

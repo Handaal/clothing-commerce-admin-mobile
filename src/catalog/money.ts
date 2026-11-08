@@ -8,7 +8,7 @@
  *
  * The Commerce contract carries only a `currency` string and an integer `amountMinor`; it does not
  * expose per-currency fraction-digit metadata. This catalog uses 2-fraction-digit currencies (e.g.
- * USD), so 2 is the default — the same assumption the read-only `formatMoneyMinor` display already
+ * EGP), so 2 is the default — the same assumption the read-only `formatMoneyMinor` display already
  * makes. `fractionDigits` is explicit so a future 0- or 3-digit currency slice can pass the real value.
  */
 

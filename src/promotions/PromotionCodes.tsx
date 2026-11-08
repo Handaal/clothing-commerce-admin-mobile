@@ -2,6 +2,7 @@ import type { PromotionDetail } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import {
   Badge,
@@ -17,6 +18,7 @@ import {
   SurfaceRow,
   TextField,
 } from "../ui/components";
+import { useToast } from "../ui/Toast";
 import { useMutation } from "../ui/useMutation";
 import type { PromotionClient } from "./client";
 import type { PromotionLimitKind } from "./form";
@@ -35,6 +37,7 @@ export function PromotionCodes({
   onChanged: () => void;
   generateIdempotencyKey?: IdempotencyKeyFactory;
 }) {
+  const { t } = useI18n();
   const [code, setCode] = useState("");
   const [limitKind, setLimitKind] = useState<PromotionLimitKind>("unlimited");
   const [customLimit, setCustomLimit] = useState("");
@@ -54,8 +57,23 @@ export function PromotionCodes({
       client.setPromotionCodeStatus({ codeId, status: "disabled", idempotencyKey }),
     [client],
   );
-  const createMutation = useMutation(createProducer, generateIdempotencyKey);
-  const statusMutation = useMutation(statusProducer, generateIdempotencyKey);
+  const toast = useToast();
+  const createMutation = useMutation(createProducer, generateIdempotencyKey, {
+    onSuccess: () =>
+      toast.success(t("promoCodes.createdToast"), { title: t("promoCodes.codeAdded") }),
+    onError: (error) => {
+      const described = describePromotionWriteError(error);
+      toast.error(described.message, { title: described.heading });
+    },
+  });
+  const statusMutation = useMutation(statusProducer, generateIdempotencyKey, {
+    onSuccess: () =>
+      toast.success(t("promoCodes.disabledToast"), { title: t("promoCodes.codeUpdated") }),
+    onError: (error) => {
+      const described = describePromotionWriteError(error);
+      toast.error(described.message, { title: described.heading });
+    },
+  });
 
   useEffect(() => {
     if (createMutation.state.status === "success") onChanged();
@@ -67,7 +85,8 @@ export function PromotionCodes({
   function submitCode() {
     const normalized = code.trim().toUpperCase();
     if (!normalized || !/^[A-Z0-9_-]+$/.test(normalized)) {
-      setValidationError("Use letters, numbers, underscores, and hyphens.");
+      setValidationError(t("promoCodes.validFormat"));
+      toast.error(t("common.fixHighlightedSave"));
       return;
     }
     let maxRedemptions: number | null = null;
@@ -75,7 +94,7 @@ export function PromotionCodes({
     if (limitKind === "custom") {
       const value = Number(customLimit);
       if (!/^\d+$/.test(customLimit) || !Number.isSafeInteger(value) || value <= 0) {
-        setValidationError("Enter a code redemption limit greater than zero.");
+        setValidationError(t("promoCodes.validLimit"));
         return;
       }
       maxRedemptions = value;
@@ -98,8 +117,8 @@ export function PromotionCodes({
       {promotion.codes.length === 0 ? (
         <EmptyState
           icon="ticket-outline"
-          title="No codes created"
-          message="Add a voucher code to make this Promotion redeemable by code."
+          title={t("promoCodes.emptyTitle")}
+          message={t("promoCodes.emptyBody")}
         />
       ) : null}
       {promotion.codes.map((item) => (
@@ -108,29 +127,35 @@ export function PromotionCodes({
             style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}
           >
             <Body>{item.code}</Body>
-            <Badge label={item.status} testID={`promotion-code-status-${item.id}`} />
+            <Badge
+              label={item.status}
+              tone={item.status === "active" ? "success" : "neutral"}
+              testID={`promotion-code-status-${item.id}`}
+            />
           </View>
           <InfoRow
-            label="Use"
+            label={t("promoCodes.use")}
             value={
               item.maxRedemptions === 1
-                ? "Single-use voucher"
+                ? t("promoCodes.singleUse")
                 : item.maxRedemptions === null
-                  ? "Reusable · unlimited"
-                  : `Reusable · ${item.maxRedemptions} uses`
+                  ? t("promoCodes.reusableUnlimited")
+                  : t("promoCodes.reusableCapped", { count: item.maxRedemptions })
             }
           />
-          <InfoRow label="Redeemed" value={String(item.redemptionCount)} />
+          <InfoRow label={t("promoCodes.redeemed")} value={String(item.redemptionCount)} />
           <InfoRow
-            label="Remaining"
+            label={t("promoCodes.remaining")}
             value={
-              item.remainingRedemptions === null ? "Unlimited" : String(item.remainingRedemptions)
+              item.remainingRedemptions === null
+                ? t("promoCodes.unlimited")
+                : String(item.remainingRedemptions)
             }
           />
           {canManage && item.status === "active" ? (
             <ConfirmButton
-              label="Disable code"
-              confirmLabel="Confirm disable"
+              label={t("promoCodes.disable")}
+              confirmLabel={t("promoCodes.confirmDisable")}
               testID={`promotion-code-disable-${item.id}`}
               disabled={statusMutation.state.status === "submitting"}
               onConfirm={() => statusMutation.submit(item.id)}
@@ -145,9 +170,12 @@ export function PromotionCodes({
 
       {canManage ? (
         <Surface>
-          <SectionHeading title="Create code" detail="Voucher access" />
+          <SectionHeading
+            title={t("promoCodes.createTitle")}
+            detail={t("promoCodes.voucherAccess")}
+          />
           <TextField
-            label="Code"
+            label={t("promoCodes.codeLabel")}
             value={code}
             onChangeText={(value) => setCode(value.toUpperCase())}
             placeholder="WELCOME10"
@@ -155,11 +183,11 @@ export function PromotionCodes({
             autoCapitalize="characters"
           />
           <SelectField
-            label="Code use"
+            label={t("promoCodes.codeUse")}
             options={[
-              { value: "unlimited", label: "Reusable · unlimited" },
-              { value: "single", label: "Single-use voucher" },
-              { value: "custom", label: "Reusable · capped" },
+              { value: "unlimited", label: t("promoForm.codeUnlimited") },
+              { value: "single", label: t("promoForm.codeSingle") },
+              { value: "custom", label: t("promoForm.codeCustom") },
             ]}
             selected={limitKind}
             onSelect={(value) => setLimitKind(value as PromotionLimitKind)}
@@ -167,7 +195,7 @@ export function PromotionCodes({
           />
           {limitKind === "custom" ? (
             <TextField
-              label="Redemption limit"
+              label={t("promoCodes.redemptionLimit")}
               value={customLimit}
               onChangeText={setCustomLimit}
               testID="promotion-new-code-custom-limit"
@@ -180,7 +208,11 @@ export function PromotionCodes({
             <MutationError described={createError} onRetry={createMutation.retry} />
           ) : null}
           <PrimaryButton
-            label={createMutation.state.status === "submitting" ? "Creating…" : "Create code"}
+            label={
+              createMutation.state.status === "submitting"
+                ? t("promoCodes.creating")
+                : t("promoCodes.createCode")
+            }
             testID="promotion-create-code"
             icon="ticket-confirmation-outline"
             disabled={createMutation.state.status === "submitting"}
@@ -199,6 +231,7 @@ function MutationError({
   described: ReturnType<typeof describePromotionWriteError>;
   onRetry: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <Notice
       tone="danger"
@@ -206,7 +239,7 @@ function MutationError({
       message={described.message}
       action={
         described.recovery === "retry" ? (
-          <PrimaryButton label="Retry safely" icon="refresh" onPress={onRetry} />
+          <PrimaryButton label={t("common.retrySafely")} icon="refresh" onPress={onRetry} />
         ) : undefined
       }
     />

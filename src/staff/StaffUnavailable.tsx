@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import { Body, Divider, PageHeader } from "../ui/components";
 
 /**
@@ -7,15 +8,12 @@ import { Body, Divider, PageHeader } from "../ui/components";
  * is not connected. Nothing is stored or changed in the meantime.
  */
 export function StaffUnavailable({ title, onBack }: { title: string; onBack: () => void }) {
+  const { t } = useI18n();
   return (
     <>
-      <PageHeader eyebrow="Staff" title={title} onBack={onBack} />
+      <PageHeader eyebrow={t("staff.eyebrow")} title={title} onBack={onBack} />
       <Divider />
-      <Body testID="staff-unavailable">
-        Staff management isn’t connected yet. This screen is the Admin Mobile foundation for it; the
-        staff data and actions will appear here once the Commerce API’s staff surface is finalized
-        and the app is connected to it. Nothing is stored or changed in the meantime.
-      </Body>
+      <Body testID="staff-unavailable">{t("staff.unavailable")}</Body>
     </>
   );
 }

@@ -6,11 +6,13 @@
 
 import { collectAllPages, DEFAULT_MAX_PAGES } from "../commerce/pagination";
 import type { SupplierAdapter } from "./adapter";
+import type { SupplierPayment, SupplierPurchase } from "./ledger";
 import type { SupplierReceipt, SupplierSummary } from "./model";
 import type { SupplierListQuery } from "./search";
 
 export const MAX_SUPPLIER_PAGES = DEFAULT_MAX_PAGES;
 export const MAX_SUPPLIER_RECEIPT_PAGES = DEFAULT_MAX_PAGES;
+export const MAX_SUPPLIER_LEDGER_PAGES = DEFAULT_MAX_PAGES;
 
 /** Load the full supplier list for a query by following the server cursor across every page. */
 export function loadAllSuppliers(
@@ -31,5 +33,27 @@ export function loadAllSupplierReceipts(
   return collectAllPages(
     (cursor) => adapter.listSupplierReceipts(supplierId, cursor ? { cursor } : {}),
     MAX_SUPPLIER_RECEIPT_PAGES,
+  );
+}
+
+/** Load the full recorded-purchase ledger for one supplier, newest-first in server order. */
+export function loadAllSupplierPurchases(
+  adapter: SupplierAdapter,
+  supplierId: string,
+): Promise<SupplierPurchase[]> {
+  return collectAllPages(
+    (cursor) => adapter.listSupplierPurchases({ supplierId, ...(cursor ? { cursor } : {}) }),
+    MAX_SUPPLIER_LEDGER_PAGES,
+  );
+}
+
+/** Load the full payment history for one supplier, newest-first in server order. */
+export function loadAllSupplierPayments(
+  adapter: SupplierAdapter,
+  supplierId: string,
+): Promise<SupplierPayment[]> {
+  return collectAllPages(
+    (cursor) => adapter.listSupplierPayments(supplierId, cursor ? { cursor } : {}),
+    MAX_SUPPLIER_LEDGER_PAGES,
   );
 }

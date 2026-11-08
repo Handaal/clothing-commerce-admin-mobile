@@ -1,8 +1,10 @@
 import { Redirect, useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
+import { useI18n } from "../src/i18n";
 import { isPrimarySection, visibleManagementSections } from "../src/navigation/sections";
 import { useSession } from "../src/session/SessionProvider";
+import { tenantDisplayName } from "../src/tenant/presentation";
 import {
   Badge,
   Body,
@@ -14,11 +16,13 @@ import {
   SurfaceRow,
 } from "../src/ui/components";
 import { AppIcon } from "../src/ui/Icon";
+import { LanguageToggle } from "../src/ui/LanguageToggle";
 import { colors, radius, spacing } from "../src/ui/theme";
 
 export default function MoreRoute() {
   const router = useRouter();
   const { state } = useSession();
+  const { t } = useI18n();
 
   if (state.phase !== "ready") return <Redirect href="/" />;
 
@@ -30,12 +34,12 @@ export default function MoreRoute() {
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Workspace" title="More" />
-      <Body>All management tools for {state.context.tenant.name}, organized by purpose.</Body>
+      <PageHeader eyebrow={t("more.eyebrow")} title={t("more.title")} />
+      <Body>{t("more.subtitle", { tenant: tenantDisplayName(state.context.tenant.name) })}</Body>
       <Divider />
       <SectionHeading
-        title="Available"
-        detail={`${available.length} ${available.length === 1 ? "section" : "sections"}`}
+        title={t("more.available")}
+        detail={`${available.length} ${available.length === 1 ? t("more.section") : t("more.sections")}`}
       />
       <View style={styles.list}>
         {available.map((section) => (
@@ -49,10 +53,15 @@ export default function MoreRoute() {
                 <AppIcon name={section.icon} size={24} color={colors.brand} />
               </View>
               <View style={styles.copy}>
-                <Text style={styles.title}>{section.label}</Text>
-                <Text style={styles.description}>{section.description}</Text>
+                <Text style={styles.title}>{t(section.labelKey)}</Text>
+                <Text style={styles.description}>{t(section.descriptionKey)}</Text>
               </View>
-              {section.status ? <Badge label={section.status} /> : null}
+              {section.status ? (
+                <Badge
+                  label={section.status === "reserved" ? t("more.reserved") : t("more.planned")}
+                  tone="neutral"
+                />
+              ) : null}
             </View>
           </PressableRow>
         ))}
@@ -60,7 +69,7 @@ export default function MoreRoute() {
 
       {planned.length ? (
         <>
-          <SectionHeading title="Coming later" detail="Contract pending" />
+          <SectionHeading title={t("more.comingLater")} detail={t("more.contractPending")} />
           <View style={styles.list}>
             {planned.map((section) => (
               <SurfaceRow key={section.id} testID={`section-${section.id}`}>
@@ -69,16 +78,19 @@ export default function MoreRoute() {
                     <AppIcon name={section.icon} size={24} color={colors.inkSubtle} />
                   </View>
                   <View style={styles.copy}>
-                    <Text style={styles.title}>{section.label}</Text>
-                    <Text style={styles.description}>{section.description}</Text>
+                    <Text style={styles.title}>{t(section.labelKey)}</Text>
+                    <Text style={styles.description}>{t(section.descriptionKey)}</Text>
                   </View>
-                  <Badge label="Planned" />
+                  <Badge label={t("more.planned")} tone="neutral" />
                 </View>
               </SurfaceRow>
             ))}
           </View>
         </>
       ) : null}
+
+      <Divider />
+      <LanguageToggle />
     </ScrollScreen>
   );
 }

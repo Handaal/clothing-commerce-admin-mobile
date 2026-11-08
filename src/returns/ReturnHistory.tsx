@@ -2,6 +2,7 @@ import type { ReturnDetailResponse, TenantCommerceClient } from "@shifted/clothi
 import { useCallback } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, formatMoneyMinor, isRetryable } from "../products/display";
 import {
   Badge,
@@ -33,37 +34,45 @@ export interface ReturnHistoryProps {
  * failure here is surfaced distinctly and does not break the rest of the order detail.
  */
 export function ReturnHistory({ client, orderId, onOpenReturn }: ReturnHistoryProps) {
+  const { t } = useI18n();
   const load = useCallback(() => loadAllReturns(client, orderId), [client, orderId]);
   const { state, reload } = useAsync<ReturnDetailResponse[]>(load);
 
   return (
     <>
       <Divider />
-      <Eyebrow>Return history</Eyebrow>
+      <Eyebrow>{t("returnHistory.title")}</Eyebrow>
       {renderBody()}
     </>
   );
 
   function renderBody() {
     if (state.status === "loading") {
-      return <LoadingBlock label="Loading returns…" />;
+      return <LoadingBlock label={t("returnHistory.loading")} />;
     }
 
     if (state.status === "error") {
       if (state.error.kind === "forbidden") {
-        return <Body>You do not have access to this order&apos;s returns.</Body>;
+        return <Body>{t("returnHistory.forbidden")}</Body>;
       }
       return (
         <View style={{ gap: 8 }}>
-          <Body>{`${errorHeading(state.error.kind)}: ${state.error.message}`}</Body>
-          {isRetryable(state.error.kind) ? <TextButton label="Try again" onPress={reload} /> : null}
+          <Body>
+            {t("returnHistory.errorLine", {
+              heading: errorHeading(state.error.kind),
+              message: state.error.message,
+            })}
+          </Body>
+          {isRetryable(state.error.kind) ? (
+            <TextButton label={t("common.tryAgain")} onPress={reload} />
+          ) : null}
         </View>
       );
     }
 
     const returns = state.data;
     if (returns.length === 0) {
-      return <Body>No returns have been recorded against this order.</Body>;
+      return <Body>{t("returnHistory.empty")}</Body>;
     }
 
     return (
@@ -79,9 +88,12 @@ export function ReturnHistory({ client, orderId, onOpenReturn }: ReturnHistoryPr
                   testID={`return-refund-status-${index}`}
                 />
               </View>
-              <InfoRow label="Return" value={entry.id} />
-              <InfoRow label="Date" value={entry.createdAt} />
-              <InfoRow label="Disposition" value={dispositionSummary(entry.lines)} />
+              <InfoRow label={t("returnHistory.return")} value={entry.id} />
+              <InfoRow label={t("returnHistory.date")} value={entry.createdAt} />
+              <InfoRow
+                label={t("returnHistory.disposition")}
+                value={dispositionSummary(entry.lines)}
+              />
             </>
           );
           return onOpenReturn ? (

@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { classifyCommerceError, type ClassifiedCommerceError } from "../commerce/errors";
 import type { IdempotencyKeyFactory } from "../inventory/idempotency";
@@ -64,11 +64,30 @@ export interface Mutation<TArgs, TResult> {
  * cannot clobber a newer one. This is not a generic mutation framework — it is the one lifecycle the
  * three inventory writes share.
  */
+/**
+ * Optional side-effects fired exactly once per settled operation, after state is dispatched. Intended
+ * for transient UX feedback (e.g. a success/failure toast) — never for the authoritative result,
+ * which lives in {@link MutationState}. Stale/superseded responses never fire these.
+ */
+export interface MutationCallbacks<TResult> {
+  onSuccess?: (data: TResult) => void;
+  onError?: (error: ClassifiedCommerceError) => void;
+}
+
 export function useMutation<TArgs, TResult>(
   producer: (args: TArgs, idempotencyKey: string) => Promise<TResult>,
   generateKey: IdempotencyKeyFactory,
+  callbacks?: MutationCallbacks<TResult>,
 ): Mutation<TArgs, TResult> {
   const [state, dispatch] = useReducer(reducer<TResult>, { status: "idle" });
+  // Latest callbacks held in a ref so firing them never depends on referential stability at the call
+  // site (a form can pass fresh closures each render without re-running the producer). Synced in an
+  // effect — never during render — and read only when a settled response fires, which is always after
+  // commit, so the one-render lag is immaterial.
+  const callbacksRef = useRef(callbacks);
+  useEffect(() => {
+    callbacksRef.current = callbacks;
+  });
   // Current operation's idempotency key and args. Held in refs (not state) so they survive rerenders
   // without being regenerated and are never recomputed during render.
   const keyRef = useRef<string | null>(null);
@@ -89,11 +108,14 @@ export function useMutation<TArgs, TResult>(
           if (seq !== seqRef.current) return; // stale: operation was reset/superseded
           inFlightRef.current = false;
           dispatch({ type: "success", data });
+          callbacksRef.current?.onSuccess?.(data);
         },
         (error) => {
           if (seq !== seqRef.current) return; // stale: operation was reset/superseded
           inFlightRef.current = false;
-          dispatch({ type: "error", error: classifyCommerceError(error) });
+          const classified = classifyCommerceError(error);
+          dispatch({ type: "error", error: classified });
+          callbacksRef.current?.onError?.(classified);
         },
       );
     },

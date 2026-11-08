@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import { errorHeading, isRetryable } from "../products/display";
 import {
@@ -15,6 +16,7 @@ import {
   TextButton,
   Title,
 } from "../ui/components";
+import { useToast } from "../ui/Toast";
 import { useAsync } from "../ui/useAsync";
 import { useMutation } from "../ui/useMutation";
 import { AccessScopeSelector } from "./AccessScopeSelector";
@@ -94,6 +96,7 @@ function AddStaffContent({
   generateIdempotencyKey,
 }: AddStaffFlowProps & { adapter: StaffAdapter }) {
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
+  const { t } = useI18n();
 
   const loadAssignables = useCallback(
     async (): Promise<Assignables> => ({
@@ -118,15 +121,35 @@ function AddStaffContent({
   const createdMembershipId = useRef<string | null>(null);
   const pendingAssign = useRef<RoleScopeAssignmentInput | null>(null);
 
+  const toast = useToast();
   const createMutation = useMutation<string, StaffDetail>(
     (identityId, key) => adapter.createStaffMembership(identityId, key),
     generateKey,
+    {
+      onError: (error) => {
+        const described = describeStaffWriteError(error);
+        toast.error(described.message, { title: described.heading });
+      },
+    },
   );
-  const assignMutation = useMutation<RoleScopeAssignmentInput, StaffDetail>((input, key) => {
-    const membershipId = createdMembershipId.current;
-    if (!membershipId) return Promise.reject(new Error("No membership to assign to"));
-    return adapter.assignRoleScope(membershipId, input, key);
-  }, generateKey);
+  const assignMutation = useMutation<RoleScopeAssignmentInput, StaffDetail>(
+    (input, key) => {
+      const membershipId = createdMembershipId.current;
+      if (!membershipId) return Promise.reject(new Error("No membership to assign to"));
+      return adapter.assignRoleScope(membershipId, input, key);
+    },
+    generateKey,
+    {
+      onSuccess: (detail) =>
+        toast.success(`“${detail.identity.displayName}” was added to this business.`, {
+          title: "Staff added",
+        }),
+      onError: (error) => {
+        const described = describeStaffWriteError(error);
+        toast.error(described.message, { title: described.heading });
+      },
+    },
+  );
 
   // Keep the latest assign trigger behind a ref (updated in an effect, not during render) so the
   // create-success effect below can start the initial assignment without depending on the unstable
@@ -151,18 +174,15 @@ function AddStaffContent({
     const finalDetail = assignMutation.state.data;
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Staff" title="Staff added" onBack={onBack} />
+        <PageHeader eyebrow={t("staff.eyebrow")} title={t("addStaff.addedTitle")} onBack={onBack} />
         <Divider />
-        <Body>
-          “{finalDetail.identity.displayName}” was added to this business with the chosen role and
-          access. Their role and access can be adjusted from their staff record.
-        </Body>
+        <Body>{t("addStaff.addedBody", { name: finalDetail.identity.displayName })}</Body>
         <PrimaryButton
           testID="add-staff-view"
-          label="View staff member"
+          label={t("addStaff.viewMember")}
           onPress={() => onCreated(finalDetail)}
         />
-        <TextButton label="Back to staff" onPress={onBack} />
+        <TextButton label={t("addStaff.backToStaff")} onPress={onBack} />
       </ScrollScreen>
     );
   }
@@ -194,9 +214,9 @@ function AddStaffContent({
   if (state.status === "loading") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Staff" title="Add staff" onBack={onBack} />
+        <PageHeader eyebrow={t("staff.eyebrow")} title={t("addStaff.title")} onBack={onBack} />
         <Divider />
-        <LoadingBlock label="Loading assignable roles and scopes…" />
+        <LoadingBlock label={t("staffDetail.loadingOptions")} />
       </ScrollScreen>
     );
   }
@@ -204,11 +224,15 @@ function AddStaffContent({
   if (state.status === "error") {
     return (
       <ScrollScreen>
-        <PageHeader eyebrow="Staff" title={errorHeading(state.error.kind)} onBack={onBack} />
+        <PageHeader
+          eyebrow={t("staff.eyebrow")}
+          title={errorHeading(state.error.kind)}
+          onBack={onBack}
+        />
         <Divider />
         <Body>{state.error.message}</Body>
         {isRetryable(state.error.kind) ? (
-          <PrimaryButton label="Try again" onPress={reload} />
+          <PrimaryButton label={t("common.tryAgain")} onPress={reload} />
         ) : null}
       </ScrollScreen>
     );
@@ -229,13 +253,13 @@ function AddStaffContent({
 
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Staff" title="Add staff" onBack={onBack} />
+      <PageHeader eyebrow={t("staff.eyebrow")} title={t("addStaff.title")} onBack={onBack} />
       <StepIndicator step={step} />
       <Divider />
 
       {step === "identity" ? (
         <View style={{ gap: 12 }} testID="add-staff-step-identity">
-          <Eyebrow>Step 1 — Find the account</Eyebrow>
+          <Eyebrow>{t("addStaff.step1")}</Eyebrow>
           <EligibleIdentityLookup
             adapter={adapter}
             selectedIdentityId={selection.identity?.identityId ?? null}
@@ -243,7 +267,7 @@ function AddStaffContent({
           />
           {selection.identity ? (
             <PrimaryButton
-              label="Next — choose a role"
+              label={t("addStaff.nextRole")}
               testID="add-staff-next-role"
               onPress={() => setStep("role")}
             />
@@ -253,17 +277,17 @@ function AddStaffContent({
 
       {step === "role" ? (
         <View style={{ gap: 12 }} testID="add-staff-step-role">
-          <Eyebrow>Step 2 — Choose an initial role</Eyebrow>
+          <Eyebrow>{t("addStaff.step2")}</Eyebrow>
           <RoleSelector
             roles={roles}
             selectedRoleId={selection.roleId}
             onSelect={(roleId) => setSelection((prev) => ({ ...prev, roleId }))}
           />
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <TextButton label="‹ Back" onPress={() => setStep("identity")} />
+            <TextButton label={t("common.backShort")} onPress={() => setStep("identity")} />
             {selection.roleId ? (
               <PrimaryButton
-                label="Next — choose a scope"
+                label={t("addStaff.nextScope")}
                 testID="add-staff-next-scope"
                 onPress={() => setStep("scope")}
               />
@@ -274,17 +298,17 @@ function AddStaffContent({
 
       {step === "scope" ? (
         <View style={{ gap: 12 }} testID="add-staff-step-scope">
-          <Eyebrow>Step 3 — Choose an access scope</Eyebrow>
+          <Eyebrow>{t("addStaff.step3")}</Eyebrow>
           <AccessScopeSelector
             scopes={scopes}
             selectedScopeId={selection.scopeId}
             onSelect={(scopeId) => setSelection((prev) => ({ ...prev, scopeId }))}
           />
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <TextButton label="‹ Back" onPress={() => setStep("role")} />
+            <TextButton label={t("common.backShort")} onPress={() => setStep("role")} />
             {selection.scopeId ? (
               <PrimaryButton
-                label="Next — review"
+                label={t("addStaff.nextReview")}
                 testID="add-staff-next-review"
                 onPress={() => setStep("review")}
               />
@@ -295,28 +319,25 @@ function AddStaffContent({
 
       {step === "review" ? (
         <View style={{ gap: 12 }} testID="add-staff-step-review">
-          <Eyebrow>Step 4 — Review and create</Eyebrow>
+          <Eyebrow>{t("addStaff.step4")}</Eyebrow>
           {selection.identity ? (
             <>
-              <InfoRow label="Person" value={selection.identity.displayName} />
+              <InfoRow label={t("addStaff.person")} value={selection.identity.displayName} />
               {selection.identity.email ? (
-                <InfoRow label="Email" value={selection.identity.email} />
+                <InfoRow label={t("staff.email")} value={selection.identity.email} />
               ) : null}
             </>
           ) : null}
-          {selectedRole ? <InfoRow label="Role" value={selectedRole.label} /> : null}
+          {selectedRole ? <InfoRow label={t("addStaff.role")} value={selectedRole.label} /> : null}
           {selectedScope ? (
             <>
-              <InfoRow label="Scope" value={selectedScope.label} />
+              <InfoRow label={t("addStaff.scope")} value={selectedScope.label} />
               {accessScopeTargetLines(selectedScope).map((line, index) => (
                 <Body key={`review-scope-${index}`}>{line}</Body>
               ))}
             </>
           ) : null}
-          <Body>
-            This links an existing person to the business with the role and scope above. The server
-            authorizes the change — a role or scope you cannot delegate will be refused.
-          </Body>
+          <Body>{t("addStaff.reviewBody")}</Body>
 
           {submitError ? (
             <SubmitError
@@ -326,9 +347,9 @@ function AddStaffContent({
           ) : null}
 
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <TextButton label="‹ Back" onPress={() => setStep("scope")} />
+            <TextButton label={t("common.backShort")} onPress={() => setStep("scope")} />
             <PrimaryButton
-              label={submitting ? "Adding…" : "Add staff member"}
+              label={submitting ? t("addStaff.submitting") : t("addStaff.submit")}
               testID="add-staff-submit"
               disabled={submitting || !isAddStaffComplete(draft)}
               onPress={() => {
@@ -348,9 +369,10 @@ function AddStaffContent({
 }
 
 function StepIndicator({ step }: { step: Step }) {
+  const { t } = useI18n();
   const order: Step[] = ["identity", "role", "scope", "review"];
   const current = order.indexOf(step) + 1;
-  return <Eyebrow testID="add-staff-step-indicator">Step {current} of 4</Eyebrow>;
+  return <Eyebrow testID="add-staff-step-indicator">{t("addStaff.step", { current })}</Eyebrow>;
 }
 
 function SubmitError({
@@ -360,21 +382,26 @@ function SubmitError({
   described: ReturnType<typeof describeStaffWriteError>;
   mutation: ReturnType<typeof useMutation<string, StaffDetail>>;
 }) {
+  const { t } = useI18n();
   return (
     <View style={{ gap: 8 }} testID="add-staff-error">
       <Title>{described.heading}</Title>
       <Body>{described.message}</Body>
       {described.recovery === "retry" ? (
         // Ambiguous failure: retry reuses the SAME idempotency key (at-most-once at the API).
-        <PrimaryButton label="Retry" testID="add-staff-retry" onPress={() => mutation.retry()} />
+        <PrimaryButton
+          label={t("common.retry")}
+          testID="add-staff-retry"
+          onPress={() => mutation.retry()}
+        />
       ) : described.recovery === "edit" ? (
         <PrimaryButton
-          label="Edit and try again"
+          label={t("addStaff.editRetry")}
           testID="add-staff-edit"
           onPress={() => mutation.reset()}
         />
       ) : (
-        <TextButton label="Dismiss" onPress={() => mutation.reset()} />
+        <TextButton label={t("common.dismiss")} onPress={() => mutation.reset()} />
       )}
     </View>
   );
@@ -403,6 +430,7 @@ function PartialAssignment({
   onOpenStaff: () => void;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   const assigning = assignMutation.state.status === "submitting";
   const described =
     assignMutation.state.status === "error"
@@ -410,17 +438,15 @@ function PartialAssignment({
       : null;
   return (
     <ScrollScreen>
-      <PageHeader eyebrow="Staff" title="Finish access setup" onBack={onBack} />
+      <PageHeader eyebrow={t("staff.eyebrow")} title={t("addStaff.finishTitle")} onBack={onBack} />
       <Divider />
-      <Body>
-        “{person}” was created and is now a member of this business, but their role and access have
-        not been assigned yet. Until access is assigned they can do nothing. The member was not
-        created again — only the access assignment still needs to complete.
-      </Body>
-      {selectedRoleLabel ? <InfoRow label="Role" value={selectedRoleLabel} /> : null}
-      {selectedScopeLabel ? <InfoRow label="Scope" value={selectedScopeLabel} /> : null}
+      <Body>{t("addStaff.finishBody", { name: person })}</Body>
+      {selectedRoleLabel ? <InfoRow label={t("addStaff.role")} value={selectedRoleLabel} /> : null}
+      {selectedScopeLabel ? (
+        <InfoRow label={t("addStaff.scope")} value={selectedScopeLabel} />
+      ) : null}
 
-      {assigning ? <LoadingBlock label="Assigning role and access…" /> : null}
+      {assigning ? <LoadingBlock label={t("addStaff.assigning")} /> : null}
 
       {described ? (
         <View style={{ gap: 8 }} testID="add-staff-partial-error">
@@ -434,12 +460,12 @@ function PartialAssignment({
           {/* Retry ONLY the assignment. An ambiguous failure reuses the SAME assignment key; a fresh
               intent (different role/scope) is chosen from the staff record instead. Create never re-runs. */}
           <PrimaryButton
-            label="Retry access assignment"
+            label={t("addStaff.retryAssignment")}
             testID="add-staff-partial-retry"
             onPress={() => assignMutation.retry()}
           />
           <PrimaryButton
-            label="Open staff record to finish"
+            label={t("addStaff.openRecord")}
             testID="add-staff-partial-open"
             onPress={onOpenStaff}
           />

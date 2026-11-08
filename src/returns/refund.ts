@@ -1,5 +1,7 @@
 import type { Refund, ReturnDetailResponse } from "@shifted/clothing-commerce-sdk";
 
+import { t } from "../i18n";
+
 export type RefundStatus = Refund["status"]; // "pending" | "succeeded" | "failed"
 export type RefundMethod = Refund["method"]; // "cash" | "cash_on_delivery" | "electronic"
 export type ReturnDisposition = ReturnDetailResponse["lines"][number]["disposition"]; // restock | non_restock
@@ -13,11 +15,11 @@ export type ReturnSource = ReturnDetailResponse["source"]; // "admin-mobile" | "
 export function refundStatusLabel(status: RefundStatus): string {
   switch (status) {
     case "pending":
-      return "Refund pending";
+      return t("refund.pending");
     case "succeeded":
-      return "Refund succeeded";
+      return t("refund.succeeded");
     case "failed":
-      return "Refund failed";
+      return t("refund.failed");
   }
 }
 
@@ -29,11 +31,11 @@ export function refundStatusLabel(status: RefundStatus): string {
 export function refundStatusDetail(status: RefundStatus): string {
   switch (status) {
     case "pending":
-      return "Settlement is still owed. The refund has not been recorded as paid.";
+      return t("refund.pendingDetail");
     case "succeeded":
-      return "Settlement has been recorded.";
+      return t("refund.succeededDetail");
     case "failed":
-      return "The refund attempt failed. The amount remains reserved against the payment.";
+      return t("refund.failedDetail");
   }
 }
 
@@ -41,11 +43,11 @@ export function refundStatusDetail(status: RefundStatus): string {
 export function refundMethodLabel(method: RefundMethod): string {
   switch (method) {
     case "cash":
-      return "Cash";
+      return t("payMethod.cash");
     case "cash_on_delivery":
-      return "Cash on delivery";
+      return t("payMethod.cod");
     case "electronic":
-      return "Electronic";
+      return t("payMethod.electronic");
   }
 }
 
@@ -57,9 +59,9 @@ export function refundMethodLabel(method: RefundMethod): string {
 export function dispositionLabel(disposition: ReturnDisposition): string {
   switch (disposition) {
     case "restock":
-      return "Restocked";
+      return t("disposition.restocked");
     case "non_restock":
-      return "Not restocked (damaged / write-off)";
+      return t("disposition.nonRestock");
   }
 }
 
@@ -69,21 +71,21 @@ export function dispositionSummary(
 ): string {
   const hasRestock = lines.some((line) => line.disposition === "restock");
   const hasNonRestock = lines.some((line) => line.disposition === "non_restock");
-  if (hasRestock && hasNonRestock) return "Restocked · write-off";
-  if (hasRestock) return "Restocked";
-  if (hasNonRestock) return "Write-off";
-  return "—";
+  if (hasRestock && hasNonRestock) return t("disposition.restockWriteoff");
+  if (hasRestock) return t("disposition.restocked");
+  if (hasNonRestock) return t("disposition.writeoff");
+  return t("disposition.none");
 }
 
 /** Human label for the audit-only client source. It is never used as an authorization credential. */
 export function returnSourceLabel(source: ReturnSource): string {
   switch (source) {
     case "admin-mobile":
-      return "Admin mobile";
+      return t("returnSource.adminMobile");
     case "pos":
-      return "POS";
+      return t("returnSource.pos");
     case "management":
-      return "Management";
+      return t("returnSource.management");
   }
 }
 

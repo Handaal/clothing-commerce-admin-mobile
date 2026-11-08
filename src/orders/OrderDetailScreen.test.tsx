@@ -301,7 +301,7 @@ describe("OrderDetailScreen", () => {
     renderDetail();
     await screen.findByText("ORD-1001");
 
-    fireEvent.click(screen.getByText(/Back/));
+    fireEvent.click(screen.getByLabelText("Back"));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 

@@ -2,6 +2,7 @@ import type { PromotionSummary } from "@shifted/clothing-commerce-sdk";
 import { useCallback, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import {
   Badge,
@@ -48,20 +49,21 @@ export function PromotionsListScreen({
   onCreatePromotion: () => void;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   if (!canRead) {
     return (
       <ScrollScreen>
         <PageHeader
-          eyebrow="Growth"
-          title="Promotions & vouchers"
-          description="Manage server-authoritative offers and redemption controls."
+          eyebrow={t("promotions.eyebrow")}
+          title={t("promotions.title")}
+          description={t("promotions.accessDesc")}
           icon="ticket-percent-outline"
           onBack={onBack}
         />
         <Notice
           tone="warning"
-          title="Promotion access required"
-          message="You do not have Promotion read access."
+          title={t("promotions.accessTitle")}
+          message={t("promotions.accessBody")}
         />
       </ScrollScreen>
     );
@@ -90,6 +92,7 @@ function PromotionsListContent({
   onCreatePromotion: () => void;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   const load = useCallback(() => loadAllPromotions(client), [client]);
   const { state, reload } = useAsync<PromotionSummary[]>(load);
   const activeCount = useMemo(
@@ -103,43 +106,40 @@ function PromotionsListContent({
   return (
     <ScrollScreen>
       <PageHeader
-        eyebrow="Growth"
-        title="Promotions & vouchers"
-        description="Create and monitor offers across POS and online channels."
+        eyebrow={t("promotions.eyebrow")}
+        title={t("promotions.title")}
+        description={t("promotions.headerDesc")}
         icon="ticket-percent-outline"
         onBack={onBack}
       />
 
       {canManage ? (
         <Surface tone="brand">
-          <SectionHeading title="Promotion workspace" detail="Server-authoritative" />
-          <Body>
-            Configure discounts, eligibility, schedules and voucher codes. The Commerce API decides
-            sale-time eligibility and final amounts.
-          </Body>
+          <SectionHeading
+            title={t("promotions.workspaceTitle")}
+            detail={t("common.serverAuthoritative")}
+          />
+          <Body>{t("promotions.workspaceBody")}</Body>
           <PrimaryButton
-            label="Create Promotion"
+            label={t("promotions.createCta")}
             icon="plus"
             testID="create-promotion"
             onPress={onCreatePromotion}
           />
         </Surface>
       ) : (
-        <Notice
-          testID="promotions-read-only"
-          message="Read-only access · management actions are hidden."
-        />
+        <Notice testID="promotions-read-only" message={t("promotions.readOnly")} />
       )}
 
       {state.status === "success" ? (
         <View style={promotionStyles.metrics}>
           <MetricCard
-            label="Loaded offers"
+            label={t("promotions.loadedOffers")}
             value={String(state.data.length)}
             icon="ticket-percent-outline"
           />
           <MetricCard
-            label="Active"
+            label={t("promotions.activeMetric")}
             value={String(activeCount)}
             icon="check-circle-outline"
             tone="accent"
@@ -148,10 +148,12 @@ function PromotionsListContent({
       ) : null}
 
       <SectionHeading
-        title="Promotion catalog"
-        detail={state.status === "success" ? `${state.data.length} shown` : undefined}
+        title={t("promotions.catalogHeading")}
+        detail={
+          state.status === "success" ? t("common.shown", { count: state.data.length }) : undefined
+        }
       />
-      {state.status === "loading" ? <LoadingBlock label="Loading Promotions…" /> : null}
+      {state.status === "loading" ? <LoadingBlock label={t("promotions.loading")} /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -159,7 +161,7 @@ function PromotionsListContent({
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+              <PrimaryButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -168,8 +170,8 @@ function PromotionsListContent({
         <View testID="promotions-empty">
           <EmptyState
             icon="ticket-percent-outline"
-            title="No offers configured"
-            message="No Promotions yet."
+            title={t("promotions.emptyTitle")}
+            message={t("promotions.emptyBody")}
           />
         </View>
       ) : null}
@@ -189,6 +191,7 @@ function PromotionsListContent({
 }
 
 function PromotionRow({ promotion, onOpen }: { promotion: PromotionSummary; onOpen: () => void }) {
+  const { t } = useI18n();
   return (
     <PressableRow testID={`promotion-row-${promotion.id}`} onPress={onOpen}>
       <View style={promotionStyles.lead}>
@@ -210,11 +213,14 @@ function PromotionRow({ promotion, onOpen }: { promotion: PromotionSummary; onOp
           <Body>{benefitLabel(promotion)}</Body>
         </View>
       </View>
-      <InfoRow label="Activation" value={activationLabel(promotion.activationType)} />
-      <InfoRow label="Target" value={targetTypeLabel(promotion.targetType)} />
-      <InfoRow label="Channel" value={channelLabel(promotion.channel)} />
       <InfoRow
-        label="Usage"
+        label={t("promotions.activation")}
+        value={activationLabel(promotion.activationType)}
+      />
+      <InfoRow label={t("promotions.target")} value={targetTypeLabel(promotion.targetType)} />
+      <InfoRow label={t("promotions.channel")} value={channelLabel(promotion.channel)} />
+      <InfoRow
+        label={t("promotions.usage")}
         value={usageLabel(promotion.redemptionCount, promotion.globalRedemptionLimit)}
       />
     </PressableRow>

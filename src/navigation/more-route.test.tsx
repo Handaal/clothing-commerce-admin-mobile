@@ -39,7 +39,7 @@ describe("More screen", () => {
 
   it("lists authorized non-primary sections and omits the primary tabs", () => {
     render(<MoreRoute />);
-    // Promotions/suppliers/staff default to readable in the fixture; storefront is always reserved.
+    // Promotions/suppliers/staff default to readable in the fixture; storefront is always visible.
     expect(screen.getByTestId("section-promotions")).toBeTruthy();
     expect(screen.getByTestId("section-suppliers")).toBeTruthy();
     expect(screen.getByTestId("section-staff")).toBeTruthy();
@@ -58,11 +58,16 @@ describe("More screen", () => {
 
   it("surfaces contract-pending sections honestly without a route", () => {
     render(<MoreRoute />);
-    expect(screen.getByTestId("section-customers")).toBeTruthy();
     expect(screen.getByTestId("section-activity")).toBeTruthy();
     expect(screen.getByText("Coming later")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("section-customers"));
+    fireEvent.click(screen.getByTestId("section-activity"));
     expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("opens customers now that it has a management route", () => {
+    render(<MoreRoute />);
+    fireEvent.click(screen.getByTestId("section-customers"));
+    expect(mocks.push).toHaveBeenCalledWith("/customers");
   });
 
   it("hides a section whose read access the server did not grant", () => {
@@ -74,7 +79,7 @@ describe("More screen", () => {
     expect(screen.queryByTestId("section-promotions")).toBeNull();
     expect(screen.queryByTestId("section-suppliers")).toBeNull();
     expect(screen.queryByTestId("section-staff")).toBeNull();
-    // Reserved + planned entries remain regardless of capability.
+    // Planned and always-visible entries remain regardless of capability.
     expect(screen.getByTestId("section-storefront")).toBeTruthy();
     expect(screen.getByTestId("section-customers")).toBeTruthy();
   });

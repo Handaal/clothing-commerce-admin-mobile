@@ -1,5 +1,6 @@
 import { Redirect, useRouter } from "expo-router";
 
+import { goBackOrReplace } from "../../src/navigation/back";
 import { ProductsListScreen } from "../../src/products/ProductsListScreen";
 import { useSession } from "../../src/session/SessionProvider";
 
@@ -19,7 +20,7 @@ export default function ProductsRoute() {
       context={state.context}
       onOpenProduct={(productId) => router.push(`/products/${productId}`)}
       onCreateProduct={() => router.push("/products/new")}
-      onBack={() => router.back()}
+      onBack={() => goBackOrReplace(router, "/")}
     />
   );
 }

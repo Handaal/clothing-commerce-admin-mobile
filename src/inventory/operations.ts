@@ -5,6 +5,7 @@ import type {
   TransferInventoryResponse,
 } from "@shifted/clothing-commerce-sdk";
 
+import { t } from "../i18n";
 import type { InventoryItem } from "./load";
 
 /**
@@ -112,10 +113,10 @@ export function distinctVariants(items: InventoryItem[]): VariantOption[] {
 // Receive and transfer move a positive count of physical units.
 export function validatePositiveQuantity(quantity: number): string | null {
   if (!Number.isInteger(quantity) || quantity <= 0) {
-    return "Enter a whole quantity greater than zero.";
+    return t("invOps.qtyWholePositive");
   }
   if (!Number.isSafeInteger(quantity)) {
-    return "That quantity is too large.";
+    return t("invOps.qtyTooLarge");
   }
   return null;
 }
@@ -123,10 +124,10 @@ export function validatePositiveQuantity(quantity: number): string | null {
 // A reconciliation states an absolute physical on-hand, which may legitimately be zero.
 export function validateCountedQuantity(countedQuantity: number): string | null {
   if (!Number.isInteger(countedQuantity) || countedQuantity < 0) {
-    return "Enter the counted quantity as a whole number (zero or more).";
+    return t("invOps.countedWhole");
   }
   if (!Number.isSafeInteger(countedQuantity)) {
-    return "That quantity is too large.";
+    return t("invOps.qtyTooLarge");
   }
   return null;
 }
@@ -141,7 +142,7 @@ export function validateTransferLocations(
     sourceInventoryLocationId !== "" &&
     sourceInventoryLocationId === destinationInventoryLocationId
   ) {
-    return "Source and destination must be different locations.";
+    return t("invOps.sourceDestDiffer");
   }
   return null;
 }

@@ -33,7 +33,9 @@ import {
 } from "../catalog/operations";
 import { formatMinorToInput, parseAmountToMinor } from "../catalog/money";
 import { describeCatalogWriteError } from "../catalog/write-errors";
+import { OPERATING_CURRENCY } from "../commerce/currency";
 import { classifyCommerceError } from "../commerce/errors";
+import { useI18n } from "../i18n";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import { useSession } from "../session/SessionProvider";
 import { AppIcon, type AppIconName } from "../ui/Icon";
@@ -60,6 +62,7 @@ import {
 } from "../ui/components";
 import { colors, radius, spacing, typography } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
+import { useToast } from "../ui/Toast";
 import { useMutation, type Mutation, type MutationState } from "../ui/useMutation";
 import { errorHeading, formatMoneyMinor, isRetryable } from "./display";
 
@@ -88,6 +91,7 @@ export interface ProductManageScreenProps {
 export function ProductManageScreen(props: ProductManageScreenProps) {
   const { tenantId, productId, onBack } = props;
   const { getTenantClient } = useSession();
+  const { t } = useI18n();
   const client = getTenantClient(tenantId);
   const load = useCallback(() => client.getProduct(productId), [client, productId]);
   const { state, reload } = useAsync<ProductDetailResponse>(load);
@@ -96,13 +100,13 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
     return (
       <ScrollScreen>
         <PageHeader
-          eyebrow="Catalog"
-          title="Product"
-          description="Loading the latest catalog details."
+          eyebrow={t("products.eyebrow")}
+          title={t("pm.productTitle")}
+          description={t("pm.loadingDesc")}
           icon="tshirt-crew-outline"
           onBack={onBack}
         />
-        <LoadingBlock label="Loading product…" />
+        <LoadingBlock label={t("pm.loading")} />
       </ScrollScreen>
     );
   }
@@ -111,8 +115,8 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
     return (
       <ScrollScreen>
         <PageHeader
-          eyebrow="Catalog"
-          title="Product unavailable"
+          eyebrow={t("products.eyebrow")}
+          title={t("pm.unavailable")}
           icon="alert-circle-outline"
           onBack={onBack}
         />
@@ -122,7 +126,7 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <TextButton label="Try again" icon="refresh" onPress={reload} />
+              <TextButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -151,6 +155,7 @@ function ProductManage({
   reload: () => void;
 }) {
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
+  const { t } = useI18n();
   const observation = useProductObservation(productId, observationStore);
   const [section, setSection] = useState<Section | null>(null);
   const { product } = data;
@@ -158,9 +163,9 @@ function ProductManage({
   return (
     <ScrollScreen>
       <PageHeader
-        eyebrow="Catalog"
+        eyebrow={t("products.eyebrow")}
         title={product.name}
-        description="Manage product identity, availability foundations and website publication."
+        description={t("pm.manageDesc")}
         icon="tshirt-crew-outline"
         onBack={onBack}
       />
@@ -172,17 +177,20 @@ function ProductManage({
           <View style={productStyles.summaryCopy}>
             <Text style={productStyles.summaryName}>{product.name}</Text>
             <Text style={productStyles.summaryMeta}>
-              {product.styleCode ? `Style ${product.styleCode}` : "No style code"}
+              {product.styleCode ? t("pm.style", { code: product.styleCode }) : t("pm.noStyleCode")}
             </Text>
           </View>
         </View>
         <View style={productStyles.badges}>
-          <Badge label={`internal: ${product.status}`} testID="detail-status" />
+          <Badge
+            label={t("pm.internalStatus", { status: product.status })}
+            testID="detail-status"
+          />
           <Badge
             label={
               observation?.storefrontStatus
-                ? `storefront: ${observation.storefrontStatus}`
-                : "storefront: unknown"
+                ? t("pm.storefrontBadge", { status: observation.storefrontStatus })
+                : t("pm.storefrontUnknown")
             }
             testID="detail-storefront-status"
           />
@@ -191,16 +199,20 @@ function ProductManage({
       </Surface>
 
       <View style={productStyles.metrics}>
-        <MetricCard label="Variants" value={String(data.variants.length)} icon="shape-outline" />
         <MetricCard
-          label="Prices"
+          label={t("pm.variantsMetric")}
+          value={String(data.variants.length)}
+          icon="shape-outline"
+        />
+        <MetricCard
+          label={t("pm.pricesMetric")}
           value={String(data.prices.length)}
           icon="cash-multiple"
           tone="accent"
         />
       </View>
 
-      <Notice message="Internal lifecycle and Storefront publication are separate. An active product is not automatically visible online." />
+      <Notice message={t("pm.lifecycleSeparation")} />
 
       <PublicationSection
         client={client}
@@ -210,10 +222,10 @@ function ProductManage({
         observationStore={observationStore}
       />
 
-      <SectionHeading title="Manage product" detail="Choose a section" />
+      <SectionHeading title={t("pm.manageTitle")} detail={t("pm.chooseSection")} />
       <SectionTab
-        label="Edit details"
-        description="Name, slug, style code and description"
+        label={t("pm.editDetails")}
+        description={t("pm.editDetailsDesc")}
         icon="pencil-outline"
         testID="section-details"
         active={section === "details"}
@@ -233,8 +245,8 @@ function ProductManage({
       ) : null}
 
       <SectionTab
-        label="Variants & prices"
-        description="SKUs and current selling prices"
+        label={t("pm.variantsPrices")}
+        description={t("pm.variantsPricesDesc")}
         icon="shape-outline"
         testID="section-variants"
         active={section === "variants"}
@@ -247,8 +259,8 @@ function ProductManage({
       ) : null}
 
       <SectionTab
-        label="Media"
-        description="Product imagery and primary image"
+        label={t("pm.media")}
+        description={t("pm.mediaDesc")}
         icon="image-multiple-outline"
         testID="section-media"
         active={section === "media"}
@@ -268,8 +280,8 @@ function ProductManage({
       ) : null}
 
       <SectionTab
-        label="Lifecycle"
-        description="Activate, return to draft or archive"
+        label={t("pm.lifecycle")}
+        description={t("pm.lifecycleDesc")}
         icon="timeline-clock-outline"
         testID="section-lifecycle"
         active={section === "lifecycle"}
@@ -345,6 +357,7 @@ function CatalogWriteError<TArgs, TResult>({
   onRefresh: () => void;
   testID?: string;
 }) {
+  const { t } = useI18n();
   const described = describeCatalogWriteError(state.error);
   return (
     <Notice
@@ -355,14 +368,14 @@ function CatalogWriteError<TArgs, TResult>({
       action={
         described.recovery === "retry" ? (
           <TextButton
-            label="Retry"
+            label={t("common.retry")}
             icon="refresh"
             testID="write-retry"
             onPress={() => mutation.retry()}
           />
         ) : described.recovery === "refresh" ? (
           <TextButton
-            label="Refresh product"
+            label={t("pm.refreshProduct")}
             icon="refresh"
             testID="write-refresh"
             onPress={() => {
@@ -371,7 +384,7 @@ function CatalogWriteError<TArgs, TResult>({
             }}
           />
         ) : (
-          <TextButton label="Dismiss" icon="close" onPress={() => mutation.reset()} />
+          <TextButton label={t("common.dismiss")} icon="close" onPress={() => mutation.reset()} />
         )
       }
     />
@@ -397,14 +410,22 @@ function PublicationSection({
 }) {
   const observation = useProductObservation(productId, observationStore);
   const isPublished = observation?.storefrontStatus === "published";
+  const toast = useToast();
+  const { t } = useI18n();
+  const toastWriteError = (error: Parameters<typeof describeCatalogWriteError>[0]) => {
+    const described = describeCatalogWriteError(error);
+    toast.error(described.message, { title: described.heading });
+  };
 
   const publish = useMutation(
     (_args: Record<string, never>, key) => publishProduct(client, productId, key),
     generateKey,
+    { onError: toastWriteError },
   );
   const unpublish = useMutation(
     (_args: Record<string, never>, key) => unpublishProduct(client, productId, key),
     generateKey,
+    { onError: toastWriteError },
   );
 
   useOnSuccess(publish.state, (data) => {
@@ -412,10 +433,12 @@ function PublicationSection({
       storefrontStatus: data.storefrontStatus,
       publishedAt: data.publishedAt,
     });
+    toast.success(t("pm.publishedToast"), { title: t("pm.publishedTitle") });
     reload();
   });
   useOnSuccess(unpublish.state, (data) => {
     observationStore.record(productId, { storefrontStatus: data.storefrontStatus });
+    toast.success(t("pm.unpublishedToast"), { title: t("pm.unpublishedTitle") });
     reload();
   });
 
@@ -428,23 +451,20 @@ function PublicationSection({
           <AppIcon name="storefront-outline" size={23} color={colors.accent} />
         </View>
         <View style={productStyles.sectionIntroCopy}>
-          <Text style={productStyles.sectionTitle}>Storefront publication</Text>
-          <Text style={productStyles.sectionDescription}>Control public website visibility</Text>
+          <Text style={productStyles.sectionTitle}>{t("pm.storefrontPublication")}</Text>
+          <Text style={productStyles.sectionDescription}>{t("pm.storefrontControl")}</Text>
         </View>
       </View>
-      <Body>
-        Publishing exposes this product on the public Storefront. Publishing requires the product to
-        be active, with at least one active variant and a valid current price.
-      </Body>
+      <Body>{t("pm.publishBody")}</Body>
       <PrimaryButton
         label={
           publish.state.status === "submitting"
-            ? "Publishing…"
+            ? t("pm.publishing")
             : unpublish.state.status === "submitting"
-              ? "Unpublishing…"
+              ? t("pm.unpublishing")
               : isPublished
-                ? "Publish again"
-                : "Publish to Storefront"
+                ? t("pm.publishAgain")
+                : t("pm.publish")
         }
         icon="web-plus"
         testID="publish-submit"
@@ -453,7 +473,7 @@ function PublicationSection({
       />
       {observation?.storefrontStatus === "published" || isPublished ? (
         <PrimaryButton
-          label="Unpublish from Storefront"
+          label={t("pm.unpublish")}
           icon="web-remove"
           variant="secondary"
           testID="unpublish-submit"
@@ -462,18 +482,10 @@ function PublicationSection({
         />
       ) : null}
       {publish.state.status === "success" ? (
-        <Notice
-          tone="success"
-          testID="publish-success"
-          message="Published. The Storefront now shows this product."
-        />
+        <Notice tone="success" testID="publish-success" message={t("pm.publishedMsg")} />
       ) : null}
       {unpublish.state.status === "success" ? (
-        <Notice
-          tone="success"
-          testID="unpublish-success"
-          message="Unpublished. The Storefront no longer shows this product."
-        />
+        <Notice tone="success" testID="unpublish-success" message={t("pm.unpublishedMsg")} />
       ) : null}
       {publish.state.status === "error" ? (
         <CatalogWriteError
@@ -514,6 +526,7 @@ function EditDetailsForm({
   reload: () => void;
   observationStore: CatalogObservationStore;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState(product.name);
   // The read contract returns no slug/description; seed the slug from this session's observation when
   // available, else derive a candidate from the name. `updateProduct` requires a slug either way.
@@ -556,29 +569,24 @@ function EditDetailsForm({
 
   return (
     <View style={productStyles.sectionBody}>
-      {observedSlug === undefined ? (
-        <Notice
-          tone="warning"
-          message="The current slug and description are not returned by the read API. Confirm the slug before saving; the description is only sent if you enter one."
-        />
-      ) : null}
-      <TextField label="Name" value={name} onChangeText={setName} testID="edit-name" />
+      {observedSlug === undefined ? <Notice tone="warning" message={t("pm.slugDescNote")} /> : null}
+      <TextField label={t("pm.name")} value={name} onChangeText={setName} testID="edit-name" />
       <TextField
-        label="Storefront slug"
+        label={t("pm.slug")}
         value={slug}
         onChangeText={setSlug}
         testID="edit-slug"
         autoCapitalize="none"
       />
       <TextField
-        label="Style code (optional)"
+        label={t("pm.styleCode")}
         value={styleCode}
         onChangeText={setStyleCode}
         testID="edit-style-code"
         autoCapitalize="characters"
       />
       <TextField
-        label="Description (optional)"
+        label={t("pm.description")}
         value={description}
         onChangeText={setDescription}
         testID="edit-description"
@@ -586,7 +594,7 @@ function EditDetailsForm({
       />
       {localError ? <Notice tone="danger" message={localError} /> : null}
       {mutation.state.status === "success" ? (
-        <Notice tone="success" message="Saved." testID="edit-success" />
+        <Notice tone="success" message={t("pm.saved")} testID="edit-success" />
       ) : null}
       {mutation.state.status === "error" ? (
         <CatalogWriteError
@@ -597,7 +605,7 @@ function EditDetailsForm({
         />
       ) : null}
       <PrimaryButton
-        label={mutation.state.status === "submitting" ? "Saving…" : "Save details"}
+        label={mutation.state.status === "submitting" ? t("pm.saving") : t("pm.saveDetails")}
         icon="content-save-outline"
         testID="edit-submit"
         disabled={mutation.state.status === "submitting"}
@@ -622,6 +630,7 @@ function VariantsSection({
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { t } = useI18n();
   const { product, variants, prices } = data;
   const priceByVariant = useMemo(() => {
     const map = new Map<string, { currency: string; amountMinor: number }>();
@@ -635,12 +644,9 @@ function VariantsSection({
 
   return (
     <View style={productStyles.sectionBody}>
-      <Eyebrow>Variants ({variants.length})</Eyebrow>
+      <Eyebrow>{t("pm.variantsCount", { count: variants.length })}</Eyebrow>
       {variants.length === 0 ? (
-        <Notice
-          tone="warning"
-          message="No variants yet. Add one below before setting a price or publishing."
-        />
+        <Notice tone="warning" message={t("pm.noVariants")} />
       ) : (
         <View style={productStyles.variantList}>
           {variants.map((variant) => {
@@ -701,6 +707,7 @@ function CreateVariantForm({
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { t } = useI18n();
   const [sku, setSku] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -725,25 +732,25 @@ function CreateVariantForm({
 
   return (
     <View style={productStyles.sectionBody}>
-      <SectionHeading title="Add a variant" detail="New SKU" />
+      <SectionHeading title={t("pm.addVariant")} detail={t("pm.newSku")} />
       <TextField
-        label="SKU"
+        label={t("pm.sku")}
         value={sku}
         onChangeText={setSku}
-        placeholder="e.g. LS-001-M"
+        placeholder={t("pm.skuPlaceholder")}
         testID="variant-sku"
         autoCapitalize="characters"
       />
       <TextField
-        label="Display name (optional)"
+        label={t("pm.displayName")}
         value={displayName}
         onChangeText={setDisplayName}
-        placeholder="e.g. Medium"
+        placeholder={t("pm.displayNamePlaceholder")}
         testID="variant-display-name"
       />
       {localError ? <Notice tone="danger" message={localError} /> : null}
       {mutation.state.status === "success" ? (
-        <Notice tone="success" message="Variant added." testID="variant-success" />
+        <Notice tone="success" message={t("pm.variantAdded")} testID="variant-success" />
       ) : null}
       {mutation.state.status === "error" ? (
         <CatalogWriteError
@@ -754,7 +761,7 @@ function CreateVariantForm({
         />
       ) : null}
       <PrimaryButton
-        label={mutation.state.status === "submitting" ? "Adding…" : "Add variant"}
+        label={mutation.state.status === "submitting" ? t("pm.adding") : t("pm.addVariantCta")}
         icon="plus"
         testID="variant-submit"
         disabled={mutation.state.status === "submitting"}
@@ -777,17 +784,18 @@ function SetPriceForm({
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { t } = useI18n();
   const [variantId, setVariantId] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("");
+  // Currency is locked to the single operating currency; it is submitted as-is and shown read-only.
+  const [currency] = useState(OPERATING_CURRENCY);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // Default the currency to the product's existing price currency (never a hidden hardcode). Seed the
-  // amount field from the current price when a variant is chosen so an edit starts from today's value.
+  // Seed the amount field from the current price when a variant is chosen so an edit starts from
+  // today's value. The currency is fixed to the operating currency and never changes per variant.
   const onSelectVariant = (id: string) => {
     setVariantId(id);
     const existing = priceByVariant.get(id);
-    setCurrency(existing?.currency ?? "USD");
     setAmount(existing ? formatMinorToInput(existing.amountMinor) : "");
   };
 
@@ -805,12 +813,12 @@ function SetPriceForm({
 
   function onSubmit() {
     if (!variantId) {
-      setLocalError("Choose a variant to price.");
+      setLocalError(t("pm.chooseVariantToPrice"));
       return;
     }
     const normalizedCurrency = currency.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
-      setLocalError("Enter a 3-letter currency code (e.g. USD).");
+      setLocalError(t("pm.currencyCode"));
       return;
     }
     const parsed = parseAmountToMinor(amount);
@@ -824,31 +832,24 @@ function SetPriceForm({
 
   return (
     <View style={productStyles.sectionBody}>
-      <SectionHeading title="Set a selling price" detail="Current price" />
+      <SectionHeading title={t("pm.setPrice")} detail={t("pm.currentPrice")} />
       {variants.length === 0 ? (
-        <Notice message="Add a variant first." />
+        <Notice message={t("pm.addVariantFirst")} />
       ) : (
         <>
           <SelectField
-            label="Variant"
+            label={t("pm.variant")}
             options={variantOptions}
             selected={variantId}
             onSelect={onSelectVariant}
             testIDPrefix="price-variant"
           />
+          <InfoRow label={t("pm.currency")} value={currency} testID="price-currency" />
           <TextField
-            label="Currency"
-            value={currency}
-            onChangeText={setCurrency}
-            placeholder="USD"
-            testID="price-currency"
-            autoCapitalize="characters"
-          />
-          <TextField
-            label="Amount"
+            label={t("pm.amount")}
             value={amount}
             onChangeText={setAmount}
-            placeholder="e.g. 25.99"
+            placeholder={t("pm.amountPlaceholder")}
             testID="price-amount"
           />
           {localError ? <Notice tone="danger" message={localError} /> : null}
@@ -856,10 +857,12 @@ function SetPriceForm({
             <Notice
               tone="success"
               testID="price-success"
-              message={`Price set to ${formatMoneyMinor(
-                mutation.state.data.amountMinor,
-                mutation.state.data.currency,
-              )}. This is recorded as canonical price history on the server.`}
+              message={t("pm.priceSetMsg", {
+                amount: formatMoneyMinor(
+                  mutation.state.data.amountMinor,
+                  mutation.state.data.currency,
+                ),
+              })}
             />
           ) : null}
           {mutation.state.status === "error" ? (
@@ -871,7 +874,7 @@ function SetPriceForm({
             />
           ) : null}
           <PrimaryButton
-            label={mutation.state.status === "submitting" ? "Saving…" : "Set price"}
+            label={mutation.state.status === "submitting" ? t("pm.saving") : t("pm.setPriceCta")}
             icon="cash-check"
             testID="price-submit"
             disabled={mutation.state.status === "submitting"}
@@ -909,6 +912,7 @@ function MediaSection({
   imagePicker: ImagePicker;
   uploadFetch?: typeof globalThis.fetch;
 }) {
+  const { t } = useI18n();
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [altText, setAltText] = useState("");
   const [isPrimary, setIsPrimary] = useState(false);
@@ -994,11 +998,8 @@ function MediaSection({
 
   return (
     <View style={productStyles.sectionBody}>
-      <Eyebrow>Product media</Eyebrow>
-      <Body>
-        Images are uploaded to secure object storage via a server-issued signed URL, then registered
-        with the catalog. Raw images are never stored in the API database.
-      </Body>
+      <Eyebrow>{t("pm.productMedia")}</Eyebrow>
+      <Body>{t("pm.mediaIntro")}</Body>
       {registered.length > 0 ? (
         <View style={productStyles.mediaList}>
           {registered.map((media) => (
@@ -1012,16 +1013,16 @@ function MediaSection({
                 <Image
                   source={{ uri: media.previewUri }}
                   style={productStyles.mediaThumbnail}
-                  accessibilityLabel={media.altText ?? "Product image"}
+                  accessibilityLabel={media.altText ?? t("pm.productImageAlt")}
                 />
               ) : null}
               <View style={productStyles.mediaMeta}>
-                {media.isPrimary ? <Badge label="primary" /> : null}
+                {media.isPrimary ? <Badge label={t("pm.primary")} /> : null}
                 <Body>{media.altText ?? media.mediaId}</Body>
               </View>
               <ConfirmButton
-                label="Remove image"
-                confirmLabel="Confirm remove"
+                label={t("pm.removeImage")}
+                confirmLabel={t("pm.confirmRemove")}
                 testID={`media-archive-${media.mediaId}`}
                 disabled={archive.state.status === "submitting"}
                 onConfirm={() => archive.submit({ productId, mediaId: media.mediaId })}
@@ -1032,9 +1033,9 @@ function MediaSection({
       ) : null}
 
       <Divider />
-      <SectionHeading title="Add an image" detail="JPG, PNG or WebP" />
+      <SectionHeading title={t("pm.addImage")} detail={t("pm.imageFormats")} />
       <PrimaryButton
-        label={picked ? "Choose a different image" : "Choose image"}
+        label={picked ? t("pm.chooseDifferent") : t("pm.chooseImage")}
         icon="image-plus"
         variant="secondary"
         testID="media-pick"
@@ -1046,21 +1047,23 @@ function MediaSection({
             <Image
               source={{ uri: picked.previewUri }}
               style={productStyles.mediaPreview}
-              accessibilityLabel="Selected image preview"
+              accessibilityLabel={t("pm.selectedPreview")}
             />
           ) : null}
-          <Body testID="media-picked">Selected: {picked.fileName ?? picked.contentType}</Body>
+          <Body testID="media-picked">
+            {t("pm.selected", { name: picked.fileName ?? picked.contentType })}
+          </Body>
           <TextField
-            label="Alt text (optional)"
+            label={t("pm.altText")}
             value={altText}
             onChangeText={setAltText}
             testID="media-alt"
           />
           <SelectField
-            label="Primary image?"
+            label={t("pm.primaryImage")}
             options={[
-              { value: "no", label: "No" },
-              { value: "yes", label: "Yes — make this the primary image" },
+              { value: "no", label: t("pm.primaryNo") },
+              { value: "yes", label: t("pm.primaryYes") },
             ]}
             selected={isPrimary ? "yes" : "no"}
             onSelect={(v) => setIsPrimary(v === "yes")}
@@ -1069,10 +1072,10 @@ function MediaSection({
           <PrimaryButton
             label={
               preparing
-                ? "Uploading…"
+                ? t("pm.uploading")
                 : register.state.status === "submitting"
-                  ? "Registering…"
-                  : "Upload and register"
+                  ? t("pm.registering")
+                  : t("pm.uploadRegister")
             }
             icon="cloud-upload-outline"
             testID="media-upload"
@@ -1084,13 +1087,13 @@ function MediaSection({
       {prepareError ? (
         <Notice
           tone="danger"
-          title="Image not uploaded"
+          title={t("pm.imageNotUploaded")}
           message={prepareError}
           testID="media-prepare-error"
         />
       ) : null}
       {register.state.status === "success" ? (
-        <Notice tone="success" message="Image registered." testID="media-success" />
+        <Notice tone="success" message={t("pm.imageRegistered")} testID="media-success" />
       ) : null}
       {register.state.status === "error" ? (
         <CatalogWriteError
@@ -1144,6 +1147,7 @@ function LifecycleSection({
   reload: () => void;
   observationStore: CatalogObservationStore;
 }) {
+  const { t } = useI18n();
   const [archiveReason, setArchiveReason] = useState("");
   const mutation = useMutation(
     (args: { productId: string; status: ProductStatus; archiveReason?: string }, key) =>
@@ -1163,13 +1167,11 @@ function LifecycleSection({
 
   return (
     <View style={productStyles.sectionBody}>
-      <Eyebrow>Lifecycle</Eyebrow>
-      <Notice
-        message={`Current internal status: ${status}. Archiving is not a delete — the product is retained and can be returned to draft later.`}
-      />
+      <Eyebrow>{t("pm.lifecycle")}</Eyebrow>
+      <Notice message={t("pm.currentStatusArchive", { status })} />
       {targets.includes("active") ? (
         <PrimaryButton
-          label="Activate"
+          label={t("pm.activate")}
           icon="check-circle-outline"
           testID="lifecycle-active"
           disabled={busy}
@@ -1178,7 +1180,7 @@ function LifecycleSection({
       ) : null}
       {targets.includes("draft") ? (
         <PrimaryButton
-          label={status === "archived" ? "Restore to draft" : "Move to draft"}
+          label={status === "archived" ? t("pm.restoreToDraft") : t("pm.moveToDraft")}
           icon="file-document-edit-outline"
           variant="secondary"
           testID="lifecycle-draft"
@@ -1189,14 +1191,14 @@ function LifecycleSection({
       {targets.includes("archived") ? (
         <>
           <TextField
-            label="Archive reason (optional)"
+            label={t("pm.archiveReason")}
             value={archiveReason}
             onChangeText={setArchiveReason}
             testID="lifecycle-archive-reason"
           />
           <ConfirmButton
-            label="Archive product"
-            confirmLabel="Confirm archive"
+            label={t("pm.archiveProduct")}
+            confirmLabel={t("pm.confirmArchive")}
             testID="lifecycle-archive"
             disabled={busy}
             onConfirm={() =>
@@ -1213,7 +1215,7 @@ function LifecycleSection({
         <Notice
           tone="success"
           testID="lifecycle-success"
-          message={`Status is now ${mutation.state.data.status}. Storefront publication is unchanged by this action unless the server reports otherwise.`}
+          message={t("pm.statusNow", { status: mutation.state.data.status })}
         />
       ) : null}
       {mutation.state.status === "error" ? (

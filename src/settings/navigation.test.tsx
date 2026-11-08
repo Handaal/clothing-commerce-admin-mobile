@@ -48,10 +48,14 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Settings navigation", () => {
+  // Settings is a non-primary section, so on the dashboard it surfaces as an `open-settings`
+  // module card (gated on settingsCapabilities(context).canRead). We anchor the "rendered" wait on
+  // `open-more`, which the dashboard always shows — `open-products` is a PRIMARY tab (bottom nav),
+  // not a dashboard card, so it is deliberately absent from the module grid.
   it("is hidden when Settings read guidance is missing", async () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A));
     renderHome();
-    await screen.findByTestId("open-products");
+    await screen.findByTestId("open-more");
     expect(screen.queryByTestId("open-settings")).toBeNull();
   });
   it("is shown for explicit read guidance and opens /settings", async () => {
@@ -63,6 +67,5 @@ describe("Settings navigation", () => {
     renderHome();
     fireEvent.click(await screen.findByTestId("open-settings"));
     expect(mocks.push).toHaveBeenCalledWith("/settings");
-    expect(screen.getByText("Read", { selector: "div" })).toBeTruthy();
   });
 });

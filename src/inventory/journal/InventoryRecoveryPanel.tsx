@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import { View } from "react-native";
 
 import { classifyCommerceError } from "../../commerce/errors";
+import { t as translate, useI18n } from "../../i18n";
 import { Badge, Body, Divider, InfoRow, PrimaryButton, Title } from "../../ui/components";
 import type { InventoryItem } from "../load";
 import type { InventoryLocationRef } from "../InventoryOperations";
@@ -79,8 +80,8 @@ function initialRowStatus(status: JournalEntry["status"]): RowStatus {
     case "rejected":
       return {
         kind: "rejected",
-        heading: "Not applied",
-        message: "The server refused this operation, so it did not change stock. Dismiss it.",
+        heading: translate("invRecovery.notApplied"),
+        message: translate("invRecovery.notAppliedMsg"),
       };
     case "sent":
     case "acknowledged":
@@ -146,6 +147,7 @@ export function InventoryRecoveryPanel({
   onAvailabilityChange,
   crossContextSafe = isCrossContextSafe(),
 }: InventoryRecoveryPanelProps) {
+  const { t } = useI18n();
   const [state, dispatch] = useReducer(reducer, {
     availability: { kind: "loading" },
     entries: [],
@@ -265,11 +267,11 @@ export function InventoryRecoveryPanel({
     return (
       <View style={{ gap: 12 }} testID="inventory-recovery-blocked">
         <Divider />
-        <Title>Inventory changes temporarily unavailable</Title>
+        <Title>{t("invOps.storagePausedTitle")}</Title>
         <Body>
           {state.availability.reason === "corrupt"
-            ? "The inventory recovery journal could not be read and needs attention before new stock changes can be made. Your other Admin data is unaffected."
-            : "The inventory recovery journal could not be saved, so inventory changes are temporarily unavailable. Your other Admin data is unaffected."}
+            ? t("invRecovery.blockedCorrupt")
+            : t("invRecovery.blockedStorage")}
         </Body>
       </View>
     );
@@ -279,24 +281,16 @@ export function InventoryRecoveryPanel({
     return (
       <View style={{ gap: 12 }} testID="inventory-recovery-legacy">
         <Divider />
-        <Title>An earlier inventory operation needs attention</Title>
-        <Body>
-          An inventory recovery journal from a previous app version was found. It cannot be
-          attributed to your account automatically, so new inventory changes are paused until it is
-          reviewed and archived. This never resends those operations on your behalf.
-        </Body>
+        <Title>{t("invRecovery.legacyTitle")}</Title>
+        <Body>{t("invRecovery.legacyBody")}</Body>
         {/* Archiving MUTATES storage. When cross-context locking is unavailable (web without Web
             Locks) the evidence stays visible but the mutation action is NOT offered — archiving must
             happen in the app or a supported browser with a single tab. */}
         {!crossContextSafe ? (
-          <Body testID="recovery-legacy-incompatible">
-            This browser can&apos;t safely complete inventory recovery, so archiving is unavailable
-            here. Open the app (or a supported browser with a single tab) to review and archive it.
-            Nothing is changed on your behalf.
-          </Body>
+          <Body testID="recovery-legacy-incompatible">{t("invRecovery.legacyIncompatible")}</Body>
         ) : quarantineLegacy ? (
           <PrimaryButton
-            label="Archive and continue"
+            label={t("invRecovery.archiveContinue")}
             testID="recovery-legacy-archive"
             onPress={() => void archiveLegacy()}
           />
@@ -312,13 +306,8 @@ export function InventoryRecoveryPanel({
   const compatibilityNotice = incompatible ? (
     <View style={{ gap: 8 }} testID="inventory-recovery-incompatible">
       <Divider />
-      <Title>Inventory changes aren&apos;t supported in this browser</Title>
-      <Body>
-        This browser can&apos;t safely coordinate inventory changes across tabs, so making or
-        completing inventory operations is disabled here. You can still view inventory and any
-        unfinished operations below. To make changes, use a supported browser (or the app) with a
-        single tab open. Your other Admin data is unaffected.
-      </Body>
+      <Title>{t("invRecovery.incompatibleTitle")}</Title>
+      <Body>{t("invRecovery.incompatibleBody")}</Body>
     </View>
   ) : null;
 
@@ -328,11 +317,9 @@ export function InventoryRecoveryPanel({
     <View style={{ gap: 12 }} testID="inventory-recovery">
       {compatibilityNotice}
       <Divider />
-      <Title>Unfinished inventory operations</Title>
+      <Title>{t("invRecovery.unfinishedTitle")}</Title>
       <Body>
-        {writesEnabled
-          ? "These operations were started but their result was not confirmed, or are awaiting your acknowledgement. Complete each unresolved one to apply it safely — this reuses the original request, so it can never be counted twice. Start a new equivalent operation only after these are resolved."
-          : "These operations were started but their result was not confirmed. They cannot be completed in this browser; open the app (or a supported browser with a single tab) to finish them safely. Nothing is resent on your behalf."}
+        {writesEnabled ? t("invRecovery.unfinishedBody") : t("invRecovery.unfinishedBodyReadOnly")}
       </Body>
       {state.entries.map((entry) => {
         const status = state.statuses[entry.commandKey] ?? { kind: "unresolved", sent: true };
@@ -343,14 +330,20 @@ export function InventoryRecoveryPanel({
             testID={`recovery-entry-${entry.commandKey}`}
           >
             <Divider />
-            <InfoRow label="Operation" value={describePayload(entry.payload, items, locations)} />
+            <InfoRow
+              label={t("invRecovery.operation")}
+              value={describePayload(entry.payload, items, locations)}
+            />
             {status.kind === "accepted" ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Body>Completed</Body>
-                <Badge label="Applied" testID={`recovery-resolved-${entry.commandKey}`} />
+                <Body>{t("invRecovery.completed")}</Body>
+                <Badge
+                  label={t("invRecovery.applied")}
+                  testID={`recovery-resolved-${entry.commandKey}`}
+                />
                 {writesEnabled ? (
                   <PrimaryButton
-                    label="Dismiss"
+                    label={t("common.dismiss")}
                     testID={`recovery-ack-${entry.commandKey}`}
                     onPress={() => void acknowledge(entry)}
                   />
@@ -363,7 +356,7 @@ export function InventoryRecoveryPanel({
                 <Body>{status.message}</Body>
                 {writesEnabled ? (
                   <PrimaryButton
-                    label="Dismiss"
+                    label={t("common.dismiss")}
                     testID={`recovery-ack-${entry.commandKey}`}
                     onPress={() => void acknowledge(entry)}
                   />
@@ -375,7 +368,7 @@ export function InventoryRecoveryPanel({
                 <Body>{status.message}</Body>
                 {writesEnabled ? (
                   <PrimaryButton
-                    label="Try to complete again"
+                    label={t("invRecovery.tryAgain")}
                     testID={`recovery-replay-${entry.commandKey}`}
                     onPress={() => void replay(entry)}
                   />
@@ -386,19 +379,19 @@ export function InventoryRecoveryPanel({
               <>
                 <Body>
                   {status.sent
-                    ? "This operation was sent but not confirmed. It may already have been applied; completing it reuses the original request so it is never counted twice."
-                    : "This operation was prepared but not sent. Complete it to apply it safely."}
+                    ? t("invRecovery.unresolvedSent")
+                    : t("invRecovery.unresolvedPrepared")}
                 </Body>
                 {writesEnabled ? (
                   <PrimaryButton
-                    label="Complete this operation"
+                    label={t("invRecovery.completeThis")}
                     testID={`recovery-replay-${entry.commandKey}`}
                     onPress={() => void replay(entry)}
                   />
                 ) : null}
               </>
             ) : null}
-            {status.kind === "replaying" ? <Body>Completing…</Body> : null}
+            {status.kind === "replaying" ? <Body>{t("invRecovery.completing")}</Body> : null}
           </View>
         );
       })}
@@ -425,17 +418,31 @@ function describePayload(
   switch (payload.type) {
     case "receive": {
       const where = locationName(locations, payload.inventoryLocationId);
-      const supplier = payload.supplierId ? " (supplier-linked)" : "";
-      return `Receive ${payload.quantity} × ${variant} into ${where}${supplier}`;
+      const supplier = payload.supplierId ? translate("invRecovery.supplierLinked") : "";
+      return translate("invRecovery.describeReceive", {
+        quantity: payload.quantity,
+        variant,
+        where,
+        supplier,
+      });
     }
     case "adjust": {
       const where = locationName(locations, payload.inventoryLocationId);
-      return `Reconcile ${variant} at ${where} to a count of ${payload.countedQuantity}`;
+      return translate("invRecovery.describeAdjust", {
+        variant,
+        where,
+        counted: payload.countedQuantity,
+      });
     }
     case "transfer": {
       const from = locationName(locations, payload.sourceInventoryLocationId);
       const to = locationName(locations, payload.destinationInventoryLocationId);
-      return `Transfer ${payload.quantity} × ${variant} from ${from} to ${to}`;
+      return translate("invRecovery.describeTransfer", {
+        quantity: payload.quantity,
+        variant,
+        from,
+        to,
+      });
     }
   }
 }

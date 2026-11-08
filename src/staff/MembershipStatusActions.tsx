@@ -1,5 +1,6 @@
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { Body, ConfirmButton, Eyebrow, PrimaryButton } from "../ui/components";
 import type { MembershipStatus, MembershipStatusTarget } from "./model";
 import { membershipLifecycleActions } from "./status";
@@ -22,19 +23,16 @@ export function MembershipStatusActions({
   busy = false,
   onChangeStatus,
 }: MembershipStatusActionsProps) {
+  const { t } = useI18n();
   const actions = membershipLifecycleActions(status);
 
   if (actions.length === 0) {
-    return (
-      <Body testID="staff-lifecycle-terminal">
-        This membership is deactivated. It is retained for history and is never deleted.
-      </Body>
-    );
+    return <Body testID="staff-lifecycle-terminal">{t("staffLifecycle.terminal")}</Body>;
   }
 
   return (
     <View style={{ gap: 8 }} testID="staff-lifecycle-actions">
-      <Eyebrow>Membership</Eyebrow>
+      <Eyebrow>{t("staffLifecycle.membership")}</Eyebrow>
       {actions.map((action) =>
         action.destructive ? (
           <ConfirmButton

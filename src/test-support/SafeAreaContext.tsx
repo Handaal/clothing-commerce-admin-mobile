@@ -18,3 +18,8 @@ export function SafeAreaView({
 export function SafeAreaProvider({ children }: { children?: ReactNode }) {
   return <>{children}</>;
 }
+
+/** Tests run without a device, so every edge inset is zero. */
+export function useSafeAreaInsets() {
+  return { top: 0, bottom: 0, left: 0, right: 0 };
+}

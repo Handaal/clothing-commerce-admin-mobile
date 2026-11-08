@@ -15,6 +15,7 @@
  */
 
 import type { ClassifiedCommerceError } from "../commerce/errors";
+import { t } from "../i18n";
 
 /**
  * Distinct staff-write outcomes the UI prepares a recovery for. Each is kept separate — nothing collapses
@@ -103,85 +104,78 @@ export function describeStaffWriteError(error: ClassifiedCommerceError): Describ
     case "cannot-delegate":
       return {
         category,
-        heading: "Not allowed to delegate this",
-        message:
-          "You cannot grant a role or permission you do not hold yourself. The change was not applied.",
+        heading: t("staffWriteErr.cannotDelegate"),
+        message: t("staffWriteErr.cannotDelegateMsg"),
         recovery: "none",
       };
     case "last-admin":
       return {
         category,
-        heading: "Last administrator",
-        message:
-          "This is the final staff administrator and cannot be removed or deactivated. Assign another administrator first.",
+        heading: t("staffWriteErr.lastAdmin"),
+        message: t("staffWriteErr.lastAdminMsg"),
         recovery: "none",
       };
     case "staff-conflict":
       return {
         category,
-        heading: "Change conflicts",
-        message:
-          "This staff change conflicts with the current state — for example the person is already a member, the assignment already exists, or the membership was already revoked. Refresh and review before trying again.",
+        heading: t("staffWriteErr.conflict"),
+        message: t("staffWriteErr.conflictMsg"),
         recovery: "none",
       };
     case "identity-inactive":
       return {
         category,
-        heading: "Account not active",
-        message:
-          "The selected account is not active and cannot be linked as staff. Choose a different account.",
+        heading: t("staffWriteErr.inactive"),
+        message: t("staffWriteErr.inactiveMsg"),
         recovery: "edit",
       };
     case "invalid":
       return {
         category,
-        heading: "Invalid details",
-        message: "Some of the details are not valid. Correct them and try again.",
+        heading: t("staffWriteErr.invalid"),
+        message: t("staffWriteErr.invalidMsg"),
         recovery: "edit",
       };
     case "session":
       return {
         category,
-        heading: "Session problem",
-        message: "Your session is invalid or has expired. Please sign in again.",
+        heading: t("errorHead.auth"),
+        message: t("writeErr.authMessage"),
         recovery: "none",
       };
     case "denied":
       return {
         category,
-        heading: "Access denied",
-        message:
-          "You are signed in, but the server denied this staff operation. It was not applied.",
+        heading: t("errorHead.forbidden"),
+        message: t("staffWriteErr.denied"),
         recovery: "none",
       };
     case "conflict":
       return {
         category,
-        heading: "Duplicate operation",
-        message:
-          "This operation key was already used with different details. Start a new operation to continue.",
+        heading: t("writeErr.duplicateOp"),
+        message: t("writeErr.duplicateOpMessage"),
         recovery: "none",
       };
     case "not-found":
       return {
         category,
-        heading: "Not found",
-        message: "This staff member could not be found. Refresh and try again.",
+        heading: t("errorHead.notFound"),
+        message: t("staffWriteErr.notFoundMsg"),
         recovery: "none",
       };
     case "ambiguous":
       return {
         category,
-        heading: "Network problem",
-        message:
-          "The Commerce API could not be reached. The operation may or may not have been applied — retry to complete it safely.",
+        heading: t("writeErr.networkProblem"),
+        message: t("writeErr.networkMessage"),
         recovery: "retry",
       };
     case "unknown":
       return {
         category,
-        heading: "Something went wrong",
-        message: `${error.message} You can retry.`,
+        heading: t("errorHead.unknown"),
+        message: t("writeErr.retrySuffix", { message: error.message }),
         recovery: "retry",
       };
   }

@@ -71,15 +71,15 @@ describe("management navigation — Staff entry", () => {
     expect(mocks.push).toHaveBeenCalledWith("/staff");
   });
 
-  it("does not disturb the existing catalog / inventory / orders / suppliers entries", async () => {
+  it("keeps primary bottom-tab destinations out while retaining secondary management areas", async () => {
     mocks.getContext.mockResolvedValue(
       meContext(TENANT_A, { inventory: { canRead: true, tenantWide: true, locations: [] } }),
     );
     renderHome();
     await screen.findByTestId("open-staff");
-    expect(screen.getByTestId("open-products")).toBeTruthy();
-    expect(screen.getByTestId("open-inventory")).toBeTruthy();
-    expect(screen.getByTestId("open-orders")).toBeTruthy();
+    expect(screen.queryByTestId("open-products")).toBeNull();
+    expect(screen.queryByTestId("open-inventory")).toBeNull();
+    expect(screen.queryByTestId("open-orders")).toBeNull();
     expect(screen.getByTestId("open-suppliers")).toBeTruthy();
   });
 
@@ -88,7 +88,7 @@ describe("management navigation — Staff entry", () => {
     // final context DTO not being frozen never breaks the ready screen.
     mocks.getContext.mockResolvedValue(meContext(TENANT_A, { staff: null }));
     renderHome();
-    await screen.findByTestId("open-products");
+    await screen.findByTestId("open-suppliers");
     expect(screen.queryByTestId("open-staff")).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 
+import { useI18n, type MessageKey } from "../i18n";
 import { formatMoneyMinor } from "../products/display";
 import {
   Body,
@@ -34,8 +35,15 @@ export interface ReportsDashboardScreenProps {
 }
 
 export function ReportsDashboardScreen(props: ReportsDashboardScreenProps) {
+  const { t } = useI18n();
   if (!props.canRead || !props.adapter) {
-    return <ReportingUnavailable title="Reports" canRead={props.canRead} onBack={props.onBack} />;
+    return (
+      <ReportingUnavailable
+        title={t("reportDash.reportsTitle")}
+        canRead={props.canRead}
+        onBack={props.onBack}
+      />
+    );
   }
   return <DashboardContent {...props} adapter={props.adapter} />;
 }
@@ -45,13 +53,14 @@ function DashboardContent({
   onOpen,
   onBack,
 }: ReportsDashboardScreenProps & { adapter: ReportingAdapter }) {
+  const { t } = useI18n();
   const [range, setRange] = useState<ReportDateRange>(DEFAULT_REPORT_RANGE);
   const [currency, setCurrency] = useState<string | undefined>();
   const load = useCallback(() => adapter.getDashboard({ range }), [adapter, range]);
   const { state, reload } = useAsync(load);
 
   return (
-    <ReportPageFrame title="Management dashboard" onBack={onBack}>
+    <ReportPageFrame title={t("reportDash.title")} onBack={onBack}>
       <DateRangeControls value={range} onChange={setRange} />
       <Divider />
       <ReportAsyncState
@@ -62,7 +71,7 @@ function DashboardContent({
           data.topProducts.length === 0 &&
           data.noSalesWithCurrentStock.length === 0
         }
-        emptyMessage="No reporting activity exists for this period."
+        emptyMessage={t("reportDash.empty")}
       >
         {(data) => (
           <DashboardData
@@ -88,6 +97,15 @@ function DashboardData({
   onCurrencyChange: (currency: string | undefined) => void;
   onOpen: ReportsDashboardScreenProps["onOpen"];
 }) {
+  const { t } = useI18n();
+  const reportNameKey: Record<Parameters<ReportsDashboardScreenProps["onOpen"]>[0], MessageKey> = {
+    sales: "reportName.sales",
+    products: "reportName.products",
+    inventory: "reportName.inventory",
+    returns: "reportName.returns",
+    promotions: "reportName.promotions",
+    suppliers: "reportName.suppliers",
+  };
   const groups = selectedCurrency
     ? data.currencies.filter((group) => group.currency === selectedCurrency)
     : data.currencies;
@@ -107,45 +125,53 @@ function DashboardData({
       ))}
 
       <Divider />
-      <Title>Top Products</Title>
-      {products.length === 0 ? <Body>No Product sales in this period.</Body> : null}
+      <Title>{t("reportDash.topProducts")}</Title>
+      {products.length === 0 ? <Body>{t("reportDash.noProductSales")}</Body> : null}
       {products.map((product) => (
         <SurfaceRow key={`${product.currency}-${product.id}`}>
           {product.currency ? <Eyebrow>{product.currency}</Eyebrow> : null}
           <Title>{product.productName}</Title>
-          <InfoRow label="Units sold" value={String(product.unitsSold ?? 0)} />
+          <InfoRow label={t("reportDash.unitsSold")} value={String(product.unitsSold ?? 0)} />
           {product.currency !== undefined && product.netMinor !== undefined ? (
-            <InfoRow label="Net" value={formatMoneyMinor(product.netMinor, product.currency)} />
+            <InfoRow
+              label={t("reportDash.net")}
+              value={formatMoneyMinor(product.netMinor, product.currency)}
+            />
           ) : null}
         </SurfaceRow>
       ))}
 
       <Divider />
-      <Title>Current stock summary</Title>
-      <InfoRow label="On hand" value={String(data.stock.totalOnHand)} />
-      <InfoRow label="Variants" value={String(data.stock.variantCount)} />
-      <InfoRow label="InventoryLocations" value={String(data.stock.locationCount)} />
-      <InfoRow label="Inventory as of" value={data.stock.asOf} />
+      <Title>{t("reportDash.stockSummary")}</Title>
+      <InfoRow label={t("reportDash.onHand")} value={String(data.stock.totalOnHand)} />
+      <InfoRow label={t("reportDash.variants")} value={String(data.stock.variantCount)} />
+      <InfoRow
+        label={t("reportDash.inventoryLocations")}
+        value={String(data.stock.locationCount)}
+      />
+      <InfoRow label={t("reportDash.inventoryAsOf")} value={data.stock.asOf} />
 
       <Divider />
-      <Title>No sales in period with current stock</Title>
-      {data.noSalesWithCurrentStock.length === 0 ? <Body>No matching Products.</Body> : null}
+      <Title>{t("reportDash.noSalesWithStock")}</Title>
+      {data.noSalesWithCurrentStock.length === 0 ? (
+        <Body>{t("reportDash.noMatchingProducts")}</Body>
+      ) : null}
       {data.noSalesWithCurrentStock.map((item) => (
         <SurfaceRow key={item.id}>
           <Title>{item.productName}</Title>
-          {item.sku ? <InfoRow label="Variant SKU" value={item.sku} /> : null}
-          <InfoRow label="Current on hand" value={String(item.currentOnHand ?? 0)} />
+          {item.sku ? <InfoRow label={t("reportDash.variantSku")} value={item.sku} /> : null}
+          <InfoRow label={t("reportDash.currentOnHand")} value={String(item.currentOnHand ?? 0)} />
         </SurfaceRow>
       ))}
 
       <Divider />
-      <Eyebrow>Detailed reports</Eyebrow>
+      <Eyebrow>{t("reportDash.detailedReports")}</Eyebrow>
       {(["sales", "products", "inventory", "returns", "promotions", "suppliers"] as const).map(
         (report) => (
           <PrimaryButton
             key={report}
             testID={`open-report-${report}`}
-            label={`Open ${report} report`}
+            label={t("reportDash.openReport", { report: t(reportNameKey[report]) })}
             onPress={() => onOpen(report)}
           />
         ),
@@ -155,57 +181,75 @@ function DashboardData({
 }
 
 function CurrencyDashboard({ group }: { group: CurrencySalesGroup }) {
+  const { t } = useI18n();
   return (
     <View testID={`currency-group-${group.currency}`} style={{ gap: 10 }}>
       <Title>{group.currency}</Title>
       <View style={{ gap: 8 }}>
-        <InfoRow label="Gross" value={formatMoneyMinor(group.sales.grossMinor, group.currency)} />
         <InfoRow
-          label="Discounts"
+          label={t("reportDash.gross")}
+          value={formatMoneyMinor(group.sales.grossMinor, group.currency)}
+        />
+        <InfoRow
+          label={t("reportDash.discounts")}
           value={formatMoneyMinor(group.sales.discountMinor, group.currency)}
         />
-        <InfoRow label="Net" value={formatMoneyMinor(group.sales.netMinor, group.currency)} />
-        <InfoRow label="Orders" value={String(group.sales.orders)} />
         <InfoRow
-          label="AOV"
+          label={t("reportDash.net")}
+          value={formatMoneyMinor(group.sales.netMinor, group.currency)}
+        />
+        <InfoRow label={t("reportDash.orders")} value={String(group.sales.orders)} />
+        <InfoRow
+          label={t("reportDash.aov")}
           value={
             group.sales.averageOrderValueMinor === null
-              ? "Not available"
+              ? t("reportDash.notAvailable")
               : formatMoneyMinor(group.sales.averageOrderValueMinor, group.currency)
           }
         />
       </View>
 
       <Divider />
-      <Eyebrow>Returns and refunds â€” separate from sales</Eyebrow>
+      <Eyebrow>{t("reportDash.returnsSeparate")}</Eyebrow>
       <InfoRow
-        label="Accepted returned value"
+        label={t("reportDash.acceptedReturned")}
         value={formatMoneyMinor(group.returns.acceptedReturnedMinor, group.currency)}
       />
       <InfoRow
-        label="Succeeded refunded value"
+        label={t("reportDash.succeededRefunded")}
         value={formatMoneyMinor(group.returns.succeededRefundedMinor, group.currency)}
       />
       <InfoRow
-        label="Pending refunds"
+        label={t("reportDash.pendingRefunds")}
         value={formatMoneyMinor(group.returns.pendingRefundMinor, group.currency)}
       />
-      <InfoRow label="Return count" value={String(group.returns.returnCount)} />
+      <InfoRow label={t("reportDash.returnCount")} value={String(group.returns.returnCount)} />
 
       <Divider />
-      <Title>Sales trend</Title>
-      <Body>Accessible bucket table; boundaries come from the reporting service.</Body>
+      <Title>{t("reportDash.salesTrend")}</Title>
+      <Body>{t("reportDash.trendNote")}</Body>
       {group.trend.map((point) => (
         <SurfaceRow key={`${group.currency}-${point.fromInclusive}`}>
           <Title>{point.label}</Title>
-          <InfoRow label="Bucket starts" value={point.fromInclusive} />
-          <InfoRow label="Net" value={formatMoneyMinor(point.netMinor, group.currency)} />
-          <InfoRow label="Orders" value={String(point.orders)} />
+          <InfoRow label={t("reportDash.bucketStarts")} value={point.fromInclusive} />
+          <InfoRow
+            label={t("reportDash.net")}
+            value={formatMoneyMinor(point.netMinor, group.currency)}
+          />
+          <InfoRow label={t("reportDash.orders")} value={String(point.orders)} />
         </SurfaceRow>
       ))}
 
-      <Breakdown title="POS vs Online" rows={group.channels} currency={group.currency} />
-      <Breakdown title="Brand breakdown" rows={group.brands} currency={group.currency} />
+      <Breakdown
+        title={t("reportDash.posVsOnline")}
+        rows={group.channels}
+        currency={group.currency}
+      />
+      <Breakdown
+        title={t("reportDash.brandBreakdown")}
+        rows={group.brands}
+        currency={group.currency}
+      />
     </View>
   );
 }
@@ -219,14 +263,15 @@ function Breakdown({
   rows: CurrencySalesGroup["channels"];
   currency: string;
 }) {
+  const { t } = useI18n();
   return (
     <View style={{ gap: 8 }}>
       <Title>{title}</Title>
       {rows.map((row) => (
         <SurfaceRow key={row.id}>
           <Title>{row.label}</Title>
-          <InfoRow label="Net" value={formatMoneyMinor(row.netMinor, currency)} />
-          <InfoRow label="Orders" value={String(row.orders)} />
+          <InfoRow label={t("reportDash.net")} value={formatMoneyMinor(row.netMinor, currency)} />
+          <InfoRow label={t("reportDash.orders")} value={String(row.orders)} />
         </SurfaceRow>
       ))}
     </View>

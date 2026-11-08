@@ -98,7 +98,7 @@ describe("PromotionForm", () => {
       expect.objectContaining({
         benefitType: "fixed_amount",
         benefitAmountMinor: 500,
-        benefitCurrency: "USD",
+        benefitCurrency: "EGP",
         activationType: "code",
         codes: [{ code: "ONCE", maxRedemptions: 1 }],
       }),

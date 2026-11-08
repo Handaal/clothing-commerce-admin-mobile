@@ -2,6 +2,7 @@ import type { OrderDetailResponse, TenantCommerceClient } from "@shifted/clothin
 import { useCallback, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { errorHeading, formatMoneyMinor, isRetryable } from "../products/display";
 import { ReturnHistory } from "../returns/ReturnHistory";
 import { hasReturnActivity, returnedQuantityByLine } from "../returns/summary";
@@ -37,6 +38,8 @@ export interface OrderDetailScreenProps {
   orderId: string;
   onBack: () => void;
   onOpenReturn?: (returnId: string) => void;
+  /** When provided, offers starting a new return against this order. */
+  onCreateReturn?: (orderId: string) => void;
 }
 
 /** Read-only detail for one immutable commercial order snapshot. */
@@ -45,9 +48,11 @@ export function OrderDetailScreen({
   orderId,
   onBack,
   onOpenReturn,
+  onCreateReturn,
 }: OrderDetailScreenProps) {
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
+  const { t } = useI18n();
   const load = useCallback(() => client.getOrder(orderId), [client, orderId]);
   const { state, reload } = useAsync<OrderDetailResponse>(load);
 
@@ -55,13 +60,13 @@ export function OrderDetailScreen({
     return (
       <ScrollScreen>
         <PageHeader
-          eyebrow="Orders"
-          title="Order"
-          description="Loading the latest server-authoritative order state."
+          eyebrow={t("orders.title")}
+          title={t("orderDetail.singular")}
+          description={t("orderDetail.loadingDesc")}
           icon="receipt-text-outline"
           onBack={onBack}
         />
-        <LoadingBlock label="Loading order…" />
+        <LoadingBlock label={t("orderDetail.loading")} />
       </ScrollScreen>
     );
   }
@@ -70,7 +75,7 @@ export function OrderDetailScreen({
     return (
       <ScrollScreen>
         <PageHeader
-          eyebrow="Orders"
+          eyebrow={t("orders.title")}
           title={errorHeading(state.error.kind)}
           icon="receipt-text-outline"
           onBack={onBack}
@@ -80,7 +85,7 @@ export function OrderDetailScreen({
           message={state.error.message}
           action={
             isRetryable(state.error.kind) ? (
-              <PrimaryButton label="Try again" icon="refresh" onPress={reload} />
+              <PrimaryButton label={t("common.tryAgain")} icon="refresh" onPress={reload} />
             ) : undefined
           }
         />
@@ -95,6 +100,7 @@ export function OrderDetailScreen({
       onBack={onBack}
       onRefresh={reload}
       onOpenReturn={onOpenReturn}
+      onCreateReturn={onCreateReturn}
     />
   );
 }
@@ -105,13 +111,16 @@ function OrderDetail({
   onBack,
   onRefresh,
   onOpenReturn,
+  onCreateReturn,
 }: {
   data: OrderDetailResponse;
   client: Pick<TenantCommerceClient, "listReturns">;
   onBack: () => void;
   onRefresh: () => void;
   onOpenReturn?: (returnId: string) => void;
+  onCreateReturn?: (orderId: string) => void;
 }) {
+  const { t } = useI18n();
   const { header, lines, cancellation, fulfillmentProgress } = data;
   const fulfillmentByLine = useMemo(
     () => fulfillmentByLineNumber(fulfillmentProgress),
@@ -122,11 +131,11 @@ function OrderDetail({
   return (
     <ScrollScreen>
       <PageHeader
-        eyebrow="Order record"
+        eyebrow={t("orderDetail.recordEyebrow")}
         title={header.orderNumber}
-        description="Commercial, payment and fulfillment facts recorded by the Commerce API."
+        description={t("orderDetail.recordDesc")}
         icon="receipt-text-outline"
-        action={<TextButton label="Refresh order" icon="refresh" onPress={onRefresh} />}
+        action={<TextButton label={t("orderDetail.refresh")} icon="refresh" onPress={onRefresh} />}
         onBack={onBack}
       />
 
@@ -145,45 +154,60 @@ function OrderDetail({
             />
           </View>
           <View style={detailStyles.summaryCopy}>
-            <Text style={detailStyles.cardTitle}>Order summary</Text>
+            <Text style={detailStyles.cardTitle}>{t("orderDetail.summary")}</Text>
             <View style={detailStyles.badges}>
               <Badge label={header.status} testID="order-detail-status" />
               <Badge label={header.channel.toUpperCase()} tone="brand" />
             </View>
           </View>
         </View>
-        <InfoRow label="Total" value={formatMoneyMinor(header.totalMinor, header.currency)} />
-        <InfoRow label="Placed" value={formatOrderDate(header.placedAt)} />
+        <InfoRow
+          label={t("orders.total")}
+          value={formatMoneyMinor(header.totalMinor, header.currency)}
+        />
+        <InfoRow label={t("orderDetail.placed")} value={formatOrderDate(header.placedAt)} />
       </Surface>
 
       <View style={detailStyles.metrics}>
-        <MetricCard label="Order lines" value={String(lines.length)} icon="format-list-numbered" />
         <MetricCard
-          label="Fulfillment"
+          label={t("orderDetail.orderLines")}
+          value={String(lines.length)}
+          icon="format-list-numbered"
+        />
+        <MetricCard
+          label={t("orderDetail.fulfillment")}
           value={fulfillmentStatusLabel(fulfillmentProgress.status)}
           icon="truck-check-outline"
           tone="accent"
         />
       </View>
 
-      <Notice message="This is a read-only management record. Refresh to retrieve updated payment, fulfillment, reservation and return facts." />
+      <Notice message={t("orderDetail.readonlyNotice")} />
 
       {header.channel === "online" || data.commerce ? <OrderCommerce data={data} /> : null}
 
       {cancellation ? (
         <Surface>
-          <SectionHeading title="Cancellation" detail="Terminal state" />
-          <InfoRow label="Cancelled" value={cancellation.cancelledAt} />
-          {cancellation.reason ? <InfoRow label="Reason" value={cancellation.reason} /> : null}
+          <SectionHeading
+            title={t("orderDetail.cancellation")}
+            detail={t("orderDetail.terminalState")}
+          />
+          <InfoRow label={t("orderDetail.cancelled")} value={cancellation.cancelledAt} />
+          {cancellation.reason ? (
+            <InfoRow label={t("orderDetail.reason")} value={cancellation.reason} />
+          ) : null}
         </Surface>
       ) : null}
 
-      <SectionHeading title={`Order lines (${lines.length})`} detail="Immutable sale snapshot" />
+      <SectionHeading
+        title={t("orderDetail.linesCount", { count: lines.length })}
+        detail={t("orderDetail.immutableSnapshot")}
+      />
       {lines.length === 0 ? (
         <EmptyState
           icon="format-list-bulleted"
-          title="No order lines"
-          message="This order has no lines."
+          title={t("orderDetail.noLinesTitle")}
+          message={t("orderDetail.noLinesMsg")}
         />
       ) : (
         <View style={detailStyles.lineList}>
@@ -203,23 +227,25 @@ function OrderDetail({
                   <Badge label={`× ${line.quantity}`} tone="brand" />
                 </View>
                 <InfoRow
-                  label="Unit price"
+                  label={t("orderDetail.unitPrice")}
                   value={formatMoneyMinor(line.unitPriceMinor, header.currency)}
                 />
                 <InfoRow
-                  label="Line total"
+                  label={t("orderDetail.lineTotal")}
                   value={formatMoneyMinor(line.lineTotalMinor, header.currency)}
                 />
                 {fulfillment ? (
                   <InfoRow
-                    label="Fulfilled"
+                    label={t("orderDetail.fulfilled")}
                     value={fulfillmentQuantityLabel(
                       fulfillment.fulfilledQuantity,
                       fulfillment.orderedQuantity,
                     )}
                   />
                 ) : null}
-                {returned > 0 ? <InfoRow label="Returned" value={String(returned)} /> : null}
+                {returned > 0 ? (
+                  <InfoRow label={t("orderDetail.returned")} value={String(returned)} />
+                ) : null}
               </Surface>
             );
           })}
@@ -232,8 +258,8 @@ function OrderDetail({
             <AppIcon name="truck-check-outline" size={22} color={colors.accent} />
           </View>
           <View style={detailStyles.summaryCopy}>
-            <Text style={detailStyles.cardTitle}>Fulfillment</Text>
-            <Body>Current progress reported by the server.</Body>
+            <Text style={detailStyles.cardTitle}>{t("orderDetail.fulfillment")}</Text>
+            <Body>{t("orderDetail.fulfillmentProgress")}</Body>
           </View>
         </View>
         <Badge
@@ -244,14 +270,32 @@ function OrderDetail({
 
       {hasReturnActivity(data.returns) && data.returns ? (
         <Surface>
-          <SectionHeading title="Returns & refunds" detail="Read-only" />
+          <SectionHeading
+            title={t("orderDetail.returnsRefunds")}
+            detail={t("orderDetail.readOnly")}
+          />
           <InfoRow
-            label="Pending refunds"
+            label={t("orderDetail.pendingRefunds")}
             value={formatMoneyMinor(data.returns.pendingRefundMinor, header.currency)}
           />
           <InfoRow
-            label="Refunded"
+            label={t("orderDetail.refunded")}
             value={formatMoneyMinor(data.returns.refundedMinor, header.currency)}
+          />
+        </Surface>
+      ) : null}
+
+      {onCreateReturn ? (
+        <Surface tone="accent">
+          <SectionHeading
+            title={t("orderDetail.startReturn")}
+            detail={t("orderDetail.startReturnDetail")}
+          />
+          <PrimaryButton
+            label={t("orderDetail.newReturn")}
+            icon="keyboard-return"
+            testID="order-new-return"
+            onPress={() => onCreateReturn(header.id)}
           />
         </Surface>
       ) : null}

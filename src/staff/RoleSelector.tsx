@@ -1,5 +1,6 @@
 import { View } from "react-native";
 
+import { useI18n } from "../i18n";
 import { Body, Eyebrow, SelectField, type SelectOption } from "../ui/components";
 import type { RoleOption } from "./model";
 
@@ -23,22 +24,23 @@ export function RoleSelector({
   onSelect,
   testIDPrefix = "staff-role",
 }: RoleSelectorProps) {
+  const { t } = useI18n();
   const options: SelectOption[] = roles.map((role) => ({ value: role.id, label: role.label }));
   const selected = roles.find((role) => role.id === selectedRoleId) ?? null;
 
   return (
     <View style={{ gap: 8 }} testID={`${testIDPrefix}-selector`}>
       <SelectField
-        label="Role"
+        label={t("staffRole.label")}
         options={options}
         selected={selectedRoleId}
         onSelect={onSelect}
         testIDPrefix={testIDPrefix}
-        emptyLabel="No assignable roles are available."
+        emptyLabel={t("staffRole.emptyLabel")}
       />
       {selected?.permissionSummary ? (
         <View style={{ gap: 4 }} testID={`${testIDPrefix}-summary`}>
-          <Eyebrow>Role grants</Eyebrow>
+          <Eyebrow>{t("staffRole.grants")}</Eyebrow>
           <Body>{selected.permissionSummary}</Body>
         </View>
       ) : null}

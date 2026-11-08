@@ -17,11 +17,18 @@ import type {
   Supplier as SdkSupplier,
   SupplierReceipt as SdkSupplierReceipt,
   SupplierSummary as SdkSupplierSummary,
+  SupplierDue,
+  SupplierPayment,
+  SupplierPurchase,
+  SupplierPurchaseItem,
+  SupplierReminder,
+  SupplierReminderStatus,
   TenantCommerceClient,
   UpdateSupplierRequest,
 } from "@shifted/clothing-commerce-sdk";
 
 import type { CursorPage } from "../commerce/pagination";
+import type { RecordPaymentArgs, RecordPurchaseArgs } from "./ledger";
 import type {
   Supplier,
   SupplierDraft,
@@ -59,6 +66,53 @@ export interface SupplierAdapter {
     supplierId: string,
     query: { cursor?: string },
   ): Promise<SupplierReceiptPage>;
+
+  // ── Accounts-payable ledger ──────────────────────────────────────────────────────────────────
+  /** Recorded purchases (what the supplier is owed), newest first. Scope to one supplier when given. */
+  listSupplierPurchases(query: {
+    supplierId?: string;
+    cursor?: string;
+  }): Promise<CursorPage<SupplierPurchase>>;
+  /** Line items for one recorded purchase. */
+  supplierPurchaseItems(purchaseId: string): Promise<SupplierPurchaseItem[]>;
+  /** Record a purchase (accrues dues and creates the backing stock receipt). */
+  recordSupplierPurchase(
+    args: RecordPurchaseArgs,
+    idempotencyKey: string,
+  ): Promise<SupplierPurchase>;
+  /** Payments made against a supplier's balance, newest first. */
+  listSupplierPayments(
+    supplierId: string,
+    query: { cursor?: string },
+  ): Promise<CursorPage<SupplierPayment>>;
+  /** Record a payment settling part or all of a supplier's outstanding balance. */
+  recordSupplierPayment(
+    supplierId: string,
+    args: RecordPaymentArgs,
+    idempotencyKey: string,
+  ): Promise<SupplierPayment>;
+  /** Outstanding balance per supplier across the tenant (purchased − paid). */
+  supplierDues(): Promise<SupplierDue[]>;
+  /** Upcoming settlement reminders. Scope to one supplier and/or status when given. */
+  listSupplierReminders(query: {
+    supplierId?: string;
+    status?: SupplierReminderStatus;
+  }): Promise<SupplierReminder[]>;
+  createSupplierReminder(
+    args: { supplierId: string; dueDate: string; amountMinor?: number; note?: string },
+    idempotencyKey: string,
+  ): Promise<SupplierReminder>;
+  updateSupplierReminder(
+    reminderId: string,
+    args: {
+      status?: SupplierReminderStatus;
+      dueDate?: string;
+      amountMinor?: number | null;
+      note?: string | null;
+    },
+    idempotencyKey: string,
+  ): Promise<SupplierReminder>;
+  deleteSupplierReminder(reminderId: string, idempotencyKey: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -221,6 +275,83 @@ export function resolveSupplierAdapter(client: TenantCommerceClient): SupplierAd
         query.cursor ? { cursor: query.cursor } : {},
       );
       return { items: response.items.map(mapReceipt), pageInfo: response.pageInfo };
+    },
+
+    // ── Accounts-payable ledger. These wire SDK shapes straight through — the ledger contract is
+    //    already UI-domain-clean (no transport concerns), so there is no re-mapping to a local model.
+    async listSupplierPurchases(query) {
+      const response = await client.listSupplierPurchases({
+        ...(query.supplierId ? { supplierId: query.supplierId } : {}),
+        ...(query.cursor ? { cursor: query.cursor } : {}),
+      });
+      return { items: response.items, pageInfo: response.pageInfo };
+    },
+
+    async supplierPurchaseItems(purchaseId) {
+      return (await client.supplierPurchaseItems(purchaseId)).items;
+    },
+
+    async recordSupplierPurchase(args, idempotencyKey) {
+      return client.recordSupplierPurchase({
+        supplierId: args.supplierId,
+        inventoryLocationId: args.inventoryLocationId,
+        lines: args.lines,
+        ...(args.supplierReference ? { supplierReference: args.supplierReference } : {}),
+        ...(args.paidMinor !== undefined ? { paidMinor: args.paidMinor } : {}),
+        ...(args.notes ? { notes: args.notes } : {}),
+        idempotencyKey,
+      });
+    },
+
+    async listSupplierPayments(supplierId, query) {
+      const response = await client.listSupplierPayments(
+        supplierId,
+        query.cursor ? { cursor: query.cursor } : {},
+      );
+      return { items: response.items, pageInfo: response.pageInfo };
+    },
+
+    async recordSupplierPayment(supplierId, args, idempotencyKey) {
+      return client.recordSupplierPayment({
+        supplierId,
+        amountMinor: args.amountMinor,
+        ...(args.notes ? { notes: args.notes } : {}),
+        idempotencyKey,
+      });
+    },
+
+    async supplierDues() {
+      return (await client.supplierDues()).items;
+    },
+
+    async listSupplierReminders(query) {
+      return (
+        await client.listSupplierReminders({
+          ...(query.supplierId ? { supplierId: query.supplierId } : {}),
+          ...(query.status ? { status: query.status } : {}),
+        })
+      ).items;
+    },
+
+    async createSupplierReminder(args, idempotencyKey) {
+      return client.createSupplierReminder({
+        supplierId: args.supplierId,
+        dueDate: args.dueDate,
+        // The admin reminder form keeps lead/notify at their sensible defaults; the API still owns them.
+        leadDays: 0,
+        notify: true,
+        ...(args.amountMinor !== undefined ? { amountMinor: args.amountMinor } : {}),
+        ...(args.note ? { note: args.note } : {}),
+        idempotencyKey,
+      });
+    },
+
+    async updateSupplierReminder(reminderId, args, idempotencyKey) {
+      return client.updateSupplierReminder({ reminderId, ...args, idempotencyKey });
+    },
+
+    async deleteSupplierReminder(reminderId, idempotencyKey) {
+      await client.deleteSupplierReminder({ reminderId, idempotencyKey });
     },
   };
 }

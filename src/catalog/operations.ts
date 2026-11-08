@@ -11,6 +11,8 @@ import type {
   UnpublishProductResponse,
 } from "@shifted/clothing-commerce-sdk";
 
+import { t } from "../i18n";
+
 /**
  * The product lifecycle status. The SDK exposes it structurally (on responses) but does not export a
  * standalone `ProductStatus` type, so we derive the canonical union here for the whole catalog surface.
@@ -190,17 +192,17 @@ export function slugify(name: string): string {
 
 export function validateProductName(name: string): string | null {
   const trimmed = name.trim();
-  if (trimmed === "") return "Enter a product name.";
-  if (trimmed.length > MAX_NAME_LENGTH) return `Keep the name under ${MAX_NAME_LENGTH} characters.`;
+  if (trimmed === "") return t("validate.productName");
+  if (trimmed.length > MAX_NAME_LENGTH) return t("validate.nameLength", { max: MAX_NAME_LENGTH });
   return null;
 }
 
 /** Lowercase letters, digits, and single internal hyphens — the canonical storefront slug shape. */
 export function validateSlug(slug: string): string | null {
   const trimmed = slug.trim();
-  if (trimmed === "") return "Enter a slug (or generate one from the name).";
+  if (trimmed === "") return t("validate.slug");
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmed)) {
-    return "Use lowercase letters, numbers, and single hyphens (e.g. summer-tee).";
+    return t("validate.slugFormat");
   }
   return null;
 }
@@ -210,14 +212,14 @@ export function validateStyleCode(styleCode: string): string | null {
   const trimmed = styleCode.trim();
   if (trimmed === "") return null; // optional
   if (trimmed.length > MAX_STYLE_CODE_LENGTH) {
-    return `Keep the style code under ${MAX_STYLE_CODE_LENGTH} characters.`;
+    return t("validate.styleCodeLength", { max: MAX_STYLE_CODE_LENGTH });
   }
   return null;
 }
 
 export function validateSku(sku: string): string | null {
   const trimmed = sku.trim();
-  if (trimmed === "") return "Enter a SKU.";
-  if (trimmed.length > MAX_SKU_LENGTH) return `Keep the SKU under ${MAX_SKU_LENGTH} characters.`;
+  if (trimmed === "") return t("validate.sku");
+  if (trimmed.length > MAX_SKU_LENGTH) return t("validate.skuLength", { max: MAX_SKU_LENGTH });
   return null;
 }
