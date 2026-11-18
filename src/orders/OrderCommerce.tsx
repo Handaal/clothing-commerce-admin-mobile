@@ -14,7 +14,8 @@ import {
   SurfaceRow,
 } from "../ui/components";
 import { AppIcon } from "../ui/Icon";
-import { colors, radius, spacing } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 
 const paymentMethodKey: Record<NonNullable<OrderCommerceDetails["payment"]>["method"], MessageKey> =
   {
@@ -32,6 +33,7 @@ const reservationKey: Record<OrderCommerceDetails["reservations"][number]["statu
 
 /** Historical checkout snapshots and current operational facts, exclusively from the API. */
 export function OrderCommerce({ data }: { data: OrderDetailResponse }) {
+  const { commerceStyles, colors } = useStyles();
   const { t } = useI18n();
   const { commerce, lines } = data;
   const customer = commerce?.customer;
@@ -166,19 +168,22 @@ export function OrderCommerce({ data }: { data: OrderDetailResponse }) {
   );
 }
 
-const commerceStyles = StyleSheet.create({
-  sectionLead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  icon: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  copy: { flex: 1, gap: spacing.xs },
-  cardTitle: { color: colors.ink, fontSize: 18, lineHeight: 24, fontWeight: "800" },
-  payment: { gap: spacing.sm },
-  reservations: { gap: spacing.md },
-  reservationCopy: { flex: 1, gap: spacing.sm },
+const useStyles = createThemedStyles((colors) => {
+  const commerceStyles = StyleSheet.create({
+    sectionLead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+    icon: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    copy: { flex: 1, gap: spacing.xs },
+    cardTitle: { color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
+    payment: { gap: spacing.sm },
+    reservations: { gap: spacing.md },
+    reservationCopy: { flex: 1, gap: spacing.sm },
+  });
+  return { colors, commerceStyles };
 });

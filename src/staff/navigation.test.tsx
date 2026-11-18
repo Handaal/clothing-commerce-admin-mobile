@@ -27,6 +27,7 @@ vi.mock("@clerk/expo", () => ({
 
 vi.mock("expo-router", () => ({
   useRouter: () => ({ push: mocks.push, back: mocks.back }),
+  Redirect: () => null,
 }));
 
 vi.mock("../commerce/client", () => ({
@@ -44,12 +45,12 @@ vi.mock("../tenant/secure-storage", () => ({
 }));
 
 import { SessionProvider } from "../session/SessionProvider";
-import HomeScreen from "../../app/index";
+import MoreRoute from "../../app/more";
 
-function renderHome() {
+function renderMore() {
   return render(
     <SessionProvider storage={createMemoryTenantStorage()}>
-      <HomeScreen />
+      <MoreRoute />
     </SessionProvider>,
   );
 }
@@ -64,8 +65,8 @@ afterEach(() => cleanup());
 
 describe("management navigation — Staff entry", () => {
   it("offers a Staff entry that navigates to /staff when staff read is granted", async () => {
-    renderHome();
-    const button = await screen.findByTestId("open-staff");
+    renderMore();
+    const button = await screen.findByTestId("section-staff");
     expect(button).toBeTruthy();
     fireEvent.click(button);
     expect(mocks.push).toHaveBeenCalledWith("/staff");
@@ -75,20 +76,20 @@ describe("management navigation — Staff entry", () => {
     mocks.getContext.mockResolvedValue(
       meContext(TENANT_A, { inventory: { canRead: true, tenantWide: true, locations: [] } }),
     );
-    renderHome();
-    await screen.findByTestId("open-staff");
-    expect(screen.queryByTestId("open-products")).toBeNull();
-    expect(screen.queryByTestId("open-inventory")).toBeNull();
-    expect(screen.queryByTestId("open-orders")).toBeNull();
-    expect(screen.getByTestId("open-suppliers")).toBeTruthy();
+    renderMore();
+    await screen.findByTestId("section-staff");
+    expect(screen.queryByTestId("section-products")).toBeNull();
+    expect(screen.queryByTestId("section-inventory")).toBeNull();
+    expect(screen.queryByTestId("section-orders")).toBeNull();
+    expect(screen.getByTestId("section-suppliers")).toBeTruthy();
   });
 
   it("hides the Staff entry when the context grants no staff read access", async () => {
     // Staff capability absent entirely (older server / no access): navigation is not offered, and the
     // final context DTO not being frozen never breaks the ready screen.
     mocks.getContext.mockResolvedValue(meContext(TENANT_A, { staff: null }));
-    renderHome();
-    await screen.findByTestId("open-suppliers");
-    expect(screen.queryByTestId("open-staff")).toBeNull();
+    renderMore();
+    await screen.findByTestId("section-suppliers");
+    expect(screen.queryByTestId("section-staff")).toBeNull();
   });
 });

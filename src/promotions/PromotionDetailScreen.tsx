@@ -1,4 +1,8 @@
-import type { MeContextResponse, PromotionDetail } from "@shifted/clothing-commerce-sdk";
+import {
+  promotionTargetLabel,
+  type MeContextResponse,
+  type PromotionDetail,
+} from "@shifted/clothing-commerce-sdk";
 import { useCallback, useEffect } from "react";
 
 import { t as translate, useI18n } from "../i18n";
@@ -136,6 +140,28 @@ function PromotionDetailContent({
     },
   });
 
+  const deleteProducer = useCallback(
+    () => client.deletePromotion(promotionId),
+    [client, promotionId],
+  );
+  const deleteMutation = useMutation(deleteProducer, generateIdempotencyKey, {
+    onSuccess: (result) => {
+      const name = state.status === "success" ? state.data.name : "";
+      toast.success(
+        t(
+          result.outcome === "archived" ? "promoDetail.archivedToast" : "promoDetail.deletedToast",
+          { name },
+        ),
+        { title: t("promoDetail.updatedToast") },
+      );
+      onBack();
+    },
+    onError: (error) => {
+      const described = describePromotionWriteError(error);
+      toast.error(described.message, { title: described.heading });
+    },
+  });
+
   useEffect(() => {
     if (statusMutation.state.status === "success") reload();
   }, [reload, statusMutation.state.status]);
@@ -200,14 +226,6 @@ function PromotionDetailContent({
           value={activationLabel(promotion.activationType)}
         />
       </Surface>
-      {promotion.economicsLocked ? (
-        <Notice
-          testID="promotion-detail-economics-locked"
-          tone="warning"
-          title={t("promoDetail.economicsLockedTitle")}
-          message={t("promoDetail.economicsLockedMsg")}
-        />
-      ) : null}
       {canManage ? (
         <Surface>
           <PrimaryButton
@@ -233,6 +251,14 @@ function PromotionDetailContent({
               onPress={() => statusMutation.submit("active")}
             />
           )}
+          <Body>{t("promoDetail.deleteHint")}</Body>
+          <ConfirmButton
+            label={t("promoDetail.delete")}
+            confirmLabel={t("promoDetail.confirmDelete")}
+            testID="promotion-delete"
+            disabled={deleteMutation.state.status === "submitting"}
+            onConfirm={() => deleteMutation.submit(null)}
+          />
         </Surface>
       ) : (
         <Notice testID="promotion-detail-read-only" message={t("promotions.readOnly")} />
@@ -293,11 +319,11 @@ function PromotionDetailContent({
               <SurfaceRow key={`${target.productId ?? target.variantId}-${index}`}>
                 <InfoRow
                   label={t("promoDetail.targetN", { n: index + 1 })}
-                  value={
+                  value={`${
                     target.productId
                       ? t("promoDetail.selectedProduct")
                       : t("promoDetail.selectedVariant")
-                  }
+                  }: ${promotionTargetLabel(target)}`}
                 />
               </SurfaceRow>
             ))

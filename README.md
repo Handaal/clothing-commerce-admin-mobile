@@ -4,6 +4,28 @@ Expo / React Native management-channel app for a clothing business's **authorize
 managers**. It is not a Shifted/platform super-admin app, not a POS/cashier app, not a
 customer-shopping app, and not a website layout builder.
 
+## Appearance and navigation
+
+**More → Appearance** offers System, Light, and Dark. Changes apply immediately on Android, iOS,
+and web. The choice is saved locally with Expo SecureStore on native and localStorage on web, then
+restored before screens mount. System mode follows device appearance changes. Changing appearance
+keeps the current route, form entries, and session. Status icons and native controls follow the theme.
+
+Palettes live in `src/ui/theme.ts`. Components read colors through `useTheme`; reusable styles use
+`createThemedStyles` from `src/ui/useTheme.ts`. Its factory caches styles per palette, and each
+consumer subscribes to appearance changes. Use these hooks for new screens and color maps so native
+styles stay reactive. Web retains its CSS variables in `app/+html.tsx`.
+
+Primary pages cross-fade, and detail pages fade upward using Expo Router's native stack. The persistent
+bottom navigation has a spring-driven selection pill and a small icon lift. Native animations use the
+native driver. Transition options live in `app/_layout.tsx`, and bottom-bar motion lives in
+`src/navigation/ManagementShell.tsx`. Device Reduce Motion settings disable page and bottom-bar motion.
+
+Run `pnpm exec vitest run src/ui/theme-native.test.tsx src/ui/theme-store.test.tsx
+src/ui/useReducedMotion.test.tsx src/navigation/ManagementShell.test.tsx` for regression coverage.
+In Expo Go, switch appearances while editing a field, restart to check persistence, change the device
+appearance in System mode, and navigate between primary and detail pages in both themes and languages.
+
 ## Current scope — Phase 2R-B Admin operational settings
 
 Phase 2R-B binds the complete management-only Settings navigation and forms to the canonical
@@ -38,7 +60,7 @@ All pricing, eligibility, authorization, redemption counts, and post-redemption 
 server-authoritative.
 
 ```
-Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.26.0)
+Clerk sign-in → session token → @shifted/clothing-commerce-sdk (0.33.0)
   → GET /me/tenants → tenant selection → GET /me/context
   → Products  read  +  create · edit · lifecycle · variants · prices · media · publish   (authorized writes)
   → Inventory read  +  Receive · Adjust · Transfer                                        (authorized writes)
@@ -282,18 +304,18 @@ validation. Client-side visibility is UX only and is never treated as authorizat
 The exact packed SDK is committed under `vendor/` and referenced by a **relative** `file:` path, so
 the app installs and builds with no sibling repos, workspace links, or private-registry access.
 
-- Active SDK: `@shifted/clothing-commerce-sdk` **0.26.0**
-- Artifact: `vendor/shifted-clothing-commerce-sdk-0.26.0.tgz`
-- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.26.0.tgz`
-- SHA-256: `98968377fb9d4f2bb8f37ea7e75979639b8af12df25eccbb4e90de0dffefbadc`
+- Active SDK: `@shifted/clothing-commerce-sdk` **0.33.0**
+- Artifact: `vendor/shifted-clothing-commerce-sdk-0.33.0.tgz`
+- `package.json` dependency: `file:vendor/shifted-clothing-commerce-sdk-0.33.0.tgz`
+- SHA-256: `6af6c6c833be8a12cc85bc936fe6f838efe720a616ff3a112e064cfe30e07611`
 
 ### Verify the SDK artifact
 
 ```bash
 # macOS/Linux
-shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.26.0.tgz
+shasum -a 256 vendor/shifted-clothing-commerce-sdk-0.33.0.tgz
 # Windows (PowerShell)
-Get-FileHash vendor/shifted-clothing-commerce-sdk-0.26.0.tgz -Algorithm SHA256
+Get-FileHash vendor/shifted-clothing-commerce-sdk-0.33.0.tgz -Algorithm SHA256
 ```
 
 The output must equal the SHA-256 above. It is also asserted by `src/sdk-artifact.test.ts` (version,
@@ -835,3 +857,38 @@ layout editing, POS, storefront checkout, and cart are **out of scope** and not 
 accounting and procurement (Purchase Orders, RFQs, invoices, Accounts Payable, approvals, portal,
 payments) plus permanent supplier deletion are explicit **non-goals**. The catalog UX is left extensible
 for a future additive taxonomy slice.
+
+## Website / POS stock split (SDK 0.32.0)
+
+From **Stock → Website / POS split** (`/inventory/channels`, `src/inventory/ChannelSplitScreen.tsx`), an
+owner or manager decides how much of each item the storefront and the till may sell at one location
+(API ADR-042; operating guide `clothing-commerce-api/docs/inventory/inventory-channels.md`).
+
+- **Set up** (legacy location): one button moves the location to trial (shadow) mode. All stock starts
+  unallocated; customer-facing stock does not change. Shown only with `canAdjust` for that location.
+- **Split**: each item shows on-hand, editable Website and POS quantities, and the live unallocated
+  remainder. The screen mirrors the API rules (whole numbers, Website + POS ≤ on-hand, Website ≥ open
+  website orders, POS ≥ reserved till stock) so problems show before saving; the API re-checks
+  everything. Items never split and items needing a new split (a sale used more than its share) are
+  badged.
+- **Save** sends only changed rows with each row's inventory `version` as `expectedBalanceVersion` and a
+  required reason. A stale version reloads the numbers and asks the owner to check them again; a network
+  failure retries with the same idempotency key.
+- Pure rules live in `src/inventory/channel-split.ts` (unit-tested in `channel-split.test.ts`); the
+  screen is tested in `ChannelSplitScreen.test.tsx`.
+
+## Storefront merchandising (SDK 0.29.0)
+
+From **Storefront** (the website hub):
+
+- **Home page** (`/storefront-content`, `src/storefront/StorefrontContentScreen.tsx`) — hero eyebrow,
+  headline, subtitle, button text/link and image (uploaded via the hero-image intent + signed PUT), plus
+  ordered featured products (≤24) and collections (≤12). Structured fields only; no layout editor.
+  Optional `EXPO_PUBLIC_MEDIA_BASE_URL` previews the saved hero image.
+- **Sales** (`/sales`, `src/sales/`) — percentage or fixed amount off per item, on everything, one
+  collection, or chosen products, with an optional schedule; pause/resume/delete. A live preview shows
+  the struck-through price and "% OFF" badge shoppers will see. Website only; POS prices are unchanged.
+- **Offers** — the Promotion form gains "Buy X get Y free (website)" (`buyQuantity` / `getQuantity`,
+  channel fixed to online).
+
+Every rule is enforced by the API; capability flags only guide navigation.

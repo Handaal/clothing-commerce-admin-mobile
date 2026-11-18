@@ -46,7 +46,7 @@ describe("SuppliersListScreen", () => {
         onBack={noop}
       />,
     );
-    expect(await screen.findByText("Loading suppliers…")).toBeTruthy();
+    expect(await screen.findByTestId("suppliers-loading")).toBeTruthy();
   });
 
   it("renders a populated list with an active/inactive status badge per row", async () => {
@@ -163,7 +163,7 @@ describe("SuppliersListScreen", () => {
         onBack={noop}
       />,
     );
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.queryByText(/No suppliers/)).toBeNull();
     expect(screen.queryByText("Try again")).toBeNull();
   });

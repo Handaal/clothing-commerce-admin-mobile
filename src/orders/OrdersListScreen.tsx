@@ -10,18 +10,21 @@ import {
   EmptyState,
   FilterChips,
   HeaderIconButton,
-  LoadingBlock,
   Notice,
   PageHeader,
   PressableRow,
   PrimaryButton,
+  ReadOnlyChip,
   ResponsiveList,
   ScrollScreen,
+  SearchField,
   SectionHeading,
+  SkeletonRows,
   SummaryStrip,
 } from "../ui/components";
 import { AppIcon, type AppIconName } from "../ui/Icon";
-import { colors, radius, spacing } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { formatOrderDate } from "./display";
 import { loadAllOrders, type OrderListItem } from "./load";
@@ -66,52 +69,85 @@ export function OrdersListScreen({ tenantId, context, onOpenOrder }: OrdersListS
 }
 
 function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps, "onBack">) {
+  const { orderStyles, colors } = useStyles();
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
   const { t } = useI18n();
+  const [channel, setChannel] = useState<OrderChannelFilter>("all");
+  const [query, setQuery] = useState("");
+  // Load the full set once; channel + search filtering happen client-side so switching is instant and
+  // the chip counts stay accurate across channels.
+  const load = useCallback(() => loadAllOrders(client, {}), [client]);
+  const { state, reload, refresh, refreshing } = useAsync<OrderListItem[]>(load);
+
+  const allOrders = useMemo(() => (state.status === "success" ? state.data : []), [state]);
+  const channelCounts = useMemo(() => {
+    let pos = 0;
+    let online = 0;
+    for (const order of allOrders) {
+      if (order.channel === "online") online += 1;
+      else pos += 1;
+    }
+    return { all: allOrders.length, pos, online };
+  }, [allOrders]);
+
   const channelOptions = CHANNEL_META.map((meta) => ({
     value: meta.value,
     label: t(meta.labelKey),
     icon: meta.icon,
+    count: channelCounts[meta.value],
   }));
-  const [channel, setChannel] = useState<OrderChannelFilter>("all");
-  const load = useCallback(
-    () => loadAllOrders(client, channel === "all" ? {} : { channel }),
-    [client, channel],
-  );
-  const { state, reload } = useAsync<OrderListItem[]>(load);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleOrders = useMemo(() => {
+    const byChannel =
+      channel === "all" ? allOrders : allOrders.filter((order) => order.channel === channel);
+    if (!normalizedQuery) return byChannel;
+    return byChannel.filter((order) => order.orderNumber.toLowerCase().includes(normalizedQuery));
+  }, [allOrders, channel, normalizedQuery]);
 
   const channelCount = useMemo(
-    () => (state.status === "success" ? new Set(state.data.map((order) => order.channel)).size : 0),
-    [state],
+    () => new Set(visibleOrders.map((order) => order.channel)).size,
+    [visibleOrders],
   );
 
   return (
-    <ScrollScreen wide>
+    <ScrollScreen wide onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
         eyebrow={t("orders.eyebrow")}
         title={t("orders.title")}
         description={t("orders.headerDesc")}
         icon="receipt-text-outline"
         action={
-          state.status === "success" && state.data.length > 0 ? (
+          state.status === "success" && allOrders.length > 0 ? (
             <HeaderIconButton
               label={t("orders.refresh")}
               icon="refresh"
               testID="refresh-orders-persistent"
-              onPress={reload}
+              onPress={refresh}
             />
           ) : undefined
         }
       />
 
-      <Notice message={t("orders.readonlyNotice")} />
+      <ReadOnlyChip testID="orders-readonly" label={t("orders.readonlyChip")} />
+
+      {state.status === "success" && allOrders.length > 0 ? (
+        <SearchField
+          testID="orders-search"
+          value={query}
+          onChangeText={setQuery}
+          placeholder={t("orders.searchPlaceholder")}
+        />
+      ) : null}
 
       <View style={orderStyles.filterBlock}>
         <SectionHeading
           title={t("orders.historyHeading")}
           detail={
-            state.status === "success" ? t("common.shown", { count: state.data.length }) : undefined
+            state.status === "success"
+              ? t("common.shown", { count: visibleOrders.length })
+              : undefined
           }
         />
         <FilterChips
@@ -128,7 +164,7 @@ function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps
           items={[
             {
               label: t("orders.loadedOrders"),
-              value: String(state.data.length),
+              value: String(visibleOrders.length),
               icon: "receipt-text-check-outline",
             },
             {
@@ -141,7 +177,7 @@ function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps
         />
       ) : null}
 
-      {state.status === "loading" ? <LoadingBlock label={t("orders.loading")} /> : null}
+      {state.status === "loading" ? <SkeletonRows testID="orders-loading" /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -154,36 +190,54 @@ function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps
           }
         />
       ) : null}
-      {state.status === "success" && state.data.length === 0 ? (
+      {state.status === "success" &&
+      allOrders.length > 0 &&
+      visibleOrders.length === 0 &&
+      normalizedQuery ? (
         <EmptyState
-          icon="receipt-text-outline"
-          title={t("orders.emptyTitle")}
-          message={
-            channel === "all"
-              ? t("orders.emptyAllBody")
-              : t("orders.emptyFilteredBody", {
-                  channel:
-                    channel === "pos"
-                      ? t("orderChannel.posInline")
-                      : t("orderChannel.onlineInline"),
-                })
-          }
+          icon="magnify"
+          title={t("common.noResultsTitle")}
+          message={t("common.noResultsBody", { query: query.trim() })}
           action={
-            channel === "all" ? (
-              <PrimaryButton label={t("orders.refresh")} icon="refresh" onPress={reload} />
-            ) : (
-              <PrimaryButton
-                label={t("orders.showAll")}
-                icon="format-list-bulleted"
-                onPress={() => setChannel("all")}
-              />
-            )
+            <PrimaryButton
+              label={t("common.clearSearch")}
+              icon="close"
+              onPress={() => setQuery("")}
+            />
           }
         />
       ) : null}
-      {state.status === "success" && state.data.length > 0 ? (
+      {state.status === "success" &&
+      allOrders.length > 0 &&
+      visibleOrders.length === 0 &&
+      !normalizedQuery ? (
+        <EmptyState
+          icon="receipt-text-outline"
+          title={t("orders.emptyTitle")}
+          message={t("orders.emptyFilteredBody", {
+            channel:
+              channel === "pos" ? t("orderChannel.posInline") : t("orderChannel.onlineInline"),
+          })}
+          action={
+            <PrimaryButton
+              label={t("orders.showAll")}
+              icon="format-list-bulleted"
+              onPress={() => setChannel("all")}
+            />
+          }
+        />
+      ) : null}
+      {state.status === "success" && allOrders.length === 0 ? (
+        <EmptyState
+          icon="receipt-text-outline"
+          title={t("orders.emptyTitle")}
+          message={t("orders.emptyAllBody")}
+          action={<PrimaryButton label={t("orders.refresh")} icon="refresh" onPress={refresh} />}
+        />
+      ) : null}
+      {state.status === "success" && visibleOrders.length > 0 ? (
         <ResponsiveList>
-          {state.data.map((order) => (
+          {visibleOrders.map((order) => (
             <PressableRow
               key={order.id}
               testID={`order-row-${order.id}`}
@@ -234,44 +288,47 @@ function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps
   );
 }
 
-const orderStyles = StyleSheet.create({
-  filterBlock: { gap: spacing.sm },
-  orderLead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  channelIcon: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  channelIconOnline: { backgroundColor: colors.accentSoft },
-  orderCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
-  orderNumber: { flex: 1, color: colors.ink, fontSize: 16, lineHeight: 21, fontWeight: "800" },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  metadataRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  channelText: { color: colors.accent, fontSize: 10, lineHeight: 14, fontWeight: "800" },
-  metadataDot: {
-    width: 3,
-    height: 3,
-    borderRadius: radius.pill,
-    backgroundColor: colors.borderStrong,
-  },
-  dateText: { flex: 1, color: colors.inkMuted, fontSize: 10, lineHeight: 14, fontWeight: "600" },
-  totalRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: spacing.md,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSoft,
-  },
-  totalLabel: { color: colors.inkSubtle, fontSize: 10, fontWeight: "700" },
-  totalValue: { color: colors.ink, fontSize: 13, fontWeight: "800" },
+const useStyles = createThemedStyles((colors) => {
+  const orderStyles = StyleSheet.create({
+    filterBlock: { gap: spacing.sm },
+    orderLead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    channelIcon: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    channelIconOnline: { backgroundColor: colors.accentSoft },
+    orderCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
+    orderNumber: { flex: 1, color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
+    titleRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: spacing.sm,
+    },
+    metadataRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+    channelText: { color: colors.accent, ...typography.micro, fontWeight: "800" },
+    metadataDot: {
+      width: 3,
+      height: 3,
+      borderRadius: radius.pill,
+      backgroundColor: colors.borderStrong,
+    },
+    dateText: { flex: 1, color: colors.inkMuted, ...typography.micro, fontWeight: "600" },
+    totalRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      justifyContent: "space-between",
+      gap: spacing.md,
+      paddingTop: spacing.xs,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+    },
+    totalLabel: { color: colors.inkSubtle, ...typography.micro, fontWeight: "700" },
+    totalValue: { color: colors.ink, ...typography.label, fontWeight: "800" },
+  });
+  return { colors, orderStyles };
 });

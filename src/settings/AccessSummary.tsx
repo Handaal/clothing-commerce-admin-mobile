@@ -5,7 +5,8 @@ import { promotionCapabilities } from "../promotions/capabilities";
 import { reportingCapabilities } from "../reporting/capabilities";
 import { staffCapabilities } from "../staff/capabilities";
 import { InfoRow, SectionHeading } from "../ui/components";
-import { colors, radius, spacing } from "../ui/theme";
+import { radius, spacing } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { settingsCapabilities } from "./capabilities";
 import type { MeContextResponse } from "@shifted/clothing-commerce-sdk";
 
@@ -14,6 +15,7 @@ import type { MeContextResponse } from "@shifted/clothing-commerce-sdk";
  * it. Capability flags guide navigation only; the Commerce API still authorizes every request.
  */
 export function AccessSummary({ context }: { context: MeContextResponse }) {
+  const { styles } = useStyles();
   const { access } = context;
   const { t } = useI18n();
   const staff = staffCapabilities(context);
@@ -105,13 +107,16 @@ function describeReadManage(t: Translate, canRead: boolean, canManage: boolean):
   return canManage ? t("home.access.readManage") : t("home.access.read");
 }
 
-const styles = StyleSheet.create({
-  accessPanel: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
-  },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    accessPanel: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.surface,
+    },
+  });
+  return { colors, styles };
 });

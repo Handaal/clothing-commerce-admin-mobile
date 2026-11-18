@@ -35,13 +35,13 @@ describe("describeSupplierWriteError — typed error mapping", () => {
 
   it("never hides an idempotency conflict — it is terminal, not a silent retry", () => {
     const result = described(new ApiHttpError("conflict", 409, "IDEMPOTENCY_CONFLICT", null));
-    expect(result.heading).toBe("Duplicate operation");
+    expect(result.heading).toBe("Already submitted");
     expect(result.recovery).toBe("none");
   });
 
   it("maps a 403 to access denied regardless of code", () => {
     const result = described(new ApiHttpError("no", 403, "FORBIDDEN", null));
-    expect(result.heading).toBe("Access denied");
+    expect(result.heading).toBe("Not available for your account");
     expect(result.recovery).toBe("none");
   });
 

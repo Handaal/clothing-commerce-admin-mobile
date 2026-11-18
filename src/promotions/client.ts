@@ -10,6 +10,7 @@ export type PromotionClient = Pick<
   | "setPromotionStatus"
   | "createPromotionCode"
   | "setPromotionCodeStatus"
+  | "deletePromotion"
   | "listProducts"
   | "getProduct"
 >;

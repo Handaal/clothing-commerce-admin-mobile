@@ -28,3 +28,12 @@ export function getCommerceApiBaseUrl(): string {
 export function getClerkPublishableKey(): string | undefined {
   return process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() || undefined;
 }
+
+/**
+ * Optional public object-storage base (e.g. "https://<project>.supabase.co/storage/v1/object/public"),
+ * used only to PREVIEW already-saved images such as the storefront hero. Unset → the editor shows the
+ * stored path instead of a thumbnail. Same value as the Storefront's STOREFRONT_MEDIA_BASE_URL.
+ */
+export function getPublicMediaBaseUrl(): string | undefined {
+  return process.env.EXPO_PUBLIC_MEDIA_BASE_URL?.trim().replace(/\/$/, "") || undefined;
+}

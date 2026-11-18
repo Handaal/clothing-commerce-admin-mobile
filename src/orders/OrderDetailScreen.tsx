@@ -1,5 +1,5 @@
 import type { OrderDetailResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { useI18n } from "../i18n";
@@ -23,10 +23,12 @@ import {
   TextButton,
 } from "../ui/components";
 import { AppIcon } from "../ui/Icon";
-import { colors, radius, spacing } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { formatOrderDate } from "./display";
 import { OrderCommerce } from "./OrderCommerce";
+import { OrderOperations } from "./OrderOperations";
 import {
   fulfillmentByLineNumber,
   fulfillmentQuantityLabel,
@@ -42,7 +44,10 @@ export interface OrderDetailScreenProps {
   onCreateReturn?: (orderId: string) => void;
 }
 
-/** Read-only detail for one immutable commercial order snapshot. */
+/**
+ * Detail for one commercial order snapshot. Online orders also offer staff fulfil / cancel when
+ * `/me/context` advertises the grant (the API authorizes every request independently).
+ */
 export function OrderDetailScreen({
   tenantId,
   orderId,
@@ -50,11 +55,18 @@ export function OrderDetailScreen({
   onOpenReturn,
   onCreateReturn,
 }: OrderDetailScreenProps) {
-  const { getTenantClient } = useSession();
+  const { getTenantClient, state: session } = useSession();
   const client = getTenantClient(tenantId);
   const { t } = useI18n();
   const load = useCallback(() => client.getOrder(orderId), [client, orderId]);
   const { state, reload } = useAsync<OrderDetailResponse>(load);
+  // The detail returned by a fulfil / cancel, shown until the next explicit reload.
+  const [updated, setUpdated] = useState<OrderDetailResponse | null>(null);
+  const refresh = useCallback(() => {
+    setUpdated(null);
+    reload();
+  }, [reload]);
+  const orders = session.phase === "ready" ? session.context.access.orders : null;
 
   if (state.status === "loading") {
     return (
@@ -95,10 +107,13 @@ export function OrderDetailScreen({
 
   return (
     <OrderDetail
-      data={state.data}
+      data={updated ?? state.data}
       client={client}
+      canFulfill={Boolean(orders?.canRead && orders.canFulfill)}
+      canCancel={Boolean(orders?.canRead && orders.canCancel)}
+      onUpdated={setUpdated}
       onBack={onBack}
-      onRefresh={reload}
+      onRefresh={refresh}
       onOpenReturn={onOpenReturn}
       onCreateReturn={onCreateReturn}
     />
@@ -108,18 +123,25 @@ export function OrderDetailScreen({
 function OrderDetail({
   data,
   client,
+  canFulfill,
+  canCancel,
+  onUpdated,
   onBack,
   onRefresh,
   onOpenReturn,
   onCreateReturn,
 }: {
   data: OrderDetailResponse;
-  client: Pick<TenantCommerceClient, "listReturns">;
+  client: Pick<TenantCommerceClient, "listReturns" | "fulfillOrder" | "cancelOrder">;
+  canFulfill: boolean;
+  canCancel: boolean;
+  onUpdated: (detail: OrderDetailResponse) => void;
   onBack: () => void;
   onRefresh: () => void;
   onOpenReturn?: (returnId: string) => void;
   onCreateReturn?: (orderId: string) => void;
 }) {
+  const { detailStyles, colors } = useStyles();
   const { t } = useI18n();
   const { header, lines, cancellation, fulfillmentProgress } = data;
   const fulfillmentByLine = useMemo(
@@ -183,6 +205,18 @@ function OrderDetail({
       </View>
 
       <Notice message={t("orderDetail.readonlyNotice")} />
+
+      {header.channel === "online" ? (
+        <OrderOperations
+          key={`${header.id}-${header.status}-${fulfillmentProgress.status}`}
+          data={data}
+          client={client}
+          canFulfill={canFulfill}
+          canCancel={canCancel}
+          onUpdated={onUpdated}
+          onReload={onRefresh}
+        />
+      ) : null}
 
       {header.channel === "online" || data.commerce ? <OrderCommerce data={data} /> : null}
 
@@ -305,39 +339,42 @@ function OrderDetail({
   );
 }
 
-const detailStyles = StyleSheet.create({
-  summaryHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  summaryCopy: { flex: 1, gap: spacing.sm },
-  cardTitle: { color: colors.ink, fontSize: 18, lineHeight: 24, fontWeight: "800" },
-  channelIcon: {
-    width: 52,
-    height: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-  },
-  channelIconOnline: { backgroundColor: colors.accentSoft },
-  badges: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  lineList: { gap: spacing.md },
-  lineHeader: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  lineIcon: {
-    width: 42,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  lineTitle: { flex: 1, gap: spacing.xs },
-  sectionLead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  accentIcon: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-  },
+const useStyles = createThemedStyles((colors) => {
+  const detailStyles = StyleSheet.create({
+    summaryHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    summaryCopy: { flex: 1, gap: spacing.sm },
+    cardTitle: { color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
+    channelIcon: {
+      width: 52,
+      height: 52,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+    },
+    channelIconOnline: { backgroundColor: colors.accentSoft },
+    badges: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+    metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+    lineList: { gap: spacing.md },
+    lineHeader: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+    lineIcon: {
+      width: 42,
+      height: 42,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    lineTitle: { flex: 1, gap: spacing.xs },
+    sectionLead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    accentIcon: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+    },
+  });
+  return { colors, detailStyles };
 });

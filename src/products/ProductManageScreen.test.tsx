@@ -213,8 +213,8 @@ describe("ProductManageScreen", () => {
     mocks.publishProduct.mockRejectedValue(new ApiHttpError("no", 403, "FORBIDDEN", null));
     renderScreen();
     fireEvent.click(await screen.findByTestId("publish-submit"));
-    expect(await screen.findByText("Not authorized")).toBeTruthy();
-    expect(screen.getByTestId("publish-error").textContent).toMatch(/not applied/i);
+    expect(await screen.findByText("Not allowed")).toBeTruthy();
+    expect(screen.getByTestId("publish-error").textContent).toMatch(/nothing was changed/i);
   });
 
   it("activates a draft product and records the new status", async () => {
@@ -317,7 +317,7 @@ describe("ProductManageScreen", () => {
   it("surfaces a load error with retry instead of a fake product", async () => {
     mocks.getProduct.mockRejectedValue(new ApiNetworkError("down"));
     renderScreen();
-    expect(await screen.findByText("Cannot reach the Commerce API")).toBeTruthy();
+    expect(await screen.findByText("No connection")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
   });
 });

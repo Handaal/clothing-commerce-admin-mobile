@@ -5,9 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("expo-crypto", () => ({ randomUUID: () => "unused-native-uuid" }));
 
 import {
+  PRODUCT_A,
   PROMOTION_A,
   PROMOTION_CODE_A,
   TENANT_A,
+  VARIANT_A,
   meContext,
   promotionDetail,
 } from "../test-support/fixtures";
@@ -28,6 +30,7 @@ function fakeClient(overrides: Partial<PromotionClient> = {}): PromotionClient {
     setPromotionStatus: async () => detail,
     createPromotionCode: async () => detail,
     setPromotionCodeStatus: async () => detail,
+    deletePromotion: async () => ({ promotionId: detail.id, outcome: "deleted" as const }),
     listProducts: async () => ({ items: [], pageInfo: { nextCursor: null, hasMore: false } }),
     getProduct: async () => ({
       product: { id: "", name: "", styleCode: null, status: "active", brandId: "" },
@@ -162,10 +165,52 @@ describe("PromotionDetailScreen", () => {
     );
   });
 
-  it("explains the post-redemption economics lock and replacement path", async () => {
-    renderDetail(fakeClient());
-    expect((await screen.findByTestId("promotion-detail-economics-locked")).textContent).toMatch(
-      /deactivate and create a new Promotion/i,
+  it("names each product and variant the Promotion applies to", async () => {
+    const detail = promotionDetail({
+      targetType: "variant_scope",
+      targets: [
+        { productId: PRODUCT_A, variantId: null, productName: "Linen Shirt" },
+        {
+          productId: null,
+          variantId: VARIANT_A,
+          productName: "Linen Shirt",
+          variantName: "Medium",
+        },
+      ],
+    });
+    renderDetail(fakeClient({ getPromotion: async () => detail }));
+    expect(await screen.findByText("Selected Product: Linen Shirt")).toBeTruthy();
+    expect(screen.getByText("Selected Variant: Linen Shirt · Medium")).toBeTruthy();
+  });
+
+  it("deletes (or archives) a Promotion only after confirmation, then leaves the screen", async () => {
+    const deletePromotion = vi
+      .fn()
+      .mockResolvedValue({ promotionId: PROMOTION_A, outcome: "archived" });
+    const onBack = vi.fn();
+    render(
+      <PromotionDetailScreen
+        client={fakeClient({ deletePromotion })}
+        context={meContext(TENANT_A)}
+        promotionId={PROMOTION_A}
+        canRead
+        canManage
+        onEdit={noop}
+        onBack={onBack}
+        generateIdempotencyKey={keyFactory}
+      />,
     );
+    const button = await screen.findByTestId("promotion-delete");
+    fireEvent.click(button);
+    expect(deletePromotion).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    await waitFor(() => expect(deletePromotion).toHaveBeenCalledWith(PROMOTION_A));
+    await waitFor(() => expect(onBack).toHaveBeenCalled());
+  });
+
+  it("hides Delete in read-only mode", async () => {
+    renderDetail(fakeClient(), false);
+    await screen.findByTestId("promotion-detail-status");
+    expect(screen.queryByTestId("promotion-delete")).toBeNull();
   });
 });

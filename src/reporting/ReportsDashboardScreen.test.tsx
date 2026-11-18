@@ -132,7 +132,7 @@ describe("ReportsDashboardScreen", () => {
         onBack={() => undefined}
       />,
     );
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.getByText("You do not have access to this report.")).toBeTruthy();
     expect(screen.queryByText(/raw forbidden|FORBIDDEN/)).toBeNull();
 
@@ -148,7 +148,7 @@ describe("ReportsDashboardScreen", () => {
         onBack={() => undefined}
       />,
     );
-    expect(await screen.findByText("Invalid request")).toBeTruthy();
+    expect(await screen.findByText("Please check the details")).toBeTruthy();
     expect(
       screen.getByText("Check the date range or page selection, then try again."),
     ).toBeTruthy();

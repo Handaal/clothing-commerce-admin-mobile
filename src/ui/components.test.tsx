@@ -3,7 +3,14 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setLocale } from "../i18n";
-import { AccordionTrigger, Badge, FilterChips, PageHeader, SearchField } from "./components";
+import {
+  AccordionTrigger,
+  Badge,
+  ConfirmDialog,
+  FilterChips,
+  PageHeader,
+  SearchField,
+} from "./components";
 
 afterEach(() => {
   cleanup();
@@ -84,6 +91,42 @@ describe("shared UI controls", () => {
     expect(back.textContent).toBe("");
     fireEvent.click(back);
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it("confirms destructive actions through an explicit dialog, not a single tap", () => {
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    const { rerender } = render(
+      <ConfirmDialog
+        visible={false}
+        title="Sign out?"
+        message="You'll need to sign in again."
+        confirmLabel="Sign out"
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        testID="sign-out-dialog"
+      />,
+    );
+    // Hidden by default — nothing to confirm until opened.
+    expect(screen.queryByTestId("sign-out-dialog-confirm")).toBeNull();
+
+    rerender(
+      <ConfirmDialog
+        visible
+        title="Sign out?"
+        message="You'll need to sign in again."
+        confirmLabel="Sign out"
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        testID="sign-out-dialog"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("sign-out-dialog-cancel"));
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("sign-out-dialog-confirm"));
+    expect(onConfirm).toHaveBeenCalledOnce();
   });
 
   it("applies RTL direction and start alignment immediately for Arabic", () => {

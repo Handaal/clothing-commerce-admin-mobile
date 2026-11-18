@@ -5,7 +5,8 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { useI18n } from "../i18n";
 import { Body, Eyebrow, PrimaryButton, Screen, Title } from "./components";
 import { AppIcon } from "./Icon";
-import { colors, radius, spacing } from "./theme";
+import { radius, spacing, typography } from "./theme";
+import { createThemedStyles } from "./useTheme";
 
 /**
  * Minimal real Clerk email/password sign-in using the Clerk core-3 signals API. This drives the
@@ -14,6 +15,7 @@ import { colors, radius, spacing } from "./theme";
  * a signed-in state.
  */
 export function SignInScreen() {
+  const { styles, colors } = useStyles();
   const { signIn } = useSignIn();
   const { t } = useI18n();
   const [emailAddress, setEmailAddress] = useState("");
@@ -48,7 +50,7 @@ export function SignInScreen() {
   return (
     <Screen>
       <View style={styles.brandMark}>
-        <AppIcon name="briefcase-variant-outline" size={26} color={colors.white} />
+        <AppIcon name="briefcase-variant-outline" size={26} color={colors.onBrand} />
       </View>
       <Eyebrow>{t("signIn.eyebrow")}</Eyebrow>
       <Title>{t("signIn.title")}</Title>
@@ -104,36 +106,38 @@ function clerkErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-const styles = StyleSheet.create({
-  brandMark: {
-    width: 52,
-    height: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.lg,
-    backgroundColor: colors.brand,
-    marginBottom: spacing.sm,
-  },
-  field: { gap: spacing.sm },
-  label: { color: colors.ink, fontSize: 13, fontWeight: "700" },
-  input: {
-    minHeight: 50,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.ink,
-    backgroundColor: colors.surface,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "600",
-    borderRadius: radius.md,
-    backgroundColor: colors.dangerSoft,
-    padding: spacing.md,
-  },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    brandMark: {
+      width: 52,
+      height: 52,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.lg,
+      backgroundColor: colors.brand,
+      marginBottom: spacing.sm,
+    },
+    field: { gap: spacing.sm },
+    label: { color: colors.ink, ...typography.label, fontWeight: "700" },
+    input: {
+      minHeight: 50,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.md,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 16,
+      color: colors.ink,
+      backgroundColor: colors.surface,
+    },
+    error: {
+      color: colors.danger,
+      ...typography.bodySmall,
+      fontWeight: "600",
+      borderRadius: radius.md,
+      backgroundColor: colors.dangerSoft,
+      padding: spacing.md,
+    },
+  });
+  return { colors, styles };
 });

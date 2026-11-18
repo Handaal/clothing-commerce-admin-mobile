@@ -99,10 +99,10 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("ProductsListScreen", () => {
-  it("shows a loading state while products are being fetched", async () => {
+  it("shows a skeleton loading state while products are being fetched", async () => {
     mocks.listProducts.mockReturnValue(new Promise(() => {}));
     renderProducts();
-    expect(await screen.findByText("Loading products…")).toBeTruthy();
+    expect(await screen.findByTestId("products-loading")).toBeTruthy();
   });
 
   it("renders a populated list scoped to the resolved tenant, with status and brand", async () => {
@@ -135,7 +135,7 @@ describe("ProductsListScreen", () => {
   it("surfaces a classified network error with a retry", async () => {
     mocks.listProducts.mockRejectedValue(new ApiNetworkError("down"));
     renderProducts();
-    expect(await screen.findByText("Cannot reach the Commerce API")).toBeTruthy();
+    expect(await screen.findByText("No connection")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
   });
 
@@ -163,7 +163,7 @@ describe("ProductsListScreen", () => {
     mocks.listProducts.mockRejectedValue(new ApiHttpError("no", 403, "FORBIDDEN", null));
     renderProducts();
 
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.queryByText(/No products yet/)).toBeNull();
     expect(screen.queryByText("Try again")).toBeNull();
   });
@@ -181,6 +181,43 @@ describe("ProductsListScreen", () => {
     renderProducts();
     fireEvent.click(await screen.findByTestId("create-product"));
     expect(onCreateProduct).toHaveBeenCalledTimes(1);
+  });
+
+  it("searches loaded products by name and can clear back to the full list", async () => {
+    mocks.listProducts.mockResolvedValue(
+      productList([
+        productListItem(PRODUCT_A, "Linen Shirt"),
+        productListItem("77777777-7777-4777-8777-777777777777", "Cotton Trousers"),
+      ]),
+    );
+    renderProducts();
+    await screen.findByText("Linen Shirt");
+    fireEvent.change(screen.getByTestId("products-search"), { target: { value: "trousers" } });
+    await screen.findByText("Cotton Trousers");
+    expect(screen.queryByText("Linen Shirt")).toBeNull();
+    fireEvent.change(screen.getByTestId("products-search"), { target: { value: "zzz" } });
+    expect(await screen.findByText("No matches")).toBeTruthy();
+    fireEvent.click(screen.getByText("Clear search"));
+    await screen.findByText("Linen Shirt");
+  });
+
+  it("appends the next page when Load more is tapped", async () => {
+    mocks.listProducts
+      .mockResolvedValueOnce(
+        productList([productListItem(PRODUCT_A, "Linen Shirt")], {
+          hasMore: true,
+          nextCursor: "cursor-1",
+        }),
+      )
+      .mockResolvedValueOnce(
+        productList([productListItem("77777777-7777-4777-8777-777777777777", "Cotton Trousers")]),
+      );
+    renderProducts();
+    await screen.findByText("Linen Shirt");
+    fireEvent.click(screen.getByTestId("products-load-more"));
+    await screen.findByText("Cotton Trousers");
+    expect(screen.getByText("Linen Shirt")).toBeTruthy();
+    expect(mocks.listProducts.mock.calls[1][0]).toEqual({ cursor: "cursor-1" });
   });
 
   it("uses the canonical server-side status filter", async () => {

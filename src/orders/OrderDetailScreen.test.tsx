@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { ApiContractError, ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
 import type { OrderDetailResponse } from "@shifted/clothing-commerce-sdk";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -18,6 +18,8 @@ import {
   tenant,
 } from "../test-support/fixtures";
 import { createMemoryTenantStorage } from "../tenant/storage";
+vi.mock("expo-crypto", () => ({ randomUUID: () => "unused" }));
+
 import { OrderDetailScreen } from "./OrderDetailScreen";
 
 const mocks = vi.hoisted(() => ({
@@ -26,6 +28,8 @@ const mocks = vi.hoisted(() => ({
   listOrders: vi.fn(),
   getOrder: vi.fn(),
   listReturns: vi.fn(),
+  fulfillOrder: vi.fn(),
+  cancelOrder: vi.fn(),
   withTenant: vi.fn(),
   signOut: vi.fn(async () => {}),
 }));
@@ -52,6 +56,8 @@ vi.mock("../commerce/client", () => ({
         listOrders: mocks.listOrders,
         getOrder: mocks.getOrder,
         listReturns: mocks.listReturns,
+        fulfillOrder: mocks.fulfillOrder,
+        cancelOrder: mocks.cancelOrder,
       };
     },
   }),
@@ -90,6 +96,38 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("OrderDetailScreen", () => {
+  it("offers fulfil on an online order when the account may fulfil, and shows the updated order", async () => {
+    mocks.getContext.mockResolvedValue(
+      meContext(TENANT_A, { orders: { canFulfill: true, canCancel: true } }),
+    );
+    mocks.getOrder.mockResolvedValue(orderDetail({ commerce: orderCommerce() }));
+    const shipped = orderDetail({ commerce: orderCommerce() });
+    mocks.fulfillOrder.mockResolvedValue({
+      ...shipped,
+      fulfillmentProgress: {
+        status: "fulfilled",
+        lines: shipped.fulfillmentProgress.lines.map((line) => ({
+          ...line,
+          fulfilledQuantity: line.orderedQuantity,
+          status: "fulfilled" as const,
+        })),
+      },
+    });
+    renderDetail();
+    // Line 1 is fully shipped; only line 2 (1 left) is offered. Something shipped, so no cancel.
+    expect(await screen.findByTestId("order-ship-2")).toBeTruthy();
+    expect(screen.queryByTestId("order-ship-1")).toBeNull();
+    expect(screen.queryByTestId("order-cancel")).toBeNull();
+    fireEvent.click(screen.getByTestId("order-fulfil"));
+    fireEvent.click(screen.getByTestId("order-fulfil-dialog-confirm"));
+    await waitFor(() => expect(mocks.fulfillOrder).toHaveBeenCalledTimes(1));
+    expect(mocks.fulfillOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: ORDER_A, lines: [{ lineNumber: 2, quantity: 1 }] }),
+    );
+    expect((await screen.findByTestId("order-fulfillment-status")).textContent).toBe("Fulfilled");
+    expect(screen.queryByTestId("order-operations")).toBeNull();
+  });
+
   it("shows checkout snapshots, pending COD and partial consumption without inventing completion", async () => {
     mocks.getOrder.mockResolvedValue(orderDetail({ commerce: orderCommerce() }));
     renderDetail();
@@ -217,14 +255,14 @@ describe("OrderDetailScreen", () => {
     await screen.findByText("Payment information is not available for this order.");
     expect(screen.queryByTestId("order-payment-status")).toBeNull();
     fireEvent.click(screen.getByText("Refresh order"));
-    await screen.findByText("Cannot reach the Commerce API");
+    await screen.findByText("No connection");
     expect(screen.queryByText("Checkout Guest")).toBeNull();
   });
 
   it("distinguishes unsupported response data from a network failure", async () => {
     mocks.getOrder.mockRejectedValue(new ApiContractError("unsupported response"));
     renderDetail();
-    expect(await screen.findByText("Unexpected response")).toBeTruthy();
+    expect(await screen.findByText("Something went wrong")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
   });
   it("shows a loading state while the order is being fetched", async () => {
@@ -280,7 +318,7 @@ describe("OrderDetailScreen", () => {
     mocks.getOrder.mockRejectedValue(new ApiHttpError("no", 403, "FORBIDDEN", null));
     renderDetail();
 
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.queryByText("Try again")).toBeNull();
   });
 

@@ -178,7 +178,7 @@ describe("SupplierForm — create", () => {
     );
     typeInto("supplier-name", "Nile Textiles");
     fireEvent.click(screen.getByTestId("supplier-submit"));
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.queryByTestId("supplier-submit-retry")).toBeNull();
   });
 

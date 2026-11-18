@@ -22,7 +22,10 @@ vi.mock("@clerk/expo", () => ({
     signOut: mocks.signOut,
   }),
 }));
-vi.mock("expo-router", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("expo-router", () => ({
+  useRouter: () => ({ push: mocks.push }),
+  Redirect: () => null,
+}));
 vi.mock("../commerce/client", () => ({
   createConfiguredCommerceClient: () => ({
     getMyTenants: mocks.getMyTenants,
@@ -33,13 +36,13 @@ vi.mock("../tenant/secure-storage", () => ({
   createSecureTenantStorage: () => createMemoryTenantStorage(),
 }));
 
-import HomeScreen from "../../app/index";
+import MoreRoute from "../../app/more";
 import { SessionProvider } from "../session/SessionProvider";
 
-function renderHome() {
+function renderMore() {
   return render(
     <SessionProvider storage={createMemoryTenantStorage()}>
-      <HomeScreen />
+      <MoreRoute />
     </SessionProvider>,
   );
 }
@@ -53,10 +56,10 @@ afterEach(() => cleanup());
 describe("Reporting navigation", () => {
   it("is hidden when reports guidance is missing", async () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A));
-    renderHome();
-    // `open-more` always renders; `open-products` is a PRIMARY bottom-tab, not a dashboard card.
-    await screen.findByTestId("open-more");
-    expect(screen.queryByTestId("open-reports")).toBeNull();
+    renderMore();
+    // `open-more` always renders; `open-products` is a PRIMARY bottom-tab, not a More row.
+    await screen.findByTestId("more-account");
+    expect(screen.queryByTestId("section-reports")).toBeNull();
   });
 
   it("is shown for explicit read guidance and opens /reports", async () => {
@@ -65,10 +68,10 @@ describe("Reporting navigation", () => {
       ...context,
       access: { ...context.access, reports: { canRead: true } },
     });
-    renderHome();
-    fireEvent.click(await screen.findByTestId("open-reports"));
+    renderMore();
+    fireEvent.click(await screen.findByTestId("section-reports"));
     expect(mocks.push).toHaveBeenCalledWith("/reports");
-    // Products and Orders are PRIMARY bottom-tabs; Promotions remains a secondary dashboard card.
-    expect(screen.getByTestId("open-promotions")).toBeTruthy();
+    // Products and Orders are PRIMARY bottom-tabs; Promotions remains a secondary More row.
+    expect(screen.getByTestId("section-promotions")).toBeTruthy();
   });
 });

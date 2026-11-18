@@ -69,7 +69,7 @@ describe("StaffDetailScreen", () => {
     const assignment = screen.getByTestId(`staff-assignment-${ASSIGNMENT_A}`);
     expect(assignment.textContent).toContain("Branch Manager");
     expect(assignment.textContent).toContain("Whole business");
-    expect(assignment.textContent).toContain("Tenant-wide");
+    expect(assignment.textContent).toContain("Whole business");
   });
 
   it("keeps a deactivated membership readable and offers no delete or lifecycle action", async () => {

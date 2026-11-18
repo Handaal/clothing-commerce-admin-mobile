@@ -23,7 +23,8 @@ import {
   TextButton,
 } from "../ui/components";
 import { AppIcon, type AppIconName } from "../ui/Icon";
-import { colors, radius, spacing, typography } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { errorHeading, isRetryable } from "../products/display";
 
@@ -34,15 +35,19 @@ export interface StorefrontScreenProps {
   onManageCheckout: () => void;
   onOpenProducts: () => void;
   onOpenPromotions: () => void;
+  /** Home-page editor (hero + featured picks). */
+  onOpenContent?: () => void;
+  /** Sales on items (struck-through price + % badge on the website). */
+  onOpenSales?: () => void;
   onBack: () => void;
 }
 
 /**
- * Storefront control center. The customer-facing website has no CMS/theme API — its live content is
- * the published catalog, the per-brand checkout settings, and the promotions applied at checkout.
- * This hub surfaces the current checkout configuration (authenticated read) and routes into the
- * existing, capability-authorized editors for everything the Commerce API actually controls. It never
- * invents a page/banner editor the contract does not provide. The API still authorizes every read and
+ * Storefront control center. The website's live content is the home-page content (hero + featured
+ * picks), the published catalog, item sales, the per-brand checkout settings, and the promotions/offers
+ * applied at checkout. This hub surfaces the checkout configuration and routes into the
+ * capability-authorized editors for each. Content editing is structured fields only — never a visual
+ * page-layout editor. The API still authorizes every read and
  * write independently; capability flags here only guide navigation.
  */
 export function StorefrontScreen({
@@ -51,8 +56,11 @@ export function StorefrontScreen({
   onManageCheckout,
   onOpenProducts,
   onOpenPromotions,
+  onOpenContent,
+  onOpenSales,
   onBack,
 }: StorefrontScreenProps) {
+  const { styles } = useStyles();
   const { t } = useI18n();
   const settings = settingsCapabilities(context);
   const promotions = promotionCapabilities(context);
@@ -87,6 +95,24 @@ export function StorefrontScreen({
 
       <SectionHeading title={t("storefront.manageHeading")} />
       <View style={styles.cards}>
+        {canReadCatalog && onOpenContent ? (
+          <WebsiteCard
+            testID="storefront-open-content"
+            icon="home-edit-outline"
+            title={t("storefront.contentTitle")}
+            body={t("storefront.contentBody")}
+            onPress={onOpenContent}
+          />
+        ) : null}
+        {promotions.canRead && onOpenSales ? (
+          <WebsiteCard
+            testID="storefront-open-sales"
+            icon="sale-outline"
+            title={t("storefront.salesTitle")}
+            body={t("storefront.salesBody")}
+            onPress={onOpenSales}
+          />
+        ) : null}
         {canReadCatalog ? (
           <WebsiteCard
             testID="storefront-open-products"
@@ -128,6 +154,7 @@ function CheckoutConfig({
   canManage: boolean;
   onManage: () => void;
 }) {
+  const { styles } = useStyles();
   const { getTenantClient } = useSession();
   const { t } = useI18n();
   const load = useCallback(
@@ -209,6 +236,7 @@ function WebsiteCard({
   body: string;
   onPress: () => void;
 }) {
+  const { styles, colors } = useStyles();
   return (
     <PressableRow testID={testID} onPress={onPress}>
       <View style={styles.cardRow}>
@@ -224,25 +252,28 @@ function WebsiteCard({
   );
 }
 
-const styles = StyleSheet.create({
-  intro: { gap: spacing.sm },
-  introTitle: { color: colors.ink, ...typography.sectionTitle },
-  introBody: { color: colors.inkMuted, ...typography.body },
-  config: { gap: spacing.md },
-  brandCard: { gap: 6 },
-  brandHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  brandName: { color: colors.ink, ...typography.cardTitle },
-  cards: { gap: spacing.md },
-  cardRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md },
-  iconTile: {
-    width: 48,
-    height: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  cardCopy: { flex: 1, gap: 3 },
-  cardTitle: { color: colors.ink, fontSize: 16, fontWeight: "800" },
-  cardBody: { color: colors.inkMuted, fontSize: 12, lineHeight: 18, fontWeight: "500" },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    intro: { gap: spacing.sm },
+    introTitle: { color: colors.ink, ...typography.sectionTitle },
+    introBody: { color: colors.inkMuted, ...typography.body },
+    config: { gap: spacing.md },
+    brandCard: { gap: 6 },
+    brandHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    brandName: { color: colors.ink, ...typography.cardTitle },
+    cards: { gap: spacing.md },
+    cardRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md },
+    iconTile: {
+      width: 48,
+      height: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    cardCopy: { flex: 1, gap: 3 },
+    cardTitle: { color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
+    cardBody: { color: colors.inkMuted, ...typography.caption, fontWeight: "500" },
+  });
+  return { colors, styles };
 });

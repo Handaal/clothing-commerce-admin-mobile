@@ -20,7 +20,10 @@ vi.mock("@clerk/expo", () => ({
     signOut: mocks.signOut,
   }),
 }));
-vi.mock("expo-router", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("expo-router", () => ({
+  useRouter: () => ({ push: mocks.push }),
+  Redirect: () => null,
+}));
 vi.mock("../commerce/client", () => ({
   createConfiguredCommerceClient: () => ({
     getMyTenants: mocks.getMyTenants,
@@ -31,13 +34,13 @@ vi.mock("../tenant/secure-storage", () => ({
   createSecureTenantStorage: () => createMemoryTenantStorage(),
 }));
 
-import HomeScreen from "../../app/index";
+import MoreRoute from "../../app/more";
 import { SessionProvider } from "../session/SessionProvider";
 
-function renderHome() {
+function renderMore() {
   return render(
     <SessionProvider storage={createMemoryTenantStorage()}>
-      <HomeScreen />
+      <MoreRoute />
     </SessionProvider>,
   );
 }
@@ -51,12 +54,12 @@ describe("Settings navigation", () => {
   // Settings is a non-primary section, so on the dashboard it surfaces as an `open-settings`
   // module card (gated on settingsCapabilities(context).canRead). We anchor the "rendered" wait on
   // `open-more`, which the dashboard always shows — `open-products` is a PRIMARY tab (bottom nav),
-  // not a dashboard card, so it is deliberately absent from the module grid.
+  // not a More row, so it is deliberately absent from the module grid.
   it("is hidden when Settings read guidance is missing", async () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A));
-    renderHome();
-    await screen.findByTestId("open-more");
-    expect(screen.queryByTestId("open-settings")).toBeNull();
+    renderMore();
+    await screen.findByTestId("more-account");
+    expect(screen.queryByTestId("section-settings")).toBeNull();
   });
   it("is shown for explicit read guidance and opens /settings", async () => {
     const context = meContext(TENANT_A);
@@ -64,8 +67,8 @@ describe("Settings navigation", () => {
       ...context,
       access: { ...context.access, settings: { canRead: true, canManage: false } },
     });
-    renderHome();
-    fireEvent.click(await screen.findByTestId("open-settings"));
+    renderMore();
+    fireEvent.click(await screen.findByTestId("section-settings"));
     expect(mocks.push).toHaveBeenCalledWith("/settings");
   });
 });

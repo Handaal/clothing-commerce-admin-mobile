@@ -12,6 +12,7 @@ import {
   prepareMediaUpload,
   webImagePicker,
   MediaStorageUnavailableError,
+  MediaUploadFailedError,
   type ImagePicker,
   type PickedImage,
 } from "../catalog/media";
@@ -60,7 +61,8 @@ import {
   TextButton,
   TextField,
 } from "../ui/components";
-import { colors, radius, spacing, typography } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { useToast } from "../ui/Toast";
 import { useMutation, type Mutation, type MutationState } from "../ui/useMutation";
@@ -154,6 +156,7 @@ function ProductManage({
   data: ProductDetailResponse;
   reload: () => void;
 }) {
+  const { productStyles, colors } = useStyles();
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
   const { t } = useI18n();
   const observation = useProductObservation(productId, observationStore);
@@ -172,7 +175,7 @@ function ProductManage({
       <Surface tone="brand" style={productStyles.summaryCard}>
         <View style={productStyles.summaryTop}>
           <View style={productStyles.summaryIcon}>
-            <AppIcon name="tshirt-crew-outline" size={30} color={colors.white} />
+            <AppIcon name="tshirt-crew-outline" size={30} color={colors.onBrand} />
           </View>
           <View style={productStyles.summaryCopy}>
             <Text style={productStyles.summaryName}>{product.name}</Text>
@@ -408,24 +411,22 @@ function PublicationSection({
   reload: () => void;
   observationStore: CatalogObservationStore;
 }) {
+  const { productStyles, colors } = useStyles();
   const observation = useProductObservation(productId, observationStore);
   const isPublished = observation?.storefrontStatus === "published";
   const toast = useToast();
   const { t } = useI18n();
-  const toastWriteError = (error: Parameters<typeof describeCatalogWriteError>[0]) => {
-    const described = describeCatalogWriteError(error);
-    toast.error(described.message, { title: described.heading });
-  };
-
+  // Write failures surface once — through the inline, actionable CatalogWriteError below (retry /
+  // refresh / dismiss). We intentionally do NOT also fire an error toast here: a transient toast plus a
+  // persistent notice for the same failure crowds the screen and duplicates the message. Success stays
+  // a toast (there is no persistent success surface to duplicate).
   const publish = useMutation(
     (_args: Record<string, never>, key) => publishProduct(client, productId, key),
     generateKey,
-    { onError: toastWriteError },
   );
   const unpublish = useMutation(
     (_args: Record<string, never>, key) => unpublishProduct(client, productId, key),
     generateKey,
-    { onError: toastWriteError },
   );
 
   useOnSuccess(publish.state, (data) => {
@@ -526,6 +527,7 @@ function EditDetailsForm({
   reload: () => void;
   observationStore: CatalogObservationStore;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [name, setName] = useState(product.name);
   // The read contract returns no slug/description; seed the slug from this session's observation when
@@ -630,6 +632,7 @@ function VariantsSection({
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { productStyles, colors } = useStyles();
   const { t } = useI18n();
   const { product, variants, prices } = data;
   const priceByVariant = useMemo(() => {
@@ -707,6 +710,7 @@ function CreateVariantForm({
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [sku, setSku] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -784,6 +788,7 @@ function SetPriceForm({
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [variantId, setVariantId] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
@@ -912,6 +917,7 @@ function MediaSection({
   imagePicker: ImagePicker;
   uploadFetch?: typeof globalThis.fetch;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [altText, setAltText] = useState("");
@@ -987,7 +993,9 @@ function MediaSection({
       });
     } catch (error) {
       if (error instanceof MediaStorageUnavailableError) {
-        setPrepareError(error.message);
+        setPrepareError(t("pm.uploadUnavailable"));
+      } else if (error instanceof MediaUploadFailedError) {
+        setPrepareError(t("pm.uploadFailed"));
       } else {
         setPrepareError(classifyCommerceError(error).message);
       }
@@ -1147,6 +1155,7 @@ function LifecycleSection({
   reload: () => void;
   observationStore: CatalogObservationStore;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [archiveReason, setArchiveReason] = useState("");
   const mutation = useMutation(
@@ -1230,52 +1239,55 @@ function LifecycleSection({
   );
 }
 
-const productStyles = StyleSheet.create({
-  summaryCard: { gap: spacing.lg },
-  summaryTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  summaryIcon: {
-    width: 56,
-    height: 56,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.lg,
-    backgroundColor: colors.brand,
-  },
-  summaryCopy: { flex: 1, gap: spacing.xs },
-  summaryName: { color: colors.ink, fontSize: 23, lineHeight: 29, fontWeight: "800" },
-  summaryMeta: { color: colors.inkMuted, ...typography.caption },
-  badges: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  publicationCard: { gap: spacing.lg },
-  sectionIntro: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  accentIcon: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-  },
-  sectionIntroCopy: { flex: 1, gap: 2 },
-  sectionTitle: { color: colors.ink, ...typography.sectionTitle },
-  sectionDescription: { color: colors.inkMuted, ...typography.caption },
-  expandedSection: { borderColor: colors.brandSoftStrong, gap: spacing.lg },
-  sectionBody: { gap: spacing.md },
-  variantList: { gap: spacing.md },
-  variantCard: { gap: spacing.sm, shadowOpacity: 0, elevation: 0 },
-  variantTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  variantIcon: {
-    width: 38,
-    height: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.sm,
-    backgroundColor: colors.brandSoft,
-  },
-  variantName: { flex: 1, color: colors.ink, ...typography.cardTitle },
-  mediaList: { gap: spacing.md },
-  mediaCard: { gap: spacing.md, shadowOpacity: 0, elevation: 0 },
-  mediaThumbnail: { width: 112, height: 112, borderRadius: radius.md },
-  mediaPreview: { width: 152, height: 152, borderRadius: radius.lg },
-  mediaMeta: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+const useStyles = createThemedStyles((colors) => {
+  const productStyles = StyleSheet.create({
+    summaryCard: { gap: spacing.lg },
+    summaryTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    summaryIcon: {
+      width: 56,
+      height: 56,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.lg,
+      backgroundColor: colors.brand,
+    },
+    summaryCopy: { flex: 1, gap: spacing.xs },
+    summaryName: { color: colors.ink, ...typography.title, fontWeight: "800" },
+    summaryMeta: { color: colors.inkMuted, ...typography.caption },
+    badges: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+    metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+    publicationCard: { gap: spacing.lg },
+    sectionIntro: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    accentIcon: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+    },
+    sectionIntroCopy: { flex: 1, gap: 2 },
+    sectionTitle: { color: colors.ink, ...typography.sectionTitle },
+    sectionDescription: { color: colors.inkMuted, ...typography.caption },
+    expandedSection: { borderColor: colors.brandSoftStrong, gap: spacing.lg },
+    sectionBody: { gap: spacing.md },
+    variantList: { gap: spacing.md },
+    variantCard: { gap: spacing.sm, shadowOpacity: 0, elevation: 0 },
+    variantTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    variantIcon: {
+      width: 38,
+      height: 38,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.sm,
+      backgroundColor: colors.brandSoft,
+    },
+    variantName: { flex: 1, color: colors.ink, ...typography.cardTitle },
+    mediaList: { gap: spacing.md },
+    mediaCard: { gap: spacing.md, shadowOpacity: 0, elevation: 0 },
+    mediaThumbnail: { width: 112, height: 112, borderRadius: radius.md },
+    mediaPreview: { width: 152, height: 152, borderRadius: radius.lg },
+    mediaMeta: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  });
+  return { colors, productStyles };
 });

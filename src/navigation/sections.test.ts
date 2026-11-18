@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { meContext, TENANT_A } from "../test-support/fixtures";
 import {
+  MANAGEMENT_SECTIONS,
   activeSectionForPath,
   isPrimarySection,
   managementSection,
@@ -24,14 +25,12 @@ describe("management section registry", () => {
       "collections",
       "orders",
       "customers",
-      "activity",
       "storefront",
     ]);
   });
 
-  it("does not invent routes for domains without a canonical management API", () => {
-    expect(managementSection("activity").status).toBe("planned");
-    expect(managementSection("activity").route).toBeUndefined();
+  it("offers no dead placeholder rows — every section has a route", () => {
+    expect(MANAGEMENT_SECTIONS.every((section) => section.route)).toBe(true);
   });
 
   it("routes storefront to its hub now that it aggregates real website controls", () => {

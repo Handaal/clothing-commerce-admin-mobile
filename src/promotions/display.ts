@@ -63,6 +63,11 @@ export function formatPercentBasisPoints(basisPoints: number): string {
 }
 
 export function benefitLabel(promotion: PromotionDetail | PromotionSummary): string {
+  if (promotion.benefitType === "buy_x_get_y") {
+    return "buyQuantity" in promotion && promotion.buyQuantity && promotion.getQuantity
+      ? t("promoBenefit.buyXGetY", { buy: promotion.buyQuantity, get: promotion.getQuantity })
+      : t("promoBenefit.offer");
+  }
   if (promotion.benefitType === "percentage") {
     return "benefitPercentBp" in promotion && promotion.benefitPercentBp !== null
       ? t("promoBenefit.percentOff", {

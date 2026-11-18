@@ -20,9 +20,9 @@ export type ManagementSectionId =
   | "staff"
   | "attendance"
   | "reports"
-  | "activity"
   | "settings"
-  | "storefront";
+  | "storefront"
+  | "syncConflicts";
 
 export type ManagementRoute =
   | "/"
@@ -38,7 +38,35 @@ export type ManagementRoute =
   | "/reports"
   | "/settings"
   | "/storefront"
+  | "/sync-conflicts"
   | "/more";
+
+/**
+ * Thematic buckets the non-primary sections are grouped under on the More screen, so a long flat list
+ * becomes a scannable, structured directory. Order here is the display order of the groups.
+ */
+export type SectionGroup = "selling" | "catalog" | "purchasing" | "team" | "insights" | "business";
+
+export const SECTION_GROUP_ORDER: readonly SectionGroup[] = [
+  "selling",
+  "catalog",
+  "purchasing",
+  "team",
+  "insights",
+  "business",
+] as const;
+
+export const SECTION_GROUP_LABEL_KEYS: Record<
+  SectionGroup,
+  { labelKey: MessageKey; icon: AppIconName }
+> = {
+  selling: { labelKey: "more.group.selling", icon: "storefront-outline" },
+  catalog: { labelKey: "more.group.catalog", icon: "tag-multiple-outline" },
+  purchasing: { labelKey: "more.group.purchasing", icon: "truck-outline" },
+  team: { labelKey: "more.group.team", icon: "account-group-outline" },
+  insights: { labelKey: "more.group.insights", icon: "chart-box-outline" },
+  business: { labelKey: "more.group.business", icon: "cog-outline" },
+};
 
 export interface ManagementSection {
   id: ManagementSectionId;
@@ -51,6 +79,8 @@ export interface ManagementSection {
   icon: AppIconName;
   route?: ManagementRoute;
   status?: "planned" | "reserved";
+  /** Which More-screen group this section belongs to. Primary (bottom-tab) sections omit it. */
+  group?: SectionGroup;
   visible: (context: MeContextResponse) => boolean;
 }
 
@@ -89,6 +119,7 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.collections.desc",
     icon: "shape-outline",
     route: "/collections",
+    group: "catalog",
     visible: (context) => context.access.catalog.canRead,
   },
   {
@@ -119,6 +150,7 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.customers.desc",
     icon: "account-group-outline",
     route: "/customers",
+    group: "selling",
     visible: always,
   },
   {
@@ -129,7 +161,19 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.promotions.desc",
     icon: "ticket-percent-outline",
     route: "/promotions",
+    group: "selling",
     visible: (context) => promotionCapabilities(context).canRead,
+  },
+  {
+    id: "storefront",
+    label: "Storefront",
+    description: "Checkout settings, catalog publication and website controls.",
+    labelKey: "section.storefront.label",
+    descriptionKey: "section.storefront.desc",
+    icon: "storefront-outline",
+    route: "/storefront",
+    group: "selling",
+    visible: always,
   },
   {
     id: "suppliers",
@@ -139,6 +183,7 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.suppliers.desc",
     icon: "truck-outline",
     route: "/suppliers",
+    group: "purchasing",
     visible: (context) => context.access.suppliers?.canRead === true,
   },
   {
@@ -149,6 +194,7 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.staff.desc",
     icon: "badge-account-horizontal-outline",
     route: "/staff",
+    group: "team",
     visible: (context) => staffCapabilities(context).canRead,
   },
   {
@@ -159,6 +205,7 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.attendance.desc",
     icon: "clock-outline",
     route: "/attendance",
+    group: "team",
     visible: (context) => attendanceCapabilities(context).canRead,
   },
   {
@@ -169,17 +216,21 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.reports.desc",
     icon: "chart-box-outline",
     route: "/reports",
+    group: "insights",
     visible: (context) => reportingCapabilities(context).canRead,
   },
   {
-    id: "activity",
-    label: "Activity",
-    description: "Awaiting a canonical management audit-log API.",
-    labelKey: "section.activity.label",
-    descriptionKey: "section.activity.desc",
-    icon: "history",
-    status: "planned",
-    visible: always,
+    // ADR-042 §13.5: post-sync conflicts of bounded emergency-offline POS operation (report only).
+    id: "syncConflicts",
+    label: "Sync conflicts",
+    description:
+      "Stock, debt, customer and attendance conflicts found when tills synced offline work.",
+    labelKey: "section.syncConflicts.label",
+    descriptionKey: "section.syncConflicts.desc",
+    icon: "sync-alert",
+    route: "/sync-conflicts",
+    group: "insights",
+    visible: (context) => context.access.orders.canRead && context.access.orders.tenantWide,
   },
   {
     id: "settings",
@@ -189,17 +240,8 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.settings.desc",
     icon: "cog-outline",
     route: "/settings",
+    group: "business",
     visible: (context) => settingsCapabilities(context).canRead,
-  },
-  {
-    id: "storefront",
-    label: "Storefront",
-    description: "Checkout settings, catalog publication and website controls.",
-    labelKey: "section.storefront.label",
-    descriptionKey: "section.storefront.desc",
-    icon: "storefront-outline",
-    route: "/storefront",
-    visible: always,
   },
 ] as const;
 
@@ -213,6 +255,28 @@ export function managementSection(id: ManagementSectionId): ManagementSection {
   const section = MANAGEMENT_SECTIONS.find((candidate) => candidate.id === id);
   if (!section) throw new Error(`Unknown management section: ${id}`);
   return section;
+}
+
+export interface SectionGroupBucket {
+  group: SectionGroup;
+  sections: readonly ManagementSection[];
+}
+
+/**
+ * Visible, non-primary sections organised into their display groups (in {@link SECTION_GROUP_ORDER}),
+ * so the More screen renders a structured directory rather than one flat list. Groups with no visible
+ * sections are omitted. A section missing a `group` (should not happen for non-primary) falls into
+ * "business" so it is never silently dropped.
+ */
+export function groupedManagementSections(context: MeContextResponse): SectionGroupBucket[] {
+  const visible = visibleManagementSections(context).filter(
+    // Route-less (planned/contract-pending) sections are surfaced separately, never as a tappable row.
+    (section) => !isPrimarySection(section.id) && section.route,
+  );
+  return SECTION_GROUP_ORDER.map((group) => ({
+    group,
+    sections: visible.filter((section) => (section.group ?? "business") === group),
+  })).filter((bucket) => bucket.sections.length > 0);
 }
 
 /**

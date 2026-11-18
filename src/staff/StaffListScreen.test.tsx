@@ -48,7 +48,7 @@ describe("StaffListScreen", () => {
         onBack={noop}
       />,
     );
-    expect(screen.getByText("Loading staff…")).toBeTruthy();
+    expect(screen.getByTestId("staff-loading")).toBeTruthy();
   });
 
   it("renders a populated list with a status badge, role summary and scope summary per row", async () => {
@@ -85,7 +85,7 @@ describe("StaffListScreen", () => {
     expect(screen.getByText("Omar")).toBeTruthy();
     // Role + scope summaries are shown on each row.
     expect(screen.getAllByText("Roles").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Scopes").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Access").length).toBeGreaterThan(0);
   });
 
   it("shows an empty state (not an error) when there are zero staff", async () => {
@@ -209,7 +209,7 @@ describe("StaffListScreen", () => {
         onBack={noop}
       />,
     );
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.queryByText(/No staff/)).toBeNull();
     expect(screen.queryByText("Try again")).toBeNull();
   });

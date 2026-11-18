@@ -23,6 +23,7 @@ function fakeClient(overrides: Partial<PromotionClient> = {}): PromotionClient {
     setPromotionStatus: async () => detail,
     createPromotionCode: async () => detail,
     setPromotionCodeStatus: async () => detail,
+    deletePromotion: async () => ({ promotionId: detail.id, outcome: "deleted" as const }),
     listProducts: async () => ({ items: [], pageInfo: { nextCursor: null, hasMore: false } }),
     getProduct: async () => ({
       product: {
@@ -123,7 +124,7 @@ describe("PromotionForm", () => {
     typeInto("promotion-name", "Denied");
     typeInto("promotion-benefit-value", "10");
     fireEvent.click(screen.getByTestId("promotion-submit"));
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.queryByTestId("promotion-submit-retry")).toBeNull();
   });
 
@@ -147,5 +148,41 @@ describe("PromotionForm", () => {
     fireEvent.click(screen.getByTestId("promotion-submit"));
     expect(await screen.findByText("Promotion already used")).toBeTruthy();
     expect(screen.getByText(/deactivate this Promotion and create a new one/i)).toBeTruthy();
+  });
+
+  it("edits a used Promotion's discount and switches it to a code with a first code", async () => {
+    const updatePromotion = vi.fn().mockResolvedValue(promotionDetail());
+    const createPromotionCode = vi.fn().mockResolvedValue(promotionDetail());
+    render(
+      <PromotionForm
+        mode="edit"
+        client={fakeClient({ updatePromotion, createPromotionCode })}
+        context={meContext(TENANT_A)}
+        canManage
+        initial={promotionDetail({ economicsLocked: true, redemptionCount: 2, codes: [] })}
+        onSaved={noop}
+        onBack={noop}
+        generateIdempotencyKey={keyFactory}
+      />,
+    );
+    expect(screen.getByTestId("promotion-used-notice")).toBeTruthy();
+    typeInto("promotion-benefit-value", "15");
+    fireEvent.click(screen.getByTestId("promotion-activation-code"));
+    fireEvent.click(screen.getByTestId("promotion-submit"));
+    expect(await screen.findByTestId("promotion-code-error")).toBeTruthy();
+    expect(updatePromotion).not.toHaveBeenCalled();
+
+    typeInto("promotion-initial-code", "vip15");
+    fireEvent.click(screen.getByTestId("promotion-submit"));
+    await waitFor(() =>
+      expect(updatePromotion).toHaveBeenCalledWith(
+        expect.objectContaining({ benefitPercentBp: 1500, activationType: "code" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(createPromotionCode).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "VIP15", maxRedemptions: null }),
+      ),
+    );
   });
 });

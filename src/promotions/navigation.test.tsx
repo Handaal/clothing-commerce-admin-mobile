@@ -22,7 +22,10 @@ vi.mock("@clerk/expo", () => ({
     signOut: mocks.signOut,
   }),
 }));
-vi.mock("expo-router", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("expo-router", () => ({
+  useRouter: () => ({ push: mocks.push }),
+  Redirect: () => null,
+}));
 vi.mock("../commerce/client", () => ({
   createConfiguredCommerceClient: () => ({
     getMyTenants: mocks.getMyTenants,
@@ -33,13 +36,13 @@ vi.mock("../tenant/secure-storage", () => ({
   createSecureTenantStorage: () => createMemoryTenantStorage(),
 }));
 
-import HomeScreen from "../../app/index";
+import MoreRoute from "../../app/more";
 import { SessionProvider } from "../session/SessionProvider";
 
-function renderHome() {
+function renderMore() {
   return render(
     <SessionProvider storage={createMemoryTenantStorage()}>
-      <HomeScreen />
+      <MoreRoute />
     </SessionProvider>,
   );
 }
@@ -53,29 +56,29 @@ afterEach(() => cleanup());
 describe("Promotion navigation", () => {
   it("hides navigation when Promotion read guidance is absent", async () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A, { promotions: null }));
-    renderHome();
+    renderMore();
     // `open-more` is always present on the dashboard; `open-products` is a PRIMARY bottom-tab and is
-    // deliberately not a dashboard module card.
-    await screen.findByTestId("open-more");
-    expect(screen.queryByTestId("open-promotions")).toBeNull();
+    // deliberately not a More row.
+    await screen.findByTestId("more-account");
+    expect(screen.queryByTestId("section-promotions")).toBeNull();
   });
 
   it("shows navigation for read-only access and opens the Promotions route", async () => {
     mocks.getContext.mockResolvedValue(
       meContext(TENANT_A, { promotions: { canRead: true, canManage: false } }),
     );
-    renderHome();
-    fireEvent.click(await screen.findByTestId("open-promotions"));
+    renderMore();
+    fireEvent.click(await screen.findByTestId("section-promotions"));
     expect(mocks.push).toHaveBeenCalledWith("/promotions");
   });
 
   it("keeps existing Admin modules available", async () => {
     mocks.getContext.mockResolvedValue(meContext(TENANT_A));
-    renderHome();
-    await screen.findByTestId("open-promotions");
-    // Products and Orders are PRIMARY bottom-tabs, not dashboard module cards; the remaining
+    renderMore();
+    await screen.findByTestId("section-promotions");
+    // Products and Orders are PRIMARY bottom-tabs, not More rows; the remaining
     // secondary management areas still surface as cards.
-    expect(screen.getByTestId("open-suppliers")).toBeTruthy();
-    expect(screen.getByTestId("open-staff")).toBeTruthy();
+    expect(screen.getByTestId("section-suppliers")).toBeTruthy();
+    expect(screen.getByTestId("section-staff")).toBeTruthy();
   });
 });

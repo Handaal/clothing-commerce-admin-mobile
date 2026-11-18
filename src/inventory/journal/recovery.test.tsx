@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("expo-crypto", () => ({ randomUUID: () => "unused-native-uuid" }));
@@ -17,7 +18,14 @@ import {
   receiveResponse,
   transferResponse,
 } from "../../test-support/fixtures";
-import { InventoryOperations, type InventoryWriteAccess } from "../InventoryOperations";
+import type { TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
+import type { InventoryItem } from "../load";
+import {
+  StockItemSheet,
+  type InventoryWriteAccess,
+  type StockSheetAction,
+} from "../StockItemSheet";
+import { InventoryRecoveryPanel } from "./InventoryRecoveryPanel";
 import { createInventoryJournal, type InventoryJournal } from "./journal";
 import { createMemoryJournalStore, type JournalStore } from "./store";
 import type { JournalEntry, JournalOwner } from "./model";
@@ -139,6 +147,67 @@ function fakeApi() {
   };
 }
 
+function StockOps(props: {
+  journal: InventoryJournal;
+  client: ReturnType<typeof fakeApi>["client"];
+  onRefresh: () => void;
+  detectLegacy?: () => Promise<JournalEntry[]>;
+  quarantineLegacy?: () => Promise<void>;
+  receiveSuppliers?: { value: string; label: string }[];
+}) {
+  const [available, setAvailable] = useState(false);
+  const [storageFailed, setStorageFailed] = useState(false);
+  const [open, setOpen] = useState<{ item: InventoryItem; action: StockSheetAction } | null>(null);
+  const writes = available && !storageFailed;
+  const opener = (action: StockSheetAction) => (
+    <button
+      data-testid={`open-${action === "restock" ? "receive" : action === "count" ? "adjust" : action}`}
+      onClick={() => setOpen({ item: ITEMS[0], action })}
+    />
+  );
+  return (
+    <>
+      <InventoryRecoveryPanel
+        journal={props.journal}
+        client={props.client}
+        items={ITEMS}
+        locations={LOCATIONS}
+        onResolved={props.onRefresh}
+        detectLegacy={props.detectLegacy}
+        quarantineLegacy={props.quarantineLegacy}
+        onAvailabilityChange={(next) => {
+          setAvailable(next);
+          if (next) setStorageFailed(false);
+        }}
+      />
+      {storageFailed ? <span data-testid="inventory-writes-unavailable" /> : null}
+      {writes ? (
+        <>
+          {opener("restock")}
+          {opener("count")}
+          {opener("transfer")}
+        </>
+      ) : null}
+      <StockItemSheet
+        key={open ? open.action : "closed"}
+        item={open?.item ?? null}
+        initialAction={open?.action}
+        client={props.client as unknown as TenantCommerceClient}
+        journal={props.journal}
+        write={WRITE_ACCESS}
+        canEditDetails={false}
+        locationName={(id) => LOCATIONS.find((l) => l.id === id)?.name ?? id}
+        suppliers={props.receiveSuppliers}
+        writesAvailable={writes}
+        onClose={() => setOpen(null)}
+        onChanged={props.onRefresh}
+        onConcurrencyConflict={vi.fn()}
+        onStorageUnavailable={() => setStorageFailed(true)}
+      />
+    </>
+  );
+}
+
 function renderOps(
   journal: InventoryJournal,
   client: ReturnType<typeof fakeApi>["client"],
@@ -149,20 +218,7 @@ function renderOps(
   } = {},
 ) {
   const onRefresh = vi.fn();
-  render(
-    <InventoryOperations
-      client={client}
-      journal={journal}
-      locations={LOCATIONS}
-      write={WRITE_ACCESS}
-      items={ITEMS}
-      onRefresh={onRefresh}
-      onConcurrencyConflict={vi.fn()}
-      detectLegacy={extra.detectLegacy}
-      quarantineLegacy={extra.quarantineLegacy}
-      receiveSuppliers={extra.receiveSuppliers}
-    />,
-  );
+  render(<StockOps journal={journal} client={client} onRefresh={onRefresh} {...extra} />);
   return { onRefresh };
 }
 
@@ -183,10 +239,8 @@ describe("inventory mutation crash recovery", () => {
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
     renderOps(journal, api.client);
     fireEvent.click(await screen.findByTestId("open-receive"));
-    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
-    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
-    fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
-    fireEvent.click(screen.getByTestId("receive-submit"));
+    fireEvent.change(screen.getByTestId("restock-quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("restock-submit"));
 
     await screen.findByTestId("write-retry");
     expect(api.stock).toBe(12);
@@ -215,19 +269,20 @@ describe("inventory mutation crash recovery", () => {
     const store: JournalStore = createMemoryJournalStore();
     const api = fakeApi();
 
-    // Receive succeeds: server commits and the client records `accepted`.
+    // Receive succeeds: the server commits and the client records `accepted`. The UI acknowledges a
+    // success immediately, so the crash window is reproduced directly at the journal boundary: the
+    // process dies after `recordAccepted` but before `acknowledge`.
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
-    renderOps(journal, api.client);
-    fireEvent.click(await screen.findByTestId("open-receive"));
-    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
-    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
-    fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
-    fireEvent.click(screen.getByTestId("receive-submit"));
-    await screen.findByTestId("receive-success");
+    const entry = await journal.prepare(RECEIVE(2));
+    await journal.markSent(entry.commandKey);
+    const result = await api.client.receiveInventory({
+      idempotencyKey: entry.commandKey,
+      quantity: 2,
+    });
+    await journal.recordAccepted(entry.commandKey, result);
     expect(await journal.get("K1")).toMatchObject({ status: "accepted" });
 
-    // SIMULATE PROCESS DEATH before the operator acknowledged the success screen.
-    cleanup();
+    // SIMULATE PROCESS DEATH before acknowledgement.
     journal = createInventoryJournal(store, OWNER_A, keyFactory("NOPE"));
     renderOps(journal, api.client);
 
@@ -240,6 +295,20 @@ describe("inventory mutation crash recovery", () => {
     fireEvent.click(screen.getByTestId("recovery-ack-K1"));
     await waitFor(() => expect(screen.queryByTestId("inventory-recovery")).toBeNull());
     expect(await journal.get("K1")).toBeNull();
+  });
+
+  it("acknowledges a confirmed success right away, leaving nothing to recover", async () => {
+    const store: JournalStore = createMemoryJournalStore();
+    const api = fakeApi();
+    const journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
+    const { onRefresh } = renderOps(journal, api.client);
+    fireEvent.click(await screen.findByTestId("open-receive"));
+    fireEvent.change(screen.getByTestId("restock-quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("restock-submit"));
+    await waitFor(() => expect(screen.queryByTestId("stock-sheet")).toBeNull());
+    expect(onRefresh).toHaveBeenCalled();
+    expect(api.appliedCount).toBe(1);
+    await waitFor(async () => expect(await journal.get("K1")).toBeNull());
   });
 
   it("offers no unsafe discard for an unresolved command — only completion (P1-1)", async () => {
@@ -269,14 +338,12 @@ describe("inventory mutation crash recovery", () => {
     });
 
     fireEvent.click(await screen.findByTestId("open-receive"));
-    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
-    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
-    fireEvent.click(screen.getByTestId(`receive-supplier-${SUPPLIER_A}`));
-    fireEvent.change(screen.getByTestId("receive-supplier-reference"), {
+    fireEvent.click(screen.getByTestId(`restock-supplier-${SUPPLIER_A}`));
+    fireEvent.change(screen.getByTestId("restock-reference"), {
       target: { value: "GRN-77" },
     });
-    fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "3" } });
-    fireEvent.click(screen.getByTestId("receive-submit"));
+    fireEvent.change(screen.getByTestId("restock-quantity"), { target: { value: "3" } });
+    fireEvent.click(screen.getByTestId("restock-submit"));
     await screen.findByTestId("write-retry");
 
     const [pending] = await journal.findRecoverable();
@@ -312,9 +379,8 @@ describe("inventory mutation crash recovery", () => {
     renderOps(journal, api.client);
 
     fireEvent.click(await screen.findByTestId("open-adjust"));
-    fireEvent.click(screen.getByTestId(`adjust-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`));
-    fireEvent.change(screen.getByTestId("adjust-counted"), { target: { value: "25" } });
-    fireEvent.click(screen.getByTestId("adjust-submit"));
+    fireEvent.change(screen.getByTestId("count-quantity"), { target: { value: "25" } });
+    fireEvent.click(screen.getByTestId("count-submit"));
     await screen.findByTestId("write-retry");
     expect(api.stock).toBe(25);
 
@@ -337,8 +403,6 @@ describe("inventory mutation crash recovery", () => {
     renderOps(journal, api.client);
 
     fireEvent.click(await screen.findByTestId("open-transfer"));
-    fireEvent.click(screen.getByTestId(`transfer-variant-${VARIANT_A}`));
-    fireEvent.click(screen.getByTestId(`transfer-source-${INVENTORY_LOCATION_A}`));
     fireEvent.click(screen.getByTestId(`transfer-destination-${INVENTORY_LOCATION_B}`));
     fireEvent.change(screen.getByTestId("transfer-quantity"), { target: { value: "2" } });
     fireEvent.click(screen.getByTestId("transfer-submit"));
@@ -362,10 +426,8 @@ describe("inventory mutation crash recovery", () => {
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("KC"));
     renderOps(journal, api.client);
     fireEvent.click(await screen.findByTestId("open-receive"));
-    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
-    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
-    fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
-    fireEvent.click(screen.getByTestId("receive-submit"));
+    fireEvent.change(screen.getByTestId("restock-quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("restock-submit"));
     await screen.findByTestId("write-retry");
 
     cleanup();
@@ -389,10 +451,8 @@ describe("inventory mutation crash recovery", () => {
     const journal = createInventoryJournal(store, OWNER_A, keyFactory("K1"));
     renderOps(journal, api.client);
     fireEvent.click(await screen.findByTestId("open-receive"));
-    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
-    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
-    fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
-    fireEvent.click(screen.getByTestId("receive-submit"));
+    fireEvent.change(screen.getByTestId("restock-quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("restock-submit"));
     await screen.findByTestId("write-retry");
 
     expect(screen.getByTestId("open-adjust")).toBeTruthy();
@@ -408,15 +468,13 @@ describe("inventory mutation crash recovery", () => {
 
     // First submit → ambiguous, left unresolved as K1.
     fireEvent.click(await screen.findByTestId("open-receive"));
-    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
-    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
-    fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
-    fireEvent.click(screen.getByTestId("receive-submit"));
+    fireEvent.change(screen.getByTestId("restock-quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("restock-submit"));
     await screen.findByTestId("write-retry");
 
     // Re-submit the SAME intent: blocked and pointed at recovery, no second key.
     api.setLossy(false);
-    fireEvent.click(screen.getByTestId("receive-submit"));
+    fireEvent.click(screen.getByTestId("restock-submit"));
     await screen.findByTestId("write-blocked-equivalent");
     expect(await journal.findRecoverable()).toHaveLength(1);
     const receiveKeys = api.calls.filter((c) => c.op === "receive").map((c) => c.key);
@@ -434,10 +492,8 @@ describe("membership-scoped ownership (P1-4)", () => {
     let journal = createInventoryJournal(store, OWNER_A, keyFactory("KA"));
     renderOps(journal, api.client);
     fireEvent.click(await screen.findByTestId("open-receive"));
-    fireEvent.click(screen.getByTestId(`receive-variant-${VARIANT_A}`));
-    fireEvent.click(screen.getByTestId(`receive-location-${INVENTORY_LOCATION_A}`));
-    fireEvent.change(screen.getByTestId("receive-quantity"), { target: { value: "2" } });
-    fireEvent.click(screen.getByTestId("receive-submit"));
+    fireEvent.change(screen.getByTestId("restock-quantity"), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("restock-submit"));
     await screen.findByTestId("write-retry");
 
     // User B logs in on the same tenant/device: they must NOT see or be able to replay A's command.

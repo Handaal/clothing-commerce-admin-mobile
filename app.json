@@ -6,7 +6,14 @@
     "orientation": "portrait",
     "scheme": "commerce-admin",
     "userInterfaceStyle": "automatic",
-    "plugins": ["expo-router", "expo-secure-store", "expo-sharing", "expo-localization"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-localization",
+      "expo-status-bar",
+      "expo-font"
+    ],
     "experiments": {
       "typedRoutes": true
     },

@@ -22,7 +22,8 @@ import {
   Surface,
   TextButton,
 } from "../ui/components";
-import { colors, radius, spacing, typography } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useToast } from "../ui/Toast";
 import { useAsync } from "../ui/useAsync";
 import { useMutation } from "../ui/useMutation";
@@ -112,6 +113,7 @@ function ManageContent({
   onBack: () => void;
   reload: () => void;
 }) {
+  const { styles, colors } = useStyles();
   const { t } = useI18n();
   const toast = useToast();
   const { collection } = data.detail;
@@ -273,22 +275,25 @@ function ManageContent({
   );
 }
 
-const styles = StyleSheet.create({
-  statusCard: { gap: spacing.md },
-  statusHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  statusActions: { gap: spacing.sm },
-  list: { gap: spacing.sm },
-  rowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  check: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  checkOn: { backgroundColor: colors.brand },
-  copy: { flex: 1, gap: 3 },
-  name: { color: colors.ink, ...typography.cardTitle },
-  meta: { color: colors.inkMuted, ...typography.caption },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    statusCard: { gap: spacing.md },
+    statusHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    statusActions: { gap: spacing.sm },
+    list: { gap: spacing.sm },
+    rowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    check: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    checkOn: { backgroundColor: colors.brand },
+    copy: { flex: 1, gap: 3 },
+    name: { color: colors.ink, ...typography.cardTitle },
+    meta: { color: colors.inkMuted, ...typography.caption },
+  });
+  return { colors, styles };
 });

@@ -34,13 +34,9 @@ describe("Settings canonical error UX", () => {
     [
       "STOREFRONT_DEPENDENCY_CONFLICT",
       "In use by an enabled storefront",
-      /required by an enabled storefront/i,
+      /online store depends on/i,
     ],
-    [
-      "REGISTER_DEPENDENCY_CONFLICT",
-      "In use by an active register",
-      /required by an active register/i,
-    ],
+    ["REGISTER_DEPENDENCY_CONFLICT", "In use by an active register", /active cash register uses/i],
   ])("maps topology conflict %s to distinct actionable guidance", (code, heading, messageMatch) => {
     const result = describeSettingsError(new ApiHttpError("raw backend detail", 409, code, null));
     expect(result.kind).toBe("topology-conflict");

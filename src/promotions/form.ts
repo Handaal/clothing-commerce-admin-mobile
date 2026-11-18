@@ -1,312 +1,132 @@
-import type {
-  CreatePromotionRequest,
-  PromotionDetail,
-  UpdatePromotionRequest,
+import {
+  emptyPromotionForm,
+  parseMoneyInput,
+  parsePercentInput,
+  promotionToForm,
+  validatePromotionForm as validatePromotionIssues,
+  type FormIssue,
+  type PromotionDetail,
+  type PromotionFormState,
+  type ValidatePromotionOptions,
 } from "@shifted/clothing-commerce-sdk";
 
-import { formatMinorToInput } from "../catalog/money";
 import { OPERATING_CURRENCY } from "../commerce/currency";
-import { formatPercentBasisPoints } from "./display";
 
-export type PromotionLimitKind = "unlimited" | "single" | "custom";
-export type PromotionChannelChoice = "all" | "pos" | "online";
-
-export interface PromotionTargetChoice {
-  target: NonNullable<CreatePromotionRequest["targets"]>[number];
-  label: string;
-}
-
-/** UI state intentionally uses input strings; SDK request DTOs are built only at the submit boundary. */
-export interface PromotionFormState {
-  name: string;
-  description: string;
-  benefitType: CreatePromotionRequest["benefitType"];
-  benefitValue: string;
-  currency: string;
-  targetType: CreatePromotionRequest["targetType"];
-  activationType: CreatePromotionRequest["activationType"];
-  minimumSubtotal: string;
-  maximumDiscount: string;
-  channel: PromotionChannelChoice;
-  brandId: string;
-  branchId: string;
-  startsAt: string;
-  endsAt: string;
-  globalLimit: string;
-  status: NonNullable<CreatePromotionRequest["status"]>;
-  targets: PromotionTargetChoice[];
-  initialCode: string;
-  codeLimitKind: PromotionLimitKind;
-  codeCustomLimit: string;
-}
+/**
+ * Promotion form. The rules and request builders are the SDK's shared management form rules (also used
+ * by the POS Website Management desk). Every setting is editable at any time, including after
+ * redemption (owner decision 2026-11-18). This module keeps the app's wording for each issue.
+ */
+export {
+  buildCreatePromotionRequest,
+  buildUpdatePromotionRequest,
+  promotionInitialCode,
+  type PromotionChannelChoice,
+  type PromotionFormState,
+  type PromotionLimitKind,
+  type PromotionTargetChoice,
+} from "@shifted/clothing-commerce-sdk";
 
 export type PromotionFormErrors = Partial<Record<keyof PromotionFormState, string>>;
 
-export const EMPTY_PROMOTION_FORM: PromotionFormState = {
-  name: "",
-  description: "",
-  benefitType: "percentage",
-  benefitValue: "",
-  currency: OPERATING_CURRENCY,
-  targetType: "order",
-  activationType: "automatic",
-  minimumSubtotal: "",
-  maximumDiscount: "",
-  channel: "all",
-  brandId: "",
-  branchId: "",
-  startsAt: "",
-  endsAt: "",
-  globalLimit: "",
-  status: "inactive",
-  targets: [],
-  initialCode: "",
-  codeLimitKind: "unlimited",
-  codeCustomLimit: "",
+export const EMPTY_PROMOTION_FORM: PromotionFormState = emptyPromotionForm(OPERATING_CURRENCY);
+
+const FIELD_LABELS: Partial<Record<keyof PromotionFormState, string>> = {
+  benefitValue: "fixed discount",
+  minimumSubtotal: "minimum subtotal",
+  maximumDiscount: "maximum discount",
+  globalLimit: "global usage limit",
+  codeCustomLimit: "code redemption limit",
+  startsAt: "start",
+  endsAt: "end",
 };
 
-function parsePositiveInteger(value: string, label: string): number | string | null {
-  const trimmed = value.trim();
-  if (trimmed === "") return null;
-  if (!/^\d+$/.test(trimmed)) return `Enter ${label} as a whole number.`;
-  const parsed = Number(trimmed);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return `${label} must be greater than zero.`;
-  return parsed;
+const REQUIRED: Partial<Record<keyof PromotionFormState, string>> = {
+  name: "Promotion name is required.",
+  benefitValue: "Enter the fixed discount amount.",
+  targets: "Select at least one Product or Variant target.",
+  initialCode: "Add an initial Promotion code.",
+};
+
+/** The app's wording for an SDK form issue on one promotion field. */
+export function promotionIssueMessage(field: keyof PromotionFormState, issue: FormIssue): string {
+  const label = FIELD_LABELS[field] ?? "value";
+  switch (issue.code) {
+    case "required":
+      return REQUIRED[field] ?? "This field is required.";
+    case "too_long":
+      return field === "description"
+        ? "Keep the description to 2,000 characters or fewer."
+        : `Keep the name to ${issue.max ?? 200} characters or fewer.`;
+    case "percent_range":
+      return "Enter a percentage from 0.01 to 100.";
+    case "amount_format":
+      return `Enter ${label} as an amount, for example 25.00.`;
+    case "amount_too_large":
+      return `${label} is too large.`;
+    case "amount_positive":
+      return `${label} must be greater than zero.`;
+    case "amount_non_negative":
+      return `${label} must be zero or greater.`;
+    case "whole_number":
+      return `Enter ${label} as a whole number.`;
+    case "positive":
+      return `${label} must be greater than zero.`;
+    case "quantity_range":
+      return "Enter a whole number from 1 to 100.";
+    case "currency_format":
+      return "Enter a three-letter currency code, for example EGP.";
+    case "code_format":
+      return "Use only letters, numbers, underscores, and hyphens.";
+    case "date_invalid":
+      return `Enter a valid ${label} date and time.`;
+    case "end_before_start":
+      return "End must be after start.";
+    default:
+      return "Check this field.";
+  }
 }
 
-/** Exact decimal-to-minor conversion, with optional zero support for minimum subtotal. */
+/** Percentage text → basis points, or the app's message. */
+export function parsePercent(value: string): number | string {
+  const parsed = parsePercentInput(value);
+  return typeof parsed === "number" ? parsed : promotionIssueMessage("benefitValue", parsed);
+}
+
+/** Exact decimal → minor units (null when blank), or a message naming `label`. */
 export function parsePromotionMoney(
   value: string,
   label: string,
   allowZero: boolean,
 ): number | string | null {
-  const trimmed = value.trim();
-  if (trimmed === "") return null;
-  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(trimmed);
-  if (!match) return `Enter ${label} as an amount, for example 25.00.`;
-  const minor = Number(`${match[1]}${(match[2] ?? "").padEnd(2, "0")}`);
-  if (!Number.isSafeInteger(minor)) return `${label} is too large.`;
-  if (minor < 0 || (!allowZero && minor === 0)) {
-    return `${label} must be ${allowZero ? "zero or greater" : "greater than zero"}.`;
+  const parsed = parseMoneyInput(value, allowZero);
+  if (parsed === null || typeof parsed === "number") return parsed;
+  switch (parsed.code) {
+    case "amount_format":
+      return `Enter ${label} as an amount, for example 25.00.`;
+    case "amount_too_large":
+      return `${label} is too large.`;
+    default:
+      return `${label} must be ${allowZero ? "zero or greater" : "greater than zero"}.`;
   }
-  return minor;
-}
-
-export function parsePercent(value: string): number | string {
-  const trimmed = value.trim();
-  const match = /^(\d{1,3})(?:\.(\d{1,2}))?$/.exec(trimmed);
-  if (!match) return "Enter a percentage from 0.01 to 100.";
-  const basisPoints = Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
-  if (basisPoints < 1 || basisPoints > 10_000) return "Enter a percentage from 0.01 to 100.";
-  return basisPoints;
-}
-
-function parseDate(value: string, label: string): { iso: string | null; error?: string } {
-  const trimmed = value.trim();
-  if (trimmed === "") return { iso: null };
-  const date = new Date(trimmed);
-  if (Number.isNaN(date.getTime())) {
-    return { iso: null, error: `Enter a valid ${label} date and time.` };
-  }
-  return { iso: date.toISOString() };
-}
-
-function codeLimit(state: PromotionFormState): number | string | null {
-  if (state.codeLimitKind === "unlimited") return null;
-  if (state.codeLimitKind === "single") return 1;
-  return parsePositiveInteger(state.codeCustomLimit, "code redemption limit");
 }
 
 export function validatePromotionForm(
   state: PromotionFormState,
   mode: "create" | "edit",
-  economicsLocked = false,
+  options?: ValidatePromotionOptions,
 ): PromotionFormErrors {
   const errors: PromotionFormErrors = {};
-  const name = state.name.trim();
-  if (!name) errors.name = "Promotion name is required.";
-  else if (name.length > 200) errors.name = "Keep the name to 200 characters or fewer.";
-  if (state.description.trim().length > 2000) {
-    errors.description = "Keep the description to 2,000 characters or fewer.";
+  const issues = validatePromotionIssues(state, mode, options);
+  for (const [field, issue] of Object.entries(issues) as [
+    keyof PromotionFormState,
+    FormIssue | undefined,
+  ][]) {
+    if (issue) errors[field] = promotionIssueMessage(field, issue);
   }
-
-  if (mode === "create" || !economicsLocked) {
-    if (state.benefitType === "percentage") {
-      const value = parsePercent(state.benefitValue);
-      if (typeof value === "string") errors.benefitValue = value;
-    } else {
-      const value = parsePromotionMoney(state.benefitValue, "fixed discount", false);
-      if (typeof value === "string" || value === null) {
-        errors.benefitValue =
-          typeof value === "string" ? value : "Enter the fixed discount amount.";
-      }
-      if (!/^[A-Z]{3}$/.test(state.currency.trim().toUpperCase())) {
-        errors.currency = "Enter a three-letter currency code, for example EGP.";
-      }
-    }
-
-    const minimum = parsePromotionMoney(state.minimumSubtotal, "minimum subtotal", true);
-    if (typeof minimum === "string") errors.minimumSubtotal = minimum;
-    const maximum = parsePromotionMoney(state.maximumDiscount, "maximum discount", false);
-    if (typeof maximum === "string") errors.maximumDiscount = maximum;
-  }
-
-  if (mode === "create") {
-    if (state.targetType === "variant_scope" && state.targets.length === 0) {
-      errors.targets = "Select at least one Product or Variant target.";
-    }
-    const globalLimit = parsePositiveInteger(state.globalLimit, "global usage limit");
-    if (typeof globalLimit === "string") errors.globalLimit = globalLimit;
-
-    if (state.activationType === "code") {
-      const code = state.initialCode.trim().toUpperCase();
-      if (!code) errors.initialCode = "Add an initial Promotion code.";
-      else if (!/^[A-Z0-9_-]+$/.test(code)) {
-        errors.initialCode = "Use only letters, numbers, underscores, and hyphens.";
-      }
-      const limit = codeLimit(state);
-      if (typeof limit === "string") errors.codeCustomLimit = limit;
-    }
-  }
-
-  const startsAt = parseDate(state.startsAt, "start");
-  if (startsAt.error) errors.startsAt = startsAt.error;
-  const endsAt = parseDate(state.endsAt, "end");
-  if (endsAt.error) errors.endsAt = endsAt.error;
-  if (
-    startsAt.iso &&
-    endsAt.iso &&
-    new Date(endsAt.iso).getTime() <= new Date(startsAt.iso).getTime()
-  ) {
-    errors.endsAt = "End must be after start.";
-  }
-
   return errors;
 }
 
-function optionalMoney(value: string, label: string, allowZero: boolean): number | null {
-  const parsed = parsePromotionMoney(value, label, allowZero);
-  return typeof parsed === "number" ? parsed : null;
-}
-
-function optionalDate(value: string): string | null {
-  const trimmed = value.trim();
-  return trimmed ? new Date(trimmed).toISOString() : null;
-}
-
-export function buildCreatePromotionRequest(state: PromotionFormState): CreatePromotionRequest {
-  const request: CreatePromotionRequest = {
-    name: state.name.trim(),
-    description: state.description.trim() || null,
-    benefitType: state.benefitType,
-    targetType: state.targetType,
-    activationType: state.activationType,
-    minSubtotalMinor: optionalMoney(state.minimumSubtotal, "minimum subtotal", true),
-    maxDiscountMinor: optionalMoney(state.maximumDiscount, "maximum discount", false),
-    startsAt: optionalDate(state.startsAt),
-    endsAt: optionalDate(state.endsAt),
-    channel: state.channel === "all" ? null : state.channel,
-    brandId: state.brandId || null,
-    branchId: state.branchId || null,
-    globalRedemptionLimit:
-      typeof parsePositiveInteger(state.globalLimit, "global usage limit") === "number"
-        ? (parsePositiveInteger(state.globalLimit, "global usage limit") as number)
-        : null,
-    status: state.status,
-  };
-
-  if (state.benefitType === "percentage") {
-    request.benefitPercentBp = parsePercent(state.benefitValue) as number;
-  } else {
-    request.benefitAmountMinor = optionalMoney(
-      state.benefitValue,
-      "fixed discount",
-      false,
-    ) as number;
-    request.benefitCurrency = state.currency.trim().toUpperCase();
-  }
-  if (state.targetType === "variant_scope") {
-    request.targets = state.targets.map(({ target }) => target);
-  }
-  if (state.activationType === "code") {
-    const limit = codeLimit(state);
-    request.codes = [
-      {
-        code: state.initialCode.trim().toUpperCase(),
-        maxRedemptions: typeof limit === "number" ? limit : null,
-      },
-    ];
-  }
-  return request;
-}
-
-export function buildUpdatePromotionRequest(
-  state: PromotionFormState,
-  detail: PromotionDetail,
-): UpdatePromotionRequest {
-  const request: UpdatePromotionRequest = {
-    name: state.name.trim(),
-    description: state.description.trim() || null,
-    startsAt: optionalDate(state.startsAt),
-    endsAt: optionalDate(state.endsAt),
-  };
-  if (!detail.economicsLocked) {
-    if (detail.benefitType === "percentage") {
-      const benefitPercentBp = parsePercent(state.benefitValue) as number;
-      if (benefitPercentBp !== detail.benefitPercentBp) {
-        request.benefitPercentBp = benefitPercentBp;
-      }
-    } else {
-      const benefitAmountMinor = optionalMoney(
-        state.benefitValue,
-        "fixed discount",
-        false,
-      ) as number;
-      if (benefitAmountMinor !== detail.benefitAmountMinor) {
-        request.benefitAmountMinor = benefitAmountMinor;
-      }
-    }
-    const minSubtotalMinor = optionalMoney(state.minimumSubtotal, "minimum subtotal", true);
-    if (minSubtotalMinor !== detail.minSubtotalMinor) {
-      request.minSubtotalMinor = minSubtotalMinor;
-    }
-    const maxDiscountMinor = optionalMoney(state.maximumDiscount, "maximum discount", false);
-    if (maxDiscountMinor !== detail.maxDiscountMinor) {
-      request.maxDiscountMinor = maxDiscountMinor;
-    }
-    const channel = state.channel === "all" ? null : state.channel;
-    if (channel !== detail.channel) request.channel = channel;
-    const brandId = state.brandId || null;
-    if (brandId !== detail.brandId) request.brandId = brandId;
-    const branchId = state.branchId || null;
-    if (branchId !== detail.branchId) request.branchId = branchId;
-  }
-  return request;
-}
-
 export function promotionDetailToForm(detail: PromotionDetail): PromotionFormState {
-  return {
-    ...EMPTY_PROMOTION_FORM,
-    name: detail.name,
-    description: detail.description ?? "",
-    benefitType: detail.benefitType,
-    benefitValue:
-      detail.benefitType === "percentage"
-        ? formatPercentBasisPoints(detail.benefitPercentBp ?? 0).replace("%", "")
-        : formatMinorToInput(detail.benefitAmountMinor ?? 0),
-    currency: detail.benefitCurrency ?? OPERATING_CURRENCY,
-    targetType: detail.targetType,
-    activationType: detail.activationType,
-    minimumSubtotal:
-      detail.minSubtotalMinor === null ? "" : formatMinorToInput(detail.minSubtotalMinor),
-    maximumDiscount:
-      detail.maxDiscountMinor === null ? "" : formatMinorToInput(detail.maxDiscountMinor),
-    channel: detail.channel ?? "all",
-    brandId: detail.brandId ?? "",
-    branchId: detail.branchId ?? "",
-    startsAt: detail.startsAt ?? "",
-    endsAt: detail.endsAt ?? "",
-    globalLimit: detail.globalRedemptionLimit === null ? "" : String(detail.globalRedemptionLimit),
-    status: detail.status,
-  };
+  return promotionToForm(detail, { currency: OPERATING_CURRENCY });
 }

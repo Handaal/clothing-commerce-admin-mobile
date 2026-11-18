@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { classifyCommerceError, type ClassifiedCommerceError } from "../commerce/errors";
 
@@ -25,8 +25,13 @@ type AsyncAction<T> =
 export function useAsync<T>(producer: () => Promise<T>): {
   state: AsyncState<T>;
   reload: () => void;
+  /** User-initiated refresh (keeps current content visible, spins the pull-to-refresh control). */
+  refresh: () => void;
+  /** True only while a `refresh()` is in flight — never during the initial load. */
+  refreshing: boolean;
 } {
   const [attempt, setAttempt] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const [state, dispatch] = useReducer(
     (_state: AsyncState<T>, action: AsyncAction<T>): AsyncState<T> => {
       switch (action.type) {
@@ -41,15 +46,25 @@ export function useAsync<T>(producer: () => Promise<T>): {
     { status: "loading" },
   );
 
+  const refreshingRef = useRef(false);
   useEffect(() => {
     let active = true;
-    dispatch({ type: "reset" });
+    // A user-initiated refresh keeps the current content on screen; only a cold load resets to the
+    // skeleton/spinner state.
+    if (!refreshingRef.current) dispatch({ type: "reset" });
+    const settle = () => {
+      if (!active) return;
+      refreshingRef.current = false;
+      setRefreshing(false);
+    };
     producer().then(
       (data) => {
         if (active) dispatch({ type: "success", data });
+        settle();
       },
       (error) => {
         if (active) dispatch({ type: "error", error: classifyCommerceError(error) });
+        settle();
       },
     );
     return () => {
@@ -58,6 +73,11 @@ export function useAsync<T>(producer: () => Promise<T>): {
   }, [producer, attempt]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
+  const refresh = useCallback(() => {
+    refreshingRef.current = true;
+    setRefreshing(true);
+    setAttempt((n) => n + 1);
+  }, []);
 
-  return { state, reload };
+  return { state, reload, refresh, refreshing };
 }

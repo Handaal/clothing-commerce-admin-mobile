@@ -95,7 +95,7 @@ describe("Phase 2R Settings preparation", () => {
       <BusinessSettingsScreen adapter={fakeSettingsAdapter()} canRead canManage onBack={noop} />,
     );
     expect(await screen.findByTestId("business-display-name")).toBeTruthy();
-    expect(screen.getByText("Tenant slug · read-only")).toBeTruthy();
+    expect(screen.getByText("Business link name · can't be changed")).toBeTruthy();
     expect(screen.getByText("acme-apparel")).toBeTruthy();
     expect(screen.getByTestId("business-currency-warning")).toBeTruthy();
   });

@@ -14,6 +14,7 @@ import {
   FormSection,
   InfoRow,
   Notice,
+  NumberField,
   PageHeader,
   PrimaryButton,
   ScrollScreen,
@@ -26,12 +27,13 @@ import type { AppIconName } from "../ui/Icon";
 import { useToast } from "../ui/Toast";
 import { useMutation } from "../ui/useMutation";
 import type { PromotionClient } from "./client";
-import { activationLabel, benefitLabel, channelLabel, targetTypeLabel } from "./display";
+import { activationLabel, channelLabel, targetTypeLabel } from "./display";
 import {
   buildCreatePromotionRequest,
   buildUpdatePromotionRequest,
   EMPTY_PROMOTION_FORM,
   promotionDetailToForm,
+  promotionInitialCode,
   validatePromotionForm,
   type PromotionFormErrors,
   type PromotionFormState,
@@ -43,7 +45,13 @@ export type PromotionFormMode = "create" | "edit";
 
 type SubmitIntent =
   | { kind: "create"; request: CreatePromotionRequest }
-  | { kind: "edit"; promotionId: string; request: UpdatePromotionRequest };
+  | {
+      kind: "edit";
+      promotionId: string;
+      request: UpdatePromotionRequest;
+      /** First code when an existing promotion is switched to code activation. */
+      firstCode: { code: string; maxRedemptions: number | null } | null;
+    };
 
 export function PromotionForm({
   mode,
@@ -71,14 +79,23 @@ export function PromotionForm({
   const toast = useToast();
   const { t } = useI18n();
   const producer = useCallback(
-    (intent: SubmitIntent, idempotencyKey: string) =>
-      intent.kind === "create"
-        ? client.createPromotion({ ...intent.request, idempotencyKey })
-        : client.updatePromotion({
+    async (intent: SubmitIntent, idempotencyKey: string) => {
+      if (intent.kind === "create") {
+        return client.createPromotion({ ...intent.request, idempotencyKey });
+      }
+      const updated = await client.updatePromotion({
+        promotionId: intent.promotionId,
+        ...intent.request,
+        idempotencyKey,
+      });
+      return intent.firstCode
+        ? client.createPromotionCode({
             promotionId: intent.promotionId,
-            ...intent.request,
-            idempotencyKey,
-          }),
+            ...intent.firstCode,
+            idempotencyKey: `${idempotencyKey}:code`,
+          })
+        : updated;
+    },
     [client],
   );
   const mutation = useMutation(producer, generateIdempotencyKey, {
@@ -152,7 +169,10 @@ export function PromotionForm({
     mutation.state.status === "error"
       ? describePromotionWriteError(mutation.state.error)
       : undefined;
-  const economicsLocked = initial?.economicsLocked ?? false;
+  // A code promotion needs a first code: always on create, and on edit when it has no active code.
+  const needsFirstCode =
+    form.activationType === "code" &&
+    (!initial || !initial.codes.some((code) => code.status === "active"));
 
   function update<K extends keyof PromotionFormState>(key: K, value: PromotionFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -160,7 +180,7 @@ export function PromotionForm({
   }
 
   function submit() {
-    const nextErrors = validatePromotionForm(form, mode, economicsLocked);
+    const nextErrors = validatePromotionForm(form, mode, { requireInitialCode: needsFirstCode });
     setErrors(nextErrors);
     if (Object.values(nextErrors).some(Boolean)) {
       toast.error(t("common.fixHighlightedSave"));
@@ -173,6 +193,7 @@ export function PromotionForm({
             kind: "edit",
             promotionId: (initial as PromotionDetail).id,
             request: buildUpdatePromotionRequest(form, initial as PromotionDetail),
+            firstCode: needsFirstCode ? promotionInitialCode(form) : null,
           },
     );
   }
@@ -186,6 +207,13 @@ export function PromotionForm({
         icon={mode === "create" ? "ticket-confirmation-outline" : "pencil-outline"}
         onBack={onBack}
       />
+
+      {initial && initial.redemptionCount > 0 ? (
+        <Notice
+          testID="promotion-used-notice"
+          message={t("promoForm.usedNotice", { count: initial.redemptionCount })}
+        />
+      ) : null}
 
       <Section title={t("promoForm.sectionBasics")} icon="information-outline">
         <TextField
@@ -205,18 +233,18 @@ export function PromotionForm({
           testID="promotion-description"
         />
         <FieldError value={errors.description} />
+        <SelectField
+          label={t("promoForm.activation")}
+          options={[
+            { value: "automatic", label: t("promoForm.actAutomatic") },
+            { value: "code", label: t("promoForm.actCode") },
+          ]}
+          selected={form.activationType}
+          onSelect={(value) => update("activationType", value as "automatic" | "code")}
+          testIDPrefix="promotion-activation"
+        />
         {mode === "create" ? (
           <>
-            <SelectField
-              label={t("promoForm.activation")}
-              options={[
-                { value: "automatic", label: t("promoForm.actAutomatic") },
-                { value: "code", label: t("promoForm.actCode") },
-              ]}
-              selected={form.activationType}
-              onSelect={(value) => update("activationType", value as "automatic" | "code")}
-              testIDPrefix="promotion-activation"
-            />
             <SelectField
               label={t("promoForm.initialLifecycle")}
               options={[
@@ -228,39 +256,43 @@ export function PromotionForm({
               testIDPrefix="promotion-status"
             />
           </>
-        ) : (
-          <InfoRow label={t("promoForm.activation")} value={activationLabel(form.activationType)} />
-        )}
+        ) : null}
       </Section>
 
       <Section title={t("promoForm.sectionBenefit")} icon="sale-outline">
-        {mode === "create" ? (
-          <SelectField
-            label={t("promoForm.discountType")}
-            options={[
-              { value: "percentage", label: t("promoForm.discountPercentage") },
-              { value: "fixed_amount", label: t("promoForm.discountFixed") },
-            ]}
-            selected={form.benefitType}
-            onSelect={(value) => {
-              update("benefitType", value as "percentage" | "fixed_amount");
-              update("benefitValue", "");
-            }}
-            testIDPrefix="promotion-benefit-type"
-          />
-        ) : (
-          <InfoRow
-            label={t("promoForm.discountType")}
-            value={benefitLabel(initial as PromotionDetail)}
-          />
-        )}
-        {economicsLocked ? (
-          <Notice
-            testID="promotion-economics-locked"
-            tone="warning"
-            title={t("promoForm.economicsLockedTitle")}
-            message={t("promoForm.economicsLockedMsg")}
-          />
+        <SelectField
+          label={t("promoForm.discountType")}
+          options={[
+            { value: "percentage", label: t("promoForm.discountPercentage") },
+            { value: "fixed_amount", label: t("promoForm.discountFixed") },
+            { value: "buy_x_get_y", label: t("promoForm.discountBxgy") },
+          ]}
+          selected={form.benefitType}
+          onSelect={(value) => {
+            update("benefitType", value as PromotionFormState["benefitType"]);
+            update("benefitValue", "");
+            if (value === "buy_x_get_y") update("channel", "online");
+          }}
+          testIDPrefix="promotion-benefit-type"
+        />
+        {form.benefitType === "buy_x_get_y" ? (
+          <>
+            <Body>{t("promoForm.bxgyHelp")}</Body>
+            <NumberField
+              label={t("promoForm.buyQuantity")}
+              value={form.buyQuantity}
+              onChangeText={(value) => update("buyQuantity", value)}
+              testID="promotion-buy-quantity"
+            />
+            <FieldError value={errors.buyQuantity} testID="promotion-buy-error" />
+            <NumberField
+              label={t("promoForm.getQuantity")}
+              value={form.getQuantity}
+              onChangeText={(value) => update("getQuantity", value)}
+              testID="promotion-get-quantity"
+            />
+            <FieldError value={errors.getQuantity} testID="promotion-get-error" />
+          </>
         ) : (
           <>
             <TextField
@@ -287,21 +319,17 @@ export function PromotionForm({
       </Section>
 
       <Section title={t("promoForm.sectionEligibility")} icon="target">
-        {mode === "create" ? (
-          <SelectField
-            label={t("promoForm.target")}
-            options={[
-              { value: "order", label: t("promoForm.targetOrder") },
-              { value: "variant_scope", label: t("promoForm.targetScope") },
-            ]}
-            selected={form.targetType}
-            onSelect={(value) => update("targetType", value as "order" | "variant_scope")}
-            testIDPrefix="promotion-target-type"
-          />
-        ) : (
-          <InfoRow label={t("promoForm.target")} value={targetTypeLabel(form.targetType)} />
-        )}
-        {mode === "create" && form.targetType === "variant_scope" ? (
+        <SelectField
+          label={t("promoForm.target")}
+          options={[
+            { value: "order", label: t("promoForm.targetOrder") },
+            { value: "variant_scope", label: t("promoForm.targetScope") },
+          ]}
+          selected={form.targetType}
+          onSelect={(value) => update("targetType", value as "order" | "variant_scope")}
+          testIDPrefix="promotion-target-type"
+        />
+        {form.targetType === "variant_scope" ? (
           context.access.catalog.canRead ? (
             <>
               <PromotionTargetSelector
@@ -315,24 +343,26 @@ export function PromotionForm({
             <Body testID="promotion-target-catalog-denied">{t("promoForm.catalogDenied")}</Body>
           )
         ) : null}
-        {!economicsLocked ? (
-          <>
-            <TextField
-              label={t("promoForm.minSubtotal")}
-              value={form.minimumSubtotal}
-              onChangeText={(value) => update("minimumSubtotal", value)}
-              placeholder="50.00"
-              testID="promotion-minimum-subtotal"
-            />
-            <FieldError value={errors.minimumSubtotal} />
-            <TextField
-              label={t("promoForm.maxDiscount")}
-              value={form.maximumDiscount}
-              onChangeText={(value) => update("maximumDiscount", value)}
-              placeholder="100.00"
-              testID="promotion-maximum-discount"
-            />
-            <FieldError value={errors.maximumDiscount} />
+        <>
+          <TextField
+            label={t("promoForm.minSubtotal")}
+            value={form.minimumSubtotal}
+            onChangeText={(value) => update("minimumSubtotal", value)}
+            placeholder="50.00"
+            testID="promotion-minimum-subtotal"
+          />
+          <FieldError value={errors.minimumSubtotal} />
+          <TextField
+            label={t("promoForm.maxDiscount")}
+            value={form.maximumDiscount}
+            onChangeText={(value) => update("maximumDiscount", value)}
+            placeholder="100.00"
+            testID="promotion-maximum-discount"
+          />
+          <FieldError value={errors.maximumDiscount} />
+          {form.benefitType === "buy_x_get_y" ? (
+            <InfoRow label={t("promoForm.channel")} value={t("promoForm.chanOnline")} />
+          ) : (
             <SelectField
               label={t("promoForm.channel")}
               options={[
@@ -344,43 +374,36 @@ export function PromotionForm({
               onSelect={(value) => update("channel", value as PromotionFormState["channel"])}
               testIDPrefix="promotion-channel"
             />
-            <SelectField
-              label={t("promoForm.brandRestriction")}
-              options={brandOptions}
-              selected={form.brandId}
-              onSelect={(value) => update("brandId", value)}
-              testIDPrefix="promotion-brand"
-            />
-            <SelectField
-              label={t("promoForm.branchRestriction")}
-              options={branchOptions}
-              selected={form.branchId}
-              onSelect={(value) => update("branchId", value)}
-              testIDPrefix="promotion-branch"
-            />
-          </>
-        ) : null}
+          )}
+          <SelectField
+            label={t("promoForm.brandRestriction")}
+            options={brandOptions}
+            selected={form.brandId}
+            onSelect={(value) => update("brandId", value)}
+            testIDPrefix="promotion-brand"
+          />
+          <SelectField
+            label={t("promoForm.branchRestriction")}
+            options={branchOptions}
+            selected={form.branchId}
+            onSelect={(value) => update("branchId", value)}
+            testIDPrefix="promotion-branch"
+          />
+        </>
       </Section>
 
       <Section title={t("promoForm.sectionUsage")} icon="counter">
-        {mode === "create" ? (
-          <>
-            <TextField
-              label={t("promoForm.globalLimit")}
-              value={form.globalLimit}
-              onChangeText={(value) => update("globalLimit", value)}
-              placeholder={t("promoForm.unlimited")}
-              testID="promotion-global-limit"
-            />
-            <FieldError value={errors.globalLimit} />
-          </>
-        ) : (
-          <InfoRow
-            label={t("promoForm.globalLimitRow")}
-            value={form.globalLimit ? form.globalLimit : t("promoForm.unlimited")}
+        <>
+          <TextField
+            label={t("promoForm.globalLimit")}
+            value={form.globalLimit}
+            onChangeText={(value) => update("globalLimit", value)}
+            placeholder={t("promoForm.unlimited")}
+            testID="promotion-global-limit"
           />
-        )}
-        {mode === "create" && form.activationType === "code" ? (
+          <FieldError value={errors.globalLimit} />
+        </>
+        {needsFirstCode ? (
           <>
             <TextField
               label={t("promoForm.initialCode")}
@@ -442,7 +465,11 @@ export function PromotionForm({
         <InfoRow label={t("promoForm.activation")} value={activationLabel(form.activationType)} />
         <InfoRow
           label={t("promoForm.benefit")}
-          value={`${form.benefitValue || "—"}${form.benefitType === "percentage" ? "%" : ` ${form.currency}`}`}
+          value={
+            form.benefitType === "buy_x_get_y"
+              ? t("promoBenefit.buyXGetY", { buy: form.buyQuantity, get: form.getQuantity })
+              : `${form.benefitValue || "—"}${form.benefitType === "percentage" ? "%" : ` ${form.currency}`}`
+          }
         />
         <InfoRow label={t("promoForm.target")} value={targetTypeLabel(form.targetType)} />
         <InfoRow

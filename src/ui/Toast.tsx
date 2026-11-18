@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useI18n } from "../i18n";
 import { AppIcon, type AppIconName } from "./Icon";
-import { colors, radius, shadows, spacing, typography } from "./theme";
+import { radius, shadows, spacing, typography } from "./theme";
+import { createThemedStyles } from "./useTheme";
 
 export type ToastTone = "success" | "error" | "info" | "warning";
 
@@ -147,13 +148,6 @@ const toneIcon: Record<ToastTone, AppIconName> = {
   warning: "alert",
 };
 
-const toneColor: Record<ToastTone, string> = {
-  success: colors.success,
-  error: colors.danger,
-  info: colors.info,
-  warning: colors.warning,
-};
-
 // react-native-web renders `dataSet` to `data-*`; the global stylesheet (app/+html.tsx) animates
 // `[data-toast]` in and `[data-toast-leaving]` out. RN types don't model dataSet.
 const toastEnter = { dataSet: { toast: "in" } } as unknown as ViewProps;
@@ -166,6 +160,7 @@ function ToastViewport({
   toasts: ToastItem[];
   onDismiss: (id: string) => void;
 }) {
+  const { styles } = useStyles();
   const insets = useSafeAreaInsets();
   if (toasts.length === 0) return null;
   return (
@@ -181,6 +176,7 @@ function ToastViewport({
 }
 
 function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => void }) {
+  const { toneColor, styles, toneSoft, colors } = useStyles();
   const { isRTL, dir } = useI18n();
   const tone = toast.tone ?? "info";
   const accent = toneColor[tone];
@@ -229,62 +225,72 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
   );
 }
 
-const toneSoft: Record<ToastTone, string> = {
-  success: colors.successSoft,
-  error: colors.dangerSoft,
-  info: colors.infoSoft,
-  warning: colors.warningSoft,
-};
+const useStyles = createThemedStyles((colors) => {
+  const toneColor: Record<ToastTone, string> = {
+    success: colors.success,
+    error: colors.danger,
+    info: colors.info,
+    warning: colors.warning,
+  };
 
-const styles = StyleSheet.create({
-  viewport: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    zIndex: 1000,
-  },
-  toast: {
-    width: "100%",
-    maxWidth: 460,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderStartWidth: 4,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    backgroundColor: colors.surfaceRaised,
-    ...shadows.raised,
-  },
-  iconChip: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.sm,
-  },
-  copy: { flex: 1, gap: 3, paddingTop: 1 },
-  title: { color: colors.ink, ...typography.cardTitle },
-  message: { color: colors.inkMuted, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  action: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    alignSelf: "flex-start",
-    marginTop: spacing.xs,
-    paddingVertical: 4,
-  },
-  actionLabel: { fontSize: 14, fontWeight: "800" },
-  close: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.sm,
-  },
+  const toneSoft: Record<ToastTone, string> = {
+    success: colors.successSoft,
+    error: colors.dangerSoft,
+    info: colors.infoSoft,
+    warning: colors.warningSoft,
+  };
+
+  const styles = StyleSheet.create({
+    viewport: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      alignItems: "center",
+      paddingHorizontal: spacing.lg,
+      gap: spacing.sm,
+      zIndex: 1000,
+    },
+    toast: {
+      width: "100%",
+      maxWidth: 460,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderStartWidth: 4,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      backgroundColor: colors.surfaceRaised,
+      ...shadows.raised,
+    },
+    iconChip: {
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.sm,
+    },
+    copy: { flex: 1, gap: 3, paddingTop: 1 },
+    title: { color: colors.ink, ...typography.cardTitle },
+    message: { color: colors.inkMuted, ...typography.bodySmall, fontWeight: "500" },
+    action: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      alignSelf: "flex-start",
+      marginTop: spacing.xs,
+      paddingVertical: 4,
+    },
+    actionLabel: { ...typography.bodySmall, fontWeight: "800" },
+    close: {
+      width: 28,
+      height: 28,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.sm,
+    },
+  });
+  return { colors, toneColor, toneSoft, styles };
 });

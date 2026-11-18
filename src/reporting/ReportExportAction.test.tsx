@@ -62,7 +62,7 @@ describe("ReportExportAction", () => {
     );
     fireEvent.click(screen.getByTestId("report-export-sales-products"));
     expect((await screen.findByTestId("report-export-error")).textContent).toContain(
-      "Check your connection",
+      "Check your internet",
     );
     expect(screen.queryByText(/raw network failure/)).toBeNull();
   });
@@ -94,9 +94,9 @@ describe("export error UX", () => {
       "selected date range is too large",
     ],
     [new ApiHttpError("raw", 413, "EXPORT_TOO_MANY_ROWS", null), "contains too many rows"],
-    [new ApiHttpError("raw", 400, "INVALID_REPORT_EXPORT", null), "request is invalid"],
+    [new ApiHttpError("raw", 400, "INVALID_REPORT_EXPORT", null), "couldn't be created"],
     [new ApiHttpError("raw", 401, "UNAUTHENTICATED", null), "session has expired"],
-    [new ApiHttpError("raw", 500, "INTERNAL_ERROR", null), "could not create"],
+    [new ApiHttpError("raw", 500, "INTERNAL_ERROR", null), "couldn't create"],
     [new ApiContractError("raw"), "could not be validated"],
   ])("maps canonical failures to compact guidance", (error, expected) => {
     const message = exportErrorMessage(error);

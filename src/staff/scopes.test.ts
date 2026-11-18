@@ -18,7 +18,7 @@ const branch: AccessScopeSummary = {
 
 describe("accessScopeKindLabel", () => {
   it("labels each kind", () => {
-    expect(accessScopeKindLabel("tenant")).toBe("Tenant-wide");
+    expect(accessScopeKindLabel("tenant")).toBe("Whole business");
     expect(accessScopeKindLabel("branch")).toBe("Branch");
     expect(accessScopeKindLabel("location")).toBe("Location");
   });
@@ -33,7 +33,7 @@ describe("isTenantWideScope", () => {
 
 describe("accessScopeTargetLines", () => {
   it("renders a tenant-wide scope as a single Tenant-wide line", () => {
-    expect(accessScopeTargetLines(tenantWide)).toEqual(["Tenant-wide"]);
+    expect(accessScopeTargetLines(tenantWide)).toEqual(["Whole business"]);
   });
 
   it("renders the adapter-provided target lines verbatim for a narrower scope", () => {

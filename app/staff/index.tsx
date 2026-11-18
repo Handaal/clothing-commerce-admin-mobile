@@ -26,6 +26,7 @@ export default function StaffRoute() {
       canManage={canManage}
       onOpenStaff={(membershipId) => router.push(`/staff/${membershipId}`)}
       onAddStaff={() => router.push("/staff/new")}
+      onOpenPosAccounts={() => router.push("/staff/pos-accounts")}
       onBack={() => router.back()}
     />
   );
