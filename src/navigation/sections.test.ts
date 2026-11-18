@@ -23,6 +23,7 @@ describe("management section registry", () => {
       "dashboard",
       "products",
       "collections",
+      "categories",
       "orders",
       "customers",
       "storefront",

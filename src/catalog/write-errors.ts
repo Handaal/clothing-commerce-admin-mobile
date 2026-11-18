@@ -90,6 +90,28 @@ export function describeCatalogWriteError(
         recovery: "refresh",
         isNotPublishable: false,
       };
+    case "VARIANT_OPTIONS_CONFLICT":
+      return {
+        heading: t("catWriteErr.optionsConflict"),
+        message: t("catWriteErr.optionsConflictMsg"),
+        recovery: "edit",
+        isNotPublishable: false,
+      };
+    case "CATEGORY_CYCLE":
+      return {
+        heading: t("catWriteErr.categoryCycle"),
+        message: t("catWriteErr.categoryCycleMsg"),
+        recovery: "edit",
+        isNotPublishable: false,
+      };
+    case "CATEGORY_NOT_FOUND":
+    case "OPTION_VALUE_NOT_FOUND":
+      return {
+        heading: t("catWriteErr.changedElsewhere"),
+        message: t("catWriteErr.changedElsewhereMsg"),
+        recovery: "refresh",
+        isNotPublishable: false,
+      };
     case "PRODUCT_NOT_FOUND":
       return {
         heading: t("catWriteErr.productNotFound"),

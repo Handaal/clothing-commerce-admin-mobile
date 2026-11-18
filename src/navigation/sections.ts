@@ -12,6 +12,7 @@ export type ManagementSectionId =
   | "dashboard"
   | "products"
   | "collections"
+  | "categories"
   | "orders"
   | "inventory"
   | "customers"
@@ -28,6 +29,7 @@ export type ManagementRoute =
   | "/"
   | "/products"
   | "/collections"
+  | "/categories"
   | "/orders"
   | "/inventory"
   | "/customers"
@@ -119,6 +121,17 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.collections.desc",
     icon: "shape-outline",
     route: "/collections",
+    group: "catalog",
+    visible: (context) => context.access.catalog.canRead,
+  },
+  {
+    id: "categories",
+    label: "Categories",
+    description: "Website menu: Men, Women and product types.",
+    labelKey: "section.categories.label",
+    descriptionKey: "section.categories.desc",
+    icon: "file-tree-outline",
+    route: "/categories",
     group: "catalog",
     visible: (context) => context.access.catalog.canRead,
   },

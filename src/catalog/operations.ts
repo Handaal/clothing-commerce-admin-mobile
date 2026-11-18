@@ -63,10 +63,39 @@ export interface SetProductStatusArgs {
   archiveReason?: string;
 }
 
+export interface VariantOptionEntry {
+  name: string;
+  value: string;
+}
+
 export interface CreateVariantArgs {
   productId: string;
   sku: string;
   displayName?: string;
+  /** Option values (e.g. Size M, Colour Black); the server creates options on first use. */
+  options?: VariantOptionEntry[];
+}
+
+export interface SetVariantOptionsArgs {
+  productId: string;
+  variantId: string;
+  options: VariantOptionEntry[];
+}
+
+export interface UpdateOptionValuesArgs {
+  productId: string;
+  values: { valueId: string; swatchHex: string | null }[];
+}
+
+export interface SetProductCategoriesArgs {
+  productId: string;
+  categoryIds: string[];
+}
+
+export interface CategoryArgs {
+  parentId: string | null;
+  name: string;
+  slug: string;
 }
 
 export interface SetVariantPriceArgs {
@@ -121,6 +150,58 @@ export function createVariant(
   idempotencyKey: string,
 ): Promise<CreateVariantResponse> {
   return client.createVariant({ ...args, idempotencyKey });
+}
+
+export type VariantOptionsClient = Pick<TenantCommerceClient, "setVariantOptions">;
+export type OptionValuesClient = Pick<TenantCommerceClient, "updateOptionValues">;
+export type ProductCategoriesClient = Pick<TenantCommerceClient, "setProductCategories">;
+export type CategoryWriteClient = Pick<
+  TenantCommerceClient,
+  "createCategory" | "updateCategory" | "setCategoryStatus"
+>;
+
+export function setVariantOptions(
+  client: VariantOptionsClient,
+  args: SetVariantOptionsArgs,
+  idempotencyKey: string,
+) {
+  return client.setVariantOptions({ ...args, idempotencyKey });
+}
+
+export function updateOptionValues(
+  client: OptionValuesClient,
+  args: UpdateOptionValuesArgs,
+  idempotencyKey: string,
+) {
+  return client.updateOptionValues({ ...args, idempotencyKey });
+}
+
+export function setProductCategories(
+  client: ProductCategoriesClient,
+  args: SetProductCategoriesArgs,
+  idempotencyKey: string,
+) {
+  return client.setProductCategories({ ...args, idempotencyKey });
+}
+
+export function createCategory(client: CategoryWriteClient, args: CategoryArgs, key: string) {
+  return client.createCategory({ ...args, idempotencyKey: key });
+}
+
+export function updateCategory(
+  client: CategoryWriteClient,
+  args: CategoryArgs & { categoryId: string },
+  key: string,
+) {
+  return client.updateCategory({ ...args, idempotencyKey: key });
+}
+
+export function setCategoryStatus(
+  client: CategoryWriteClient,
+  args: { categoryId: string; status: "active" | "archived" },
+  key: string,
+) {
+  return client.setCategoryStatus({ ...args, idempotencyKey: key });
 }
 
 export function setVariantPrice(
@@ -222,4 +303,45 @@ export function validateSku(sku: string): string | null {
   if (trimmed === "") return t("validate.sku");
   if (trimmed.length > MAX_SKU_LENGTH) return t("validate.skuLength", { max: MAX_SKU_LENGTH });
   return null;
+}
+
+const MAX_OPTION_TEXT = 60;
+
+/**
+ * Option rows typed by the admin: rows without a value are dropped, names must be distinct, and both parts are
+ * bounded like the server contract. Returns the cleaned entries or the first problem.
+ */
+export function cleanOptionEntries(rows: readonly VariantOptionEntry[]): {
+  entries: VariantOptionEntry[];
+  problem: string | null;
+} {
+  const entries = rows
+    .map((row) => ({ name: row.name.trim(), value: row.value.trim() }))
+    // Names are prefilled from the product's dimensions, so a row without a value is simply unused.
+    .filter((row) => row.value !== "");
+  for (const row of entries) {
+    if (row.name === "" || row.value === "") return { entries, problem: t("validate.optionBoth") };
+    if (row.name.length > MAX_OPTION_TEXT || row.value.length > MAX_OPTION_TEXT) {
+      return { entries, problem: t("validate.optionLength", { max: MAX_OPTION_TEXT }) };
+    }
+  }
+  if (new Set(entries.map((row) => row.name.toLowerCase())).size !== entries.length) {
+    return { entries, problem: t("validate.optionDistinct") };
+  }
+  if (entries.length > 3) return { entries, problem: t("validate.optionMax") };
+  return { entries, problem: null };
+}
+
+/** "#AbC123" / "abc123" → "#abc123"; blank → null; anything else is a problem. */
+export function normalizeSwatchHex(input: string): { hex: string | null; problem: string | null } {
+  const trimmed = input.trim();
+  if (trimmed === "") return { hex: null, problem: null };
+  const withHash = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  if (!/^#[0-9a-fA-F]{6}$/.test(withHash)) return { hex: null, problem: t("validate.swatch") };
+  return { hex: withHash.toLowerCase(), problem: null };
+}
+
+/** True for option names that represent colour (drives the swatch editor). */
+export function isColourName(name: string): boolean {
+  return /^(colou?r|لون)$/iu.test(name.trim());
 }

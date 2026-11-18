@@ -575,6 +575,20 @@ with **no** accessible brand, authoring is disabled (no guessed brand id).
 | `IDEMPOTENCY_CONFLICT`, auth (401), forbidden (403)                                                              | none             |
 | network / 5xx (ambiguous)                                                                                        | retry (same key) |
 
+## Website options and categories (SDK 0.44)
+
+- **Variant options.** "Add variant" takes option rows (prefilled with the product's dimensions, e.g.
+  Size, Colour); rows without a value are ignored. "Change variant options" edits an existing variant.
+  The server creates options/values on first use and refuses two variants with the same selection
+  (`VARIANT_OPTIONS_CONFLICT`).
+- **Colours.** The product's Colours section sets each colour value's swatch (`#rrggbb`, presets or typed)
+  shown as dots/swatches on the website.
+- **Categories.** Catalog → Categories (`app/categories.tsx`, `src/categories/CategoriesScreen.tsx`) manages
+  the tree (top level = Men/Women, children = product types): create, rename, re-parent, archive. A
+  product's Categories section picks where it appears. Cycles are rejected by the server (`CATEGORY_CYCLE`).
+- Shared write-error UI lives in `src/products/catalog-write-ui.tsx`; the editors in
+  `src/products/ProductOptionsSection.tsx`.
+
 ## Inventory operations (Phase 2G)
 
 Three authorized write operations extend the Inventory surface

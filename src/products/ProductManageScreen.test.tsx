@@ -38,6 +38,10 @@ const mocks = vi.hoisted(() => ({
   createProductMediaUploadIntent: vi.fn(),
   registerProductMedia: vi.fn(),
   archiveProductMedia: vi.fn(),
+  setVariantOptions: vi.fn(),
+  updateOptionValues: vi.fn(),
+  listCategories: vi.fn(),
+  setProductCategories: vi.fn(),
 }));
 
 vi.mock("@clerk/expo", () => ({
@@ -319,5 +323,111 @@ describe("ProductManageScreen", () => {
     renderScreen();
     expect(await screen.findByText("No connection")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
+  });
+
+  it("creates a variant with its size and colour options", async () => {
+    mocks.createVariant.mockResolvedValue(createVariantResponse());
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-variants"));
+    fireEvent.change(screen.getByTestId("variant-sku"), { target: { value: "LS-001-L-BLK" } });
+    fireEvent.change(screen.getByTestId("variant-option-value-0"), { target: { value: "L" } });
+    fireEvent.click(screen.getByTestId("variant-option-add"));
+    fireEvent.change(screen.getByTestId("variant-option-name-1"), { target: { value: "Colour" } });
+    fireEvent.change(screen.getByTestId("variant-option-value-1"), { target: { value: "Black" } });
+    fireEvent.click(screen.getByTestId("variant-submit"));
+    await waitFor(() =>
+      expect(mocks.createVariant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: PRODUCT_A,
+          sku: "LS-001-L-BLK",
+          options: [
+            { name: "Size", value: "L" },
+            { name: "Colour", value: "Black" },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("rejects duplicate option names before calling the API", async () => {
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-variants"));
+    fireEvent.change(screen.getByTestId("variant-sku"), { target: { value: "LS-001-X" } });
+    fireEvent.change(screen.getByTestId("variant-option-value-0"), { target: { value: "L" } });
+    fireEvent.click(screen.getByTestId("variant-option-add"));
+    fireEvent.change(screen.getByTestId("variant-option-name-1"), { target: { value: "size" } });
+    fireEvent.change(screen.getByTestId("variant-option-value-1"), { target: { value: "XL" } });
+    fireEvent.click(screen.getByTestId("variant-submit"));
+    expect(await screen.findByText("Each option name can only be used once.")).toBeTruthy();
+    expect(mocks.createVariant).not.toHaveBeenCalled();
+  });
+
+  it("saves a colour swatch chosen from the presets", async () => {
+    mocks.getProduct.mockResolvedValue(
+      productDetail({
+        options: [
+          {
+            id: "88888888-8888-4888-8888-888888888888",
+            name: "Colour",
+            values: [
+              { id: "99999999-9999-4999-8999-999999999999", value: "Black", swatchHex: null },
+            ],
+          },
+        ],
+      }),
+    );
+    mocks.updateOptionValues.mockResolvedValue({ productId: PRODUCT_A, updatedCount: 1 });
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-colours"));
+    fireEvent.click(screen.getByTestId("swatch-99999999-9999-4999-8999-999999999999-1a1a1a"));
+    fireEvent.click(screen.getByTestId("swatch-submit"));
+    await waitFor(() =>
+      expect(mocks.updateOptionValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: PRODUCT_A,
+          values: [{ valueId: "99999999-9999-4999-8999-999999999999", swatchHex: "#1a1a1a" }],
+        }),
+      ),
+    );
+  });
+
+  it("puts the product in the chosen categories", async () => {
+    mocks.listCategories.mockResolvedValue({
+      categories: [
+        {
+          id: "c1000000-0000-4000-8000-000000000001",
+          parentId: null,
+          name: "Men",
+          slug: "men",
+          description: null,
+          position: 0,
+          status: "active",
+          productCount: 0,
+        },
+        {
+          id: "c1000000-0000-4000-8000-000000000002",
+          parentId: "c1000000-0000-4000-8000-000000000001",
+          name: "Shirts",
+          slug: "men-shirts",
+          description: null,
+          position: 0,
+          status: "active",
+          productCount: 0,
+        },
+      ],
+    });
+    mocks.setProductCategories.mockResolvedValue({ productId: PRODUCT_A, categoryCount: 1 });
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-categories"));
+    fireEvent.click(await screen.findByTestId("pc-men-shirts"));
+    fireEvent.click(screen.getByTestId("pc-submit"));
+    await waitFor(() =>
+      expect(mocks.setProductCategories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: PRODUCT_A,
+          categoryIds: ["c1000000-0000-4000-8000-000000000002"],
+        }),
+      ),
+    );
   });
 });

@@ -1,5 +1,5 @@
 import type { ProductDetailResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -18,6 +18,7 @@ import {
 } from "../catalog/media";
 import {
   archiveProductMedia,
+  cleanOptionEntries,
   createVariant,
   publishProduct,
   registerProductMedia,
@@ -31,9 +32,9 @@ import {
   validateSlug,
   validateStyleCode,
   type ProductStatus,
+  type VariantOptionEntry,
 } from "../catalog/operations";
 import { formatMinorToInput, parseAmountToMinor } from "../catalog/money";
-import { describeCatalogWriteError } from "../catalog/write-errors";
 import { OPERATING_CURRENCY } from "../commerce/currency";
 import { classifyCommerceError } from "../commerce/errors";
 import { useI18n } from "../i18n";
@@ -65,7 +66,15 @@ import { radius, spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { useToast } from "../ui/Toast";
-import { useMutation, type Mutation, type MutationState } from "../ui/useMutation";
+import { useMutation } from "../ui/useMutation";
+import { CatalogWriteError, useOnSuccess } from "./catalog-write-ui";
+import {
+  OptionRowsField,
+  optionRowsFor,
+  ProductCategoriesForm,
+  SwatchesForm,
+  VariantOptionsForm,
+} from "./ProductOptionsSection";
 import { errorHeading, formatMoneyMinor, isRetryable } from "./display";
 
 export interface ProductManageScreenProps {
@@ -139,7 +148,19 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
   return <ProductManage {...props} client={client} data={state.data} reload={reload} />;
 }
 
-type Section = "details" | "variants" | "media" | "lifecycle";
+type Section = "details" | "variants" | "colours" | "categories" | "media" | "lifecycle";
+
+/** "M · Black" from the variant's selected option values, or null when it has none. */
+function variantOptionLabel(data: ProductDetailResponse, variantId: string): string | null {
+  const variant = data.variants.find((v) => v.id === variantId);
+  const values = (variant?.optionValues ?? [])
+    .map((entry) =>
+      data.options.find((o) => o.id === entry.optionId)?.values.find((v) => v.id === entry.valueId),
+    )
+    .filter((value): value is NonNullable<typeof value> => value !== undefined)
+    .map((value) => value.value);
+  return values.length > 0 ? values.join(" · ") : null;
+}
 
 function ProductManage({
   productId,
@@ -262,6 +283,39 @@ function ProductManage({
       ) : null}
 
       <SectionTab
+        label={t("po.sectionColours")}
+        description={t("po.sectionColoursDesc")}
+        icon="palette-outline"
+        testID="section-colours"
+        active={section === "colours"}
+        onPress={() => setSection(section === "colours" ? null : "colours")}
+      />
+      {section === "colours" ? (
+        <Surface style={productStyles.expandedSection}>
+          <SwatchesForm client={client} data={data} generateKey={generateKey} reload={reload} />
+        </Surface>
+      ) : null}
+
+      <SectionTab
+        label={t("po.sectionCategories")}
+        description={t("po.sectionCategoriesDesc")}
+        icon="file-tree-outline"
+        testID="section-categories"
+        active={section === "categories"}
+        onPress={() => setSection(section === "categories" ? null : "categories")}
+      />
+      {section === "categories" ? (
+        <Surface style={productStyles.expandedSection}>
+          <ProductCategoriesForm
+            client={client}
+            data={data}
+            generateKey={generateKey}
+            reload={reload}
+          />
+        </Surface>
+      ) : null}
+
+      <SectionTab
         label={t("pm.media")}
         description={t("pm.mediaDesc")}
         icon="image-multiple-outline"
@@ -334,66 +388,6 @@ function SectionTab({
 }
 
 /** Run a callback once when a mutation transitions to success (used to re-read the product). */
-function useOnSuccess<T>(state: MutationState<T>, onSuccess: (data: T) => void) {
-  const latest = useRef(onSuccess);
-  useEffect(() => {
-    latest.current = onSuccess;
-  });
-  useEffect(() => {
-    if (state.status === "success") latest.current(state.data);
-  }, [state]);
-}
-
-/**
- * Shared error panel for catalog writes. `refresh` recovery re-reads the product (state drift); `retry`
- * reuses the same idempotency key (ambiguous outcome); `edit`/`none` just dismiss so the manager can
- * correct inputs and submit a genuinely new operation.
- */
-function CatalogWriteError<TArgs, TResult>({
-  state,
-  mutation,
-  onRefresh,
-  testID,
-}: {
-  state: Extract<MutationState<TResult>, { status: "error" }>;
-  mutation: Mutation<TArgs, TResult>;
-  onRefresh: () => void;
-  testID?: string;
-}) {
-  const { t } = useI18n();
-  const described = describeCatalogWriteError(state.error);
-  return (
-    <Notice
-      tone="danger"
-      title={described.heading}
-      message={described.message}
-      testID={testID ?? "write-error"}
-      action={
-        described.recovery === "retry" ? (
-          <TextButton
-            label={t("common.retry")}
-            icon="refresh"
-            testID="write-retry"
-            onPress={() => mutation.retry()}
-          />
-        ) : described.recovery === "refresh" ? (
-          <TextButton
-            label={t("pm.refreshProduct")}
-            icon="refresh"
-            testID="write-refresh"
-            onPress={() => {
-              mutation.reset();
-              onRefresh();
-            }}
-          />
-        ) : (
-          <TextButton label={t("common.dismiss")} icon="close" onPress={() => mutation.reset()} />
-        )
-      }
-    />
-  );
-}
-
 // ---------------------------------------------------------------------------------------------------
 // Publication
 // ---------------------------------------------------------------------------------------------------
@@ -634,7 +628,7 @@ function VariantsSection({
 }) {
   const { productStyles, colors } = useStyles();
   const { t } = useI18n();
-  const { product, variants, prices } = data;
+  const { variants, prices } = data;
   const priceByVariant = useMemo(() => {
     const map = new Map<string, { currency: string; amountMinor: number }>();
     for (const price of prices) {
@@ -670,6 +664,9 @@ function VariantsSection({
                   </Text>
                   <Badge label={variant.status} />
                 </View>
+                {variantOptionLabel(data, variant.id) ? (
+                  <InfoRow label={t("po.options")} value={variantOptionLabel(data, variant.id)!} />
+                ) : null}
                 <InfoRow label="SKU" value={variant.sku} />
                 <InfoRow
                   label="Price"
@@ -681,12 +678,9 @@ function VariantsSection({
         </View>
       )}
       <Divider />
-      <CreateVariantForm
-        client={client}
-        productId={product.id}
-        generateKey={generateKey}
-        reload={reload}
-      />
+      <CreateVariantForm client={client} data={data} generateKey={generateKey} reload={reload} />
+      <Divider />
+      <VariantOptionsForm client={client} data={data} generateKey={generateKey} reload={reload} />
       <Divider />
       <SetPriceForm
         client={client}
@@ -701,36 +695,53 @@ function VariantsSection({
 
 function CreateVariantForm({
   client,
-  productId,
+  data,
   generateKey,
   reload,
 }: {
   client: TenantCommerceClient;
-  productId: string;
+  data: ProductDetailResponse;
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
   const { productStyles } = useStyles();
   const { t } = useI18n();
+  const productId = data.product.id;
   const [sku, setSku] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [optionRows, setOptionRows] = useState<VariantOptionEntry[]>(() =>
+    optionRowsFor(data, null),
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const mutation = useMutation(
-    (args: { productId: string; sku: string; displayName?: string }, key) =>
-      createVariant(client, args, key),
+    (
+      args: {
+        productId: string;
+        sku: string;
+        displayName?: string;
+        options?: VariantOptionEntry[];
+      },
+      key,
+    ) => createVariant(client, args, key),
     generateKey,
   );
-  useOnSuccess(mutation.state, () => reload());
+  useOnSuccess(mutation.state, () => {
+    setSku("");
+    setOptionRows(optionRowsFor(data, null));
+    reload();
+  });
 
   function onSubmit() {
     const problem = validateSku(sku);
-    setLocalError(problem);
-    if (problem) return;
+    const { entries, problem: optionProblem } = cleanOptionEntries(optionRows);
+    setLocalError(problem ?? optionProblem);
+    if (problem || optionProblem) return;
     mutation.submit({
       productId,
       sku: sku.trim(),
       ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
+      ...(entries.length > 0 ? { options: entries } : {}),
     });
   }
 
@@ -752,6 +763,7 @@ function CreateVariantForm({
         placeholder={t("pm.displayNamePlaceholder")}
         testID="variant-display-name"
       />
+      <OptionRowsField rows={optionRows} onChange={setOptionRows} testIDPrefix="variant-option" />
       {localError ? <Notice tone="danger" message={localError} /> : null}
       {mutation.state.status === "success" ? (
         <Notice tone="success" message={t("pm.variantAdded")} testID="variant-success" />
