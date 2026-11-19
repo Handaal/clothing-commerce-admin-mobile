@@ -2511,6 +2511,39 @@ export const en = {
     "Something here was changed or removed. Refresh to see the latest.",
   "section.categories.label": "Categories",
   "section.categories.desc": "Website menu: Men, Women and product types.",
+
+  // ─── Phase 1B: delivery fees ──────────────────────────────────────────────────────────
+  "dlv.title": "Delivery fees",
+  "dlv.desc": "What shoppers pay for delivery, per governorate, on the website.",
+  "dlv.noAccess": "Your role can't view website settings. Ask an owner for access.",
+  "dlv.loading": "Loading delivery fees…",
+  "dlv.noStorefront":
+    "Set up website checkout first (Settings → Commerce), then add delivery fees.",
+  "dlv.brand": "Brand",
+  "dlv.freeTitle": "Free delivery",
+  "dlv.freeDesc": "Orders at or above this amount ship free. Leave empty for no free delivery.",
+  "dlv.threshold": "Free delivery from ({currency})",
+  "dlv.thresholdHint": "Counted after discounts.",
+  "dlv.zonesTitle": "Delivery areas",
+  "dlv.zonesCount": "{active} of {total} areas open for delivery",
+  "dlv.emptyZones":
+    "No delivery areas yet, so delivery is free everywhere. Add Egypt's governorates to start charging delivery.",
+  "dlv.addEgypt": "Add Egypt's 27 governorates",
+  "dlv.allFee": "Same fee for every area ({currency})",
+  "dlv.applyAll": "Apply to all",
+  "dlv.fee": "Fee ({currency})",
+  "dlv.delivers": "We deliver here",
+  "dlv.currentSummary": "Live now: {count} areas, fees from {from}.",
+  "dlv.badThreshold": "Enter the free-delivery amount like 2000 or 2000.50.",
+  "dlv.badFee": "Check the fee for {zone} (for example 60 or 60.50).",
+  "dlv.saved": "Delivery fees saved. The website uses them right away.",
+  "dlv.saving": "Saving…",
+  "dlv.save": "Save delivery fees",
+  "dlv.readOnly": "You can view these fees but not change them.",
+  "storefront.deliveryTitle": "Delivery fees",
+  "storefront.deliveryBody": "Fee per governorate and free-delivery threshold.",
+  "orderDetail.deliveryFee": "Delivery {area}",
+  "orderDetail.deliveryFree": "Free",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -4961,6 +4994,38 @@ export const ar: Record<MessageKey, string> = {
   "catWriteErr.changedElsewhereMsg": "تم تغيير أو حذف شيء هنا. حدّث الصفحة لرؤية الأحدث.",
   "section.categories.label": "الأقسام",
   "section.categories.desc": "قائمة الموقع: رجالي وحريمي وأنواع المنتجات.",
+
+  // ─── Phase 1B: delivery fees ──────────────────────────────────────────────────────────
+  "dlv.title": "رسوم التوصيل",
+  "dlv.desc": "ما يدفعه العملاء للتوصيل لكل محافظة على الموقع.",
+  "dlv.noAccess": "دورك لا يسمح بعرض إعدادات الموقع. اطلب الصلاحية من المالك.",
+  "dlv.loading": "جارٍ تحميل رسوم التوصيل…",
+  "dlv.noStorefront": "فعّل الدفع على الموقع أولاً (الإعدادات ← التجارة)، ثم أضف رسوم التوصيل.",
+  "dlv.brand": "العلامة التجارية",
+  "dlv.freeTitle": "توصيل مجاني",
+  "dlv.freeDesc": "الطلبات بهذه القيمة أو أكثر توصيلها مجاني. اتركه فارغاً لإلغاء التوصيل المجاني.",
+  "dlv.threshold": "توصيل مجاني ابتداءً من ({currency})",
+  "dlv.thresholdHint": "يُحسب بعد الخصومات.",
+  "dlv.zonesTitle": "مناطق التوصيل",
+  "dlv.zonesCount": "{active} من {total} منطقة متاحة للتوصيل",
+  "dlv.emptyZones":
+    "لا توجد مناطق توصيل بعد، لذا التوصيل مجاني للجميع. أضف محافظات مصر لبدء احتساب رسوم التوصيل.",
+  "dlv.addEgypt": "إضافة محافظات مصر الـ27",
+  "dlv.allFee": "نفس الرسوم لكل المناطق ({currency})",
+  "dlv.applyAll": "تطبيق على الكل",
+  "dlv.fee": "الرسوم ({currency})",
+  "dlv.delivers": "نوصّل هنا",
+  "dlv.currentSummary": "المفعّل الآن: {count} منطقة، والرسوم من {from}.",
+  "dlv.badThreshold": "أدخل قيمة التوصيل المجاني مثل 2000 أو 2000.50.",
+  "dlv.badFee": "راجع رسوم {zone} (مثلاً 60 أو 60.50).",
+  "dlv.saved": "تم حفظ رسوم التوصيل، والموقع يستخدمها فوراً.",
+  "dlv.saving": "جارٍ الحفظ…",
+  "dlv.save": "حفظ رسوم التوصيل",
+  "dlv.readOnly": "يمكنك عرض الرسوم دون تعديلها.",
+  "storefront.deliveryTitle": "رسوم التوصيل",
+  "storefront.deliveryBody": "الرسوم لكل محافظة وحد التوصيل المجاني.",
+  "orderDetail.deliveryFee": "التوصيل {area}",
+  "orderDetail.deliveryFree": "مجاني",
 };
 
 export const catalogs: Record<Locale, Record<MessageKey, string>> = { en, ar };

@@ -39,6 +39,8 @@ export interface StorefrontScreenProps {
   onOpenContent?: () => void;
   /** Sales on items (struck-through price + % badge on the website). */
   onOpenSales?: () => void;
+  /** Delivery areas and fees charged at checkout. */
+  onOpenDelivery?: () => void;
   onBack: () => void;
 }
 
@@ -58,6 +60,7 @@ export function StorefrontScreen({
   onOpenPromotions,
   onOpenContent,
   onOpenSales,
+  onOpenDelivery,
   onBack,
 }: StorefrontScreenProps) {
   const { styles } = useStyles();
@@ -129,6 +132,15 @@ export function StorefrontScreen({
             title={t("storefront.promotionsTitle")}
             body={t("storefront.promotionsBody")}
             onPress={onOpenPromotions}
+          />
+        ) : null}
+        {settings.canRead && onOpenDelivery ? (
+          <WebsiteCard
+            testID="storefront-open-delivery"
+            icon="truck-delivery-outline"
+            title={t("storefront.deliveryTitle")}
+            body={t("storefront.deliveryBody")}
+            onPress={onOpenDelivery}
           />
         ) : null}
         {settings.canRead ? (

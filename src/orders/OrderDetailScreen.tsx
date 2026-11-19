@@ -183,6 +183,20 @@ function OrderDetail({
             </View>
           </View>
         </View>
+        {data.commerce?.deliveryFeeMinor !== undefined &&
+        (data.commerce.deliveryFeeMinor > 0 || data.commerce.delivery?.zoneCode) ? (
+          <InfoRow
+            label={t("orderDetail.deliveryFee", {
+              area: data.commerce.delivery?.region ?? data.commerce.delivery?.zoneCode ?? "",
+            })}
+            value={
+              data.commerce.deliveryFeeMinor === 0
+                ? t("orderDetail.deliveryFree")
+                : formatMoneyMinor(data.commerce.deliveryFeeMinor, header.currency)
+            }
+            testID="order-detail-delivery-fee"
+          />
+        ) : null}
         <InfoRow
           label={t("orders.total")}
           value={formatMoneyMinor(header.totalMinor, header.currency)}
