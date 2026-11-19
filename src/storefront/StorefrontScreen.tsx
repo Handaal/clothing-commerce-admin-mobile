@@ -43,6 +43,8 @@ export interface StorefrontScreenProps {
   onOpenDelivery?: () => void;
   /** Emails left in the website's drop-alert form. */
   onOpenSubscribers?: () => void;
+  /** Return requests customers sent from the website's order tracking page. */
+  onOpenReturnRequests?: () => void;
   onBack: () => void;
 }
 
@@ -64,6 +66,7 @@ export function StorefrontScreen({
   onOpenSales,
   onOpenDelivery,
   onOpenSubscribers,
+  onOpenReturnRequests,
   onBack,
 }: StorefrontScreenProps) {
   const { styles } = useStyles();
@@ -135,6 +138,15 @@ export function StorefrontScreen({
             title={t("storefront.promotionsTitle")}
             body={t("storefront.promotionsBody")}
             onPress={onOpenPromotions}
+          />
+        ) : null}
+        {context.access.orders.canRead && onOpenReturnRequests ? (
+          <WebsiteCard
+            testID="storefront-open-return-requests"
+            icon="keyboard-return"
+            title={t("storefront.returnRequestsTitle")}
+            body={t("storefront.returnRequestsBody")}
+            onPress={onOpenReturnRequests}
           />
         ) : null}
         {context.access.orders.canRead && onOpenSubscribers ? (

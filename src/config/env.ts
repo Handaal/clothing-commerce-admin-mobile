@@ -37,3 +37,12 @@ export function getClerkPublishableKey(): string | undefined {
 export function getPublicMediaBaseUrl(): string | undefined {
   return process.env.EXPO_PUBLIC_MEDIA_BASE_URL?.trim().replace(/\/$/, "") || undefined;
 }
+
+/**
+ * Optional public website address (e.g. "https://zee-store.com"). When set, order confirmation messages
+ * include the website's tracking page ("<url>/track?order=<number>"). Unset → no link in the message.
+ */
+export function getStorefrontPublicUrl(): string | undefined {
+  const value = process.env.EXPO_PUBLIC_STOREFRONT_URL?.trim().replace(/\/$/, "");
+  return value && /^https?:\/\//u.test(value) ? value : undefined;
+}

@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   listReturns: vi.fn(),
   fulfillOrder: vi.fn(),
   cancelOrder: vi.fn(),
+  listReturnRequests: vi.fn(),
+  updateReturnRequestStatus: vi.fn(),
   withTenant: vi.fn(),
   signOut: vi.fn(async () => {}),
 }));
@@ -58,6 +60,8 @@ vi.mock("../commerce/client", () => ({
         listReturns: mocks.listReturns,
         fulfillOrder: mocks.fulfillOrder,
         cancelOrder: mocks.cancelOrder,
+        listReturnRequests: mocks.listReturnRequests,
+        updateReturnRequestStatus: mocks.updateReturnRequestStatus,
       };
     },
   }),
@@ -89,6 +93,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getMyTenants.mockResolvedValue([tenant(TENANT_A, "Acme", MEMBERSHIP_A)]);
   mocks.getContext.mockResolvedValue(meContext(TENANT_A));
+  mocks.listReturnRequests.mockResolvedValue({ requests: [], awaitingDecision: 0 });
   // Default: no returns recorded. Individual tests override to exercise history/summary.
   mocks.listReturns.mockResolvedValue(returnHistory([]));
 });

@@ -28,7 +28,10 @@ import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { formatOrderDate } from "./display";
 import { OrderCommerce } from "./OrderCommerce";
+import { CustomerMessage } from "./CustomerMessage";
+import { storeNameFor } from "./customer-message";
 import { OrderOperations } from "./OrderOperations";
+import { OrderReturnRequests } from "./OrderReturnRequests";
 import {
   fulfillmentByLineNumber,
   fulfillmentQuantityLabel,
@@ -112,6 +115,11 @@ export function OrderDetailScreen({
       canFulfill={Boolean(orders?.canRead && orders.canFulfill)}
       canCancel={Boolean(orders?.canRead && orders.canCancel)}
       onUpdated={setUpdated}
+      storeName={storeNameFor(
+        session.phase === "ready" ? session.context : null,
+        (updated ?? state.data).header.brandId,
+      )}
+      canDecideReturns={Boolean(orders?.canRead)}
       onBack={onBack}
       onRefresh={refresh}
       onOpenReturn={onOpenReturn}
@@ -126,13 +134,24 @@ function OrderDetail({
   canFulfill,
   canCancel,
   onUpdated,
+  storeName,
+  canDecideReturns,
   onBack,
   onRefresh,
   onOpenReturn,
   onCreateReturn,
 }: {
   data: OrderDetailResponse;
-  client: Pick<TenantCommerceClient, "listReturns" | "fulfillOrder" | "cancelOrder">;
+  client: Pick<
+    TenantCommerceClient,
+    | "listReturns"
+    | "fulfillOrder"
+    | "cancelOrder"
+    | "listReturnRequests"
+    | "updateReturnRequestStatus"
+  >;
+  storeName: string;
+  canDecideReturns: boolean;
   canFulfill: boolean;
   canCancel: boolean;
   onUpdated: (detail: OrderDetailResponse) => void;
@@ -230,6 +249,10 @@ function OrderDetail({
           onUpdated={onUpdated}
           onReload={onRefresh}
         />
+      ) : null}
+
+      {header.channel === "online" && header.status === "placed" ? (
+        <CustomerMessage detail={data} storeName={storeName} />
       ) : null}
 
       {header.channel === "online" || data.commerce ? <OrderCommerce data={data} /> : null}
@@ -346,6 +369,10 @@ function OrderDetail({
             onPress={() => onCreateReturn(header.id)}
           />
         </Surface>
+      ) : null}
+
+      {header.channel === "online" ? (
+        <OrderReturnRequests orderId={header.id} client={client} canDecide={canDecideReturns} />
       ) : null}
 
       <ReturnHistory client={client} orderId={header.id} onOpenReturn={onOpenReturn} />

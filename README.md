@@ -586,6 +586,14 @@ with **no** accessible brand, authoring is disabled (no guessed brand id).
 - **Categories.** Catalog → Categories (`app/categories.tsx`, `src/categories/CategoriesScreen.tsx`) manages
   the tree (top level = groups such as Men, children = product types): create, rename, re-parent, archive. A
   product's Categories section picks where it appears. Cycles are rejected by the server (`CATEGORY_CYCLE`).
+- **Returns from the website (SDK 0.48).** Website → Returns (`app/storefront-returns.tsx`,
+  `src/storefront/ReturnRequestsScreen.tsx`) lists customer return requests (open first) with items,
+  reasons, exchange/refund and the customer's note; staff approve, decline or mark completed (optional
+  note) and can WhatsApp the customer. The same cards appear on the online order. Requests move no stock
+  or money.
+- **Order confirmation (SDK 0.48).** Online order → "Message the customer" opens WhatsApp or SMS on the
+  phone with a prefilled confirmation (English/Arabic, from the SDK). Set `EXPO_PUBLIC_STOREFRONT_URL` to
+  include the website's tracking link.
 - **Sign-ups (SDK 0.47).** Website → Sign-ups (`app/storefront-subscribers.tsx`,
   `src/storefront/SubscribersScreen.tsx`) lists the website's drop-alert emails, newest first, with the
   total and a "Share list" button (one email per line). Visible to roles that can read orders.
