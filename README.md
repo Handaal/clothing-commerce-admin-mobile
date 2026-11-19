@@ -584,8 +584,12 @@ with **no** accessible brand, authoring is disabled (no guessed brand id).
 - **Colours.** The product's Colours section sets each colour value's swatch (`#rrggbb`, presets or typed)
   shown as dots/swatches on the website.
 - **Categories.** Catalog → Categories (`app/categories.tsx`, `src/categories/CategoriesScreen.tsx`) manages
-  the tree (top level = Men/Women, children = product types): create, rename, re-parent, archive. A
+  the tree (top level = groups such as Men, children = product types): create, rename, re-parent, archive. A
   product's Categories section picks where it appears. Cycles are rejected by the server (`CATEGORY_CYCLE`).
+- **Size guides (SDK 0.46).** Editing a category shows a Size guide editor (`src/categories/SizeGuideEditor.tsx`):
+  measurements as a comma list, one line per size (`M: 100-104, 72`), Tops/Bottoms starters and a live
+  preview; parsing and plain-language errors live in `src/categories/size-guide.ts`. Products in that
+  category and its sub-categories show the guide on the website unless a closer category has its own.
 - Shared write-error UI lives in `src/products/catalog-write-ui.tsx`; the editors in
   `src/products/ProductOptionsSection.tsx`.
 

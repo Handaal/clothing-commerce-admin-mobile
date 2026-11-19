@@ -40,6 +40,7 @@ import { spacing, typography } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
 import { useMutation } from "../ui/useMutation";
 import { createThemedStyles } from "../ui/useTheme";
+import { SizeGuideEditor } from "./SizeGuideEditor";
 
 type Category = CategoryListResponse["categories"][number];
 
@@ -51,7 +52,7 @@ export interface CategoriesScreenProps {
 }
 
 /**
- * The website's category tree (SDK 0.44): top-level categories are the audience (Men, Women, Kids…),
+ * The website's category tree (SDK 0.44): top-level categories are the audience (e.g. Men),
  * children are product types. Admins create, rename, re-parent and archive categories here; products
  * join categories from their own product page. The server rejects cycles and duplicate slugs and
  * authorizes every write (catalog.author).
@@ -149,6 +150,7 @@ function CategoriesContent({
                 {t("cat.rowMeta", { slug: category.slug, count: category.productCount })}
               </Text>
             </View>
+            {category.sizeGuide ? <Badge label={t("sg.badge")} tone="brand" /> : null}
             {category.status === "archived" ? (
               <Badge label={t("cat.archived")} tone="warning" />
             ) : null}
@@ -166,6 +168,17 @@ function CategoriesContent({
                   reload();
                 }}
               />
+              <Divider />
+              <SizeGuideEditor
+                client={client}
+                category={category}
+                generateKey={generateKey}
+                onSaved={() => {
+                  setEditing(null);
+                  reload();
+                }}
+              />
+              <Divider />
               <ArchiveToggle
                 client={client}
                 category={category}

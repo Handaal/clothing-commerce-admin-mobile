@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   createCategory: vi.fn(),
   updateCategory: vi.fn(),
   setCategoryStatus: vi.fn(),
+  setCategorySizeGuide: vi.fn(),
 }));
 
 vi.mock("@clerk/expo", () => ({
@@ -102,6 +103,44 @@ describe("CategoriesScreen", () => {
         idempotencyKey: "key-1",
       }),
     );
+  });
+
+  it("saves a size guide typed as text, from a template", async () => {
+    mocks.setCategorySizeGuide.mockResolvedValue({ categoryId: MEN, hasSizeGuide: true });
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("cat-edit-men"));
+    fireEvent.click(screen.getByTestId("sg-template-tops-men"));
+    fireEvent.change(screen.getByTestId("sg-rows-men"), {
+      target: { value: "S: 96-100, 70, 44\nM: 100-104, 72, 46" },
+    });
+    expect(screen.getByTestId("sg-preview-men")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("sg-save-men"));
+    await waitFor(() =>
+      expect(mocks.setCategorySizeGuide).toHaveBeenCalledWith({
+        categoryId: MEN,
+        sizeGuide: {
+          title: null,
+          unit: "cm",
+          columns: ["Chest", "Length", "Shoulder"],
+          rows: [
+            { size: "S", values: ["96-100", "70", "44"] },
+            { size: "M", values: ["100-104", "72", "46"] },
+          ],
+          note: null,
+        },
+        idempotencyKey: "key-1",
+      }),
+    );
+  });
+
+  it("explains a size line with the wrong number of values instead of saving", async () => {
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("cat-edit-men"));
+    fireEvent.change(screen.getByTestId("sg-columns-men"), { target: { value: "Chest, Length" } });
+    fireEvent.change(screen.getByTestId("sg-rows-men"), { target: { value: "M: 100" } });
+    fireEvent.click(screen.getByTestId("sg-save-men"));
+    expect(await screen.findByText("Line 1 (M): 1 values for 2 measurements.")).toBeTruthy();
+    expect(mocks.setCategorySizeGuide).not.toHaveBeenCalled();
   });
 
   it("explains a cycle rejection from the server", async () => {

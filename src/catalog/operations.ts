@@ -7,6 +7,7 @@ import type {
   PublishProductResponse,
   RegisterProductMediaResponse,
   SetVariantPriceResponse,
+  SizeGuide,
   TenantCommerceClient,
   UnpublishProductResponse,
 } from "@shifted/clothing-commerce-sdk";
@@ -202,6 +203,14 @@ export function setCategoryStatus(
   key: string,
 ) {
   return client.setCategoryStatus({ ...args, idempotencyKey: key });
+}
+
+export function setCategorySizeGuide(
+  client: Pick<TenantCommerceClient, "setCategorySizeGuide">,
+  args: { categoryId: string; sizeGuide: SizeGuide | null },
+  key: string,
+) {
+  return client.setCategorySizeGuide({ ...args, idempotencyKey: key });
 }
 
 export function setVariantPrice(

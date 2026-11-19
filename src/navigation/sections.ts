@@ -127,7 +127,7 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
   {
     id: "categories",
     label: "Categories",
-    description: "Website menu: Men, Women and product types.",
+    description: "Website menu: groups and product types.",
     labelKey: "section.categories.label",
     descriptionKey: "section.categories.desc",
     icon: "file-tree-outline",
