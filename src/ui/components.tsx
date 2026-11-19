@@ -1067,6 +1067,7 @@ export function NumberField({
   editable = true,
   required,
   error,
+  hint,
 }: {
   label: string;
   value: string;
@@ -1076,6 +1077,8 @@ export function NumberField({
   editable?: boolean;
   required?: boolean;
   error?: string | null;
+  /** Helper text shown below the field when there is no error. */
+  hint?: string;
 }) {
   const { styles, colors } = useStyles();
   const { isRTL } = useI18n();
@@ -1099,6 +1102,9 @@ export function NumberField({
         placeholderTextColor={colors.inkSubtle}
       />
       <FieldError message={error} testID={testID ? `${testID}-error` : undefined} />
+      {!error && hint ? (
+        <Text style={[styles.fieldHint, readingDirection(isRTL)]}>{hint}</Text>
+      ) : null}
     </View>
   );
 }

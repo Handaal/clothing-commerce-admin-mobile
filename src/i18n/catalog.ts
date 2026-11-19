@@ -1241,6 +1241,8 @@ export const en = {
   "set.returns": "Returns",
   "set.returnsEnabled": "Returns enabled",
   "set.returnWindowDays": "Return window days",
+  "set.returnWindowDaysHint":
+    "Days from ordering. Shown on the website and applied to return requests. Leave empty for no limit.",
   "set.manualRefundsEnabled": "Manual refunds enabled",
   "set.maxManualRefund": "Maximum manual refund (minor units, optional)",
   "set.allowedReasons": "Allowed reasons (comma separated)",
@@ -3840,6 +3842,8 @@ export const ar: Record<MessageKey, string> = {
   "set.returns": "المرتجعات",
   "set.returnsEnabled": "المرتجعات مُفعّلة",
   "set.returnWindowDays": "أيام نافذة الإرجاع",
+  "set.returnWindowDaysHint":
+    "أيام من تاريخ الطلب. تظهر على الموقع وتُطبق على طلبات الإرجاع. اتركها فارغة لعدم وجود حد.",
   "set.manualRefundsEnabled": "المستردات اليدوية مُفعّلة",
   "set.maxManualRefund": "الحد الأقصى للاسترداد اليدوي (وحدات صغرى، اختياري)",
   "set.allowedReasons": "الأسباب المسموح بها (مفصولة بفواصل)",
