@@ -41,6 +41,8 @@ export interface StorefrontScreenProps {
   onOpenSales?: () => void;
   /** Delivery areas and fees charged at checkout. */
   onOpenDelivery?: () => void;
+  /** Emails left in the website's drop-alert form. */
+  onOpenSubscribers?: () => void;
   onBack: () => void;
 }
 
@@ -61,6 +63,7 @@ export function StorefrontScreen({
   onOpenContent,
   onOpenSales,
   onOpenDelivery,
+  onOpenSubscribers,
   onBack,
 }: StorefrontScreenProps) {
   const { styles } = useStyles();
@@ -132,6 +135,15 @@ export function StorefrontScreen({
             title={t("storefront.promotionsTitle")}
             body={t("storefront.promotionsBody")}
             onPress={onOpenPromotions}
+          />
+        ) : null}
+        {context.access.orders.canRead && onOpenSubscribers ? (
+          <WebsiteCard
+            testID="storefront-open-subscribers"
+            icon="email-newsletter"
+            title={t("storefront.subscribersTitle")}
+            body={t("storefront.subscribersBody")}
+            onPress={onOpenSubscribers}
           />
         ) : null}
         {settings.canRead && onOpenDelivery ? (

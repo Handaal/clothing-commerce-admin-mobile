@@ -2576,6 +2576,21 @@ export const en = {
   "sg.problemValueCount": "Line {line} ({size}): {found} values for {expected} measurements.",
   "sg.problemDuplicate": "Size {size} is listed twice.",
   "sg.problemTooLong": "Line {line}: keep each size and value under 24 characters.",
+  "storefront.subscribersTitle": "Sign-ups",
+  "storefront.subscribersBody": "Emails from the website's drop alerts form.",
+  "subs.eyebrow": "Website",
+  "subs.title": "Sign-ups",
+  "subs.desc": "People who asked to hear about new drops on the website. Newest first.",
+  "subs.accessTitle": "No access to customer contacts",
+  "subs.accessBody": "Your role can't see customer contacts. Ask an owner for access.",
+  "subs.loading": "Loading sign-ups…",
+  "subs.totalLabel": "people on the list",
+  "subs.share": "Share list",
+  "subs.shareFailed": "Couldn't open sharing on this device.",
+  "subs.empty":
+    "No sign-ups yet. They appear here when someone uses the form on the website's home page.",
+  "subs.listTitle": "Latest sign-ups",
+  "subs.showing": "Showing the latest {count}",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -5089,6 +5104,20 @@ export const ar: Record<MessageKey, string> = {
   "sg.problemValueCount": "السطر {line} ({size}): {found} قيم مقابل {expected} قياسات.",
   "sg.problemDuplicate": "المقاس {size} مكرر.",
   "sg.problemTooLong": "السطر {line}: اجعل كل مقاس وقيمة أقل من 24 حرفاً.",
+  "storefront.subscribersTitle": "المشتركون",
+  "storefront.subscribersBody": "الإيميلات من نموذج تنبيهات الإصدارات على الموقع.",
+  "subs.eyebrow": "الموقع",
+  "subs.title": "المشتركون",
+  "subs.desc": "الأشخاص الذين طلبوا معرفة الإصدارات الجديدة من الموقع. الأحدث أولاً.",
+  "subs.accessTitle": "لا توجد صلاحية لبيانات العملاء",
+  "subs.accessBody": "دورك لا يسمح برؤية بيانات تواصل العملاء. اطلب الصلاحية من المالك.",
+  "subs.loading": "جارٍ تحميل المشتركين…",
+  "subs.totalLabel": "شخص في القائمة",
+  "subs.share": "مشاركة القائمة",
+  "subs.shareFailed": "تعذّر فتح المشاركة على هذا الجهاز.",
+  "subs.empty": "لا يوجد مشتركون بعد. سيظهرون هنا عند استخدام النموذج في الصفحة الرئيسية للموقع.",
+  "subs.listTitle": "أحدث المشتركين",
+  "subs.showing": "عرض أحدث {count}",
 };
 
 export const catalogs: Record<Locale, Record<MessageKey, string>> = { en, ar };

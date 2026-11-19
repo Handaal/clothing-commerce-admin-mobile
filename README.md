@@ -586,6 +586,9 @@ with **no** accessible brand, authoring is disabled (no guessed brand id).
 - **Categories.** Catalog → Categories (`app/categories.tsx`, `src/categories/CategoriesScreen.tsx`) manages
   the tree (top level = groups such as Men, children = product types): create, rename, re-parent, archive. A
   product's Categories section picks where it appears. Cycles are rejected by the server (`CATEGORY_CYCLE`).
+- **Sign-ups (SDK 0.47).** Website → Sign-ups (`app/storefront-subscribers.tsx`,
+  `src/storefront/SubscribersScreen.tsx`) lists the website's drop-alert emails, newest first, with the
+  total and a "Share list" button (one email per line). Visible to roles that can read orders.
 - **Size guides (SDK 0.46).** Editing a category shows a Size guide editor (`src/categories/SizeGuideEditor.tsx`):
   measurements as a comma list, one line per size (`M: 100-104, 72`), Tops/Bottoms starters and a live
   preview; parsing and plain-language errors live in `src/categories/size-guide.ts`. Products in that
