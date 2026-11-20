@@ -22,6 +22,7 @@ import { directionalIcon, endAlign, startAlign, useI18n } from "../i18n";
 import { BrandSpinner } from "./BrandSpinner";
 import { FitText } from "./FitText";
 import { haptic } from "./haptics";
+import { statusLabel, statusTone } from "./status";
 import { AppIcon, type AppIconName } from "./Icon";
 import { layout, radius, shadows, spacing, typography } from "./theme";
 import { createThemedStyles } from "./useTheme";
@@ -426,7 +427,7 @@ export function SearchField({
         <Pressable
           testID={testID ? `${testID}-clear` : undefined}
           accessibilityRole="button"
-          accessibilityLabel="Clear search"
+          accessibilityLabel={t("common.clearSearch")}
           hitSlop={8}
           onPress={() => onChangeText("")}
           style={({ pressed }) => [styles.clearSearch, pressed && styles.buttonPressed]}
@@ -691,6 +692,12 @@ export function Badge({
       </Text>
     </View>
   );
+}
+
+/** A badge for a server lifecycle value: localized label + semantic tone (never the raw code). */
+export function StatusBadge({ status, testID }: { status: string; testID?: string }) {
+  const { t } = useI18n();
+  return <Badge label={statusLabel(status, t)} tone={statusTone(status)} testID={testID} />;
 }
 
 function badgeTone(label: string): "neutral" | "brand" | "success" | "warning" | "danger" {
@@ -1411,8 +1418,17 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
-/** A labelled list-of-options selector (no native picker dependency). Selecting an option is not a
- * mutation — it only updates local form state. */
+/** Lists longer than this collapse into a field that opens a picker sheet instead of laying out inline. */
+export const SELECT_INLINE_LIMIT = 6;
+/** Picker sheets with more options than this get a search box. */
+const SELECT_SEARCH_LIMIT = 8;
+
+/**
+ * A labelled list-of-options selector (no native picker dependency). Short lists stay inline as radio
+ * options; long, data-driven lists (products, variants, brands, suppliers, locations…) collapse into a
+ * themed field that opens a searchable sheet, so a form never turns into a page-long radio list.
+ * Selecting an option is not a mutation — it only updates local form state.
+ */
 export function SelectField({
   label,
   options,
@@ -1422,6 +1438,7 @@ export function SelectField({
   emptyLabel,
   required,
   error,
+  placeholder,
 }: {
   label: string;
   options: SelectOption[];
@@ -1431,51 +1448,143 @@ export function SelectField({
   emptyLabel?: string;
   required?: boolean;
   error?: string | null;
+  placeholder?: string;
 }) {
-  const { styles } = useStyles();
-  const { isRTL, dir } = useI18n();
+  const { styles, colors } = useStyles();
+  const { t, isRTL, dir } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const collapsed = options.length > SELECT_INLINE_LIMIT;
+  const selectedOption = options.find((option) => option.value === selected);
+  const normalized = query.trim().toLowerCase();
+  const sheetOptions = normalized
+    ? options.filter((option) => option.label.toLowerCase().includes(normalized))
+    : options;
+
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
+
+  const renderOptions = (list: readonly SelectOption[], afterSelect?: () => void) => (
+    <View style={{ gap: 8 }}>
+      {list.map((option) => {
+        const isSelected = option.value === selected;
+        return (
+          <Pressable
+            key={option.value}
+            testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSelected, disabled: option.disabled }}
+            disabled={option.disabled}
+            onPress={() => {
+              onSelect(option.value);
+              afterSelect?.();
+            }}
+            style={({ pressed }) => [
+              styles.option,
+              isSelected && styles.optionSelected,
+              option.disabled && styles.optionDisabled,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <View style={[styles.optionRadio, isSelected && styles.optionRadioOn]} {...webAnim}>
+              {isSelected ? <View style={styles.optionRadioDot} /> : null}
+            </View>
+            <Text
+              style={[
+                styles.optionText,
+                readingDirection(isRTL),
+                isSelected && styles.optionTextSelected,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
   return (
     <View style={[styles.field, { direction: dir }]}>
       <FieldLabel label={label} required={required} />
       {options.length === 0 ? (
-        <Text style={styles.body}>{emptyLabel ?? "No options available."}</Text>
+        <Text style={styles.body}>{emptyLabel ?? t("common.noOptions")}</Text>
+      ) : collapsed ? (
+        <Pressable
+          testID={testIDPrefix ? `${testIDPrefix}-trigger` : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityHint={selectedOption?.label}
+          onPress={() => setOpen(true)}
+          style={({ pressed }) => [
+            styles.selectTrigger,
+            error ? styles.selectTriggerError : null,
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.selectTriggerText,
+              readingDirection(isRTL),
+              !selectedOption && styles.selectTriggerPlaceholder,
+            ]}
+          >
+            {selectedOption?.label ?? placeholder ?? t("common.choose")}
+          </Text>
+          <AppIcon name="chevron-down" size={20} color={colors.inkSubtle} />
+        </Pressable>
       ) : (
-        <View style={{ gap: 8 }}>
-          {options.map((option) => {
-            const isSelected = option.value === selected;
-            return (
-              <Pressable
-                key={option.value}
-                testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected, disabled: option.disabled }}
-                disabled={option.disabled}
-                onPress={() => onSelect(option.value)}
-                style={({ pressed }) => [
-                  styles.option,
-                  isSelected && styles.optionSelected,
-                  option.disabled && styles.optionDisabled,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <View style={[styles.optionRadio, isSelected && styles.optionRadioOn]} {...webAnim}>
-                  {isSelected ? <View style={styles.optionRadioDot} /> : null}
-                </View>
-                <Text
-                  style={[
-                    styles.optionText,
-                    readingDirection(isRTL),
-                    isSelected && styles.optionTextSelected,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        renderOptions(options)
       )}
       <FieldError message={error} testID={testIDPrefix ? `${testIDPrefix}-error` : undefined} />
+      {collapsed ? (
+        <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+          <Pressable
+            style={styles.sheetOverlay}
+            accessibilityLabel={t("common.close")}
+            onPress={close}
+          >
+            <Pressable
+              testID={testIDPrefix ? `${testIDPrefix}-sheet` : undefined}
+              style={[styles.sheetCard, { direction: dir }]}
+              onPress={() => {}}
+            >
+              <View style={styles.sheetHeader}>
+                <Text style={[styles.sheetTitle, readingDirection(isRTL)]}>{label}</Text>
+                <Pressable
+                  testID={testIDPrefix ? `${testIDPrefix}-close` : undefined}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("common.close")}
+                  hitSlop={8}
+                  onPress={close}
+                  style={({ pressed }) => [styles.sheetClose, pressed && styles.buttonPressed]}
+                >
+                  <AppIcon name="close" size={22} color={colors.inkMuted} />
+                </Pressable>
+              </View>
+              {options.length > SELECT_SEARCH_LIMIT ? (
+                <SearchField
+                  testID={testIDPrefix ? `${testIDPrefix}-search` : undefined}
+                  value={query}
+                  onChangeText={setQuery}
+                />
+              ) : null}
+              <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
+                {sheetOptions.length === 0 ? (
+                  <Text style={styles.body}>
+                    {t("common.noResultsBody", { query: query.trim() })}
+                  </Text>
+                ) : (
+                  renderOptions(sheetOptions, close)
+                )}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -2259,6 +2368,54 @@ const useStyles = createThemedStyles((colors) => {
     },
     optionText: { flex: 1, color: colors.inkMuted, ...typography.body, fontWeight: "600" },
     optionTextSelected: { color: colors.brand, fontWeight: "800" },
+    selectTrigger: {
+      minHeight: 52,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.md,
+      paddingHorizontal: 14,
+      backgroundColor: colors.surface,
+    },
+    selectTriggerError: { borderColor: colors.danger },
+    selectTriggerText: { flex: 1, color: colors.ink, ...typography.body, fontWeight: "600" },
+    selectTriggerPlaceholder: { color: colors.inkSubtle, fontWeight: "500" },
+    sheetOverlay: {
+      flex: 1,
+      justifyContent: "flex-end",
+      alignItems: "center",
+      backgroundColor: "rgba(33, 28, 24, 0.45)",
+    },
+    sheetCard: {
+      width: "100%",
+      maxWidth: 560,
+      maxHeight: "82%",
+      gap: spacing.md,
+      padding: spacing.xl,
+      paddingBottom: spacing.xxl,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.border,
+      ...shadows.raised,
+    },
+    sheetHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.md,
+    },
+    sheetTitle: { flex: 1, color: colors.ink, ...typography.sectionTitle },
+    sheetClose: {
+      minWidth: layout.touchTarget,
+      minHeight: layout.touchTarget,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    sheetList: { flexGrow: 0 },
   });
   return {
     colors,

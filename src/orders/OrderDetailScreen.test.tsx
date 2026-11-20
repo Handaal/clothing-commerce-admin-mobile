@@ -282,7 +282,7 @@ describe("OrderDetailScreen", () => {
 
     // Summary
     expect(await screen.findByText("ORD-1001")).toBeTruthy();
-    expect(screen.getByTestId("order-detail-status").textContent).toBe("placed");
+    expect(screen.getByTestId("order-detail-status").textContent).toBe("Placed");
     expect(screen.getByText("ONLINE")).toBeTruthy();
     expect(screen.getByText("USD 129.95")).toBeTruthy();
 

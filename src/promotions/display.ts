@@ -2,6 +2,7 @@ import type { PromotionDetail, PromotionSummary } from "@shifted/clothing-commer
 
 import { t } from "../i18n";
 import { formatMoneyMinor } from "../products/display";
+import { formatDateTime } from "../i18n/format-date";
 
 export type PromotionEffectiveState = "active" | "inactive" | "scheduled" | "expired" | "exhausted";
 
@@ -94,7 +95,7 @@ export function usageLabel(redemptionCount: number, limit: number | null): strin
 }
 
 export function formatPromotionDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : t("promoDate.noLimit");
+  return value ? formatDateTime(value) : t("promoDate.noLimit");
 }
 
 export function formatPromotionMoney(amountMinor: number | null, currency: string | null): string {

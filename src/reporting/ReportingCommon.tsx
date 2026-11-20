@@ -7,6 +7,8 @@ import { errorHeading, isRetryable } from "../products/display";
 import {
   Body,
   Divider,
+  FieldLabel,
+  FilterChips,
   InfoRow,
   LoadingBlock,
   PageHeader,
@@ -77,13 +79,16 @@ export function DateRangeControls({
 
   return (
     <View style={{ gap: 10 }}>
-      <SelectField
-        label={t("report.dateRange")}
-        options={DATE_PRESET_KEYS.map((p) => ({ value: p.value, label: t(p.labelKey) }))}
-        selected={selected}
-        onSelect={choose}
-        testIDPrefix="report-date-preset"
-      />
+      {/* A date range is a filter: one tap on a chip, not a radio list or a picker sheet. */}
+      <View style={{ gap: 6 }}>
+        <FieldLabel label={t("report.dateRange")} />
+        <FilterChips<string>
+          options={DATE_PRESET_KEYS.map((p) => ({ value: p.value, label: t(p.labelKey) }))}
+          selected={selected}
+          onSelect={choose}
+          testIDPrefix="report-date-preset"
+        />
+      </View>
       {selected === "custom" ? (
         <View style={{ gap: 10 }}>
           <TextField

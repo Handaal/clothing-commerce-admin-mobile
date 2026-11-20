@@ -10,6 +10,7 @@ import { useSession } from "../session/SessionProvider";
 import { AppIcon } from "../ui/Icon";
 import {
   Badge,
+  StatusBadge,
   Body,
   EmptyState,
   LoadingBlock,
@@ -183,7 +184,7 @@ function ManageContent({
       <Surface tone="brand" style={styles.statusCard}>
         <View style={styles.statusHeader}>
           <SectionHeading title={t("manageCollection.statusSection")} />
-          <Badge label={collection.status} />
+          <StatusBadge status={collection.status} />
         </View>
         <View style={styles.statusActions}>
           {collection.status !== "active" ? (

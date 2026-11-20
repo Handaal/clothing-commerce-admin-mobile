@@ -177,7 +177,7 @@ function ToastViewport({
 
 function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => void }) {
   const { toneColor, styles, toneSoft, colors } = useStyles();
-  const { isRTL, dir } = useI18n();
+  const { t, isRTL, dir } = useI18n();
   const tone = toast.tone ?? "info";
   const accent = toneColor[tone];
   return (
@@ -214,7 +214,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => vo
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Dismiss notification"
+        accessibilityLabel={t("common.dismissNotification")}
         hitSlop={8}
         onPress={onDismiss}
         style={({ pressed }) => [styles.close, pressed && { opacity: 0.6 }]}

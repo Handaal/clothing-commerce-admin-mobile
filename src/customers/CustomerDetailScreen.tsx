@@ -23,6 +23,7 @@ import {
   Surface,
   Title,
 } from "../ui/components";
+import { channelLabel } from "../ui/status";
 import { useAsync } from "../ui/useAsync";
 import { loadAllCustomerOrders, type CustomerOrderItem } from "./load";
 
@@ -175,7 +176,7 @@ function CustomerOrders({
               <>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
                   <Title>{order.orderNumber}</Title>
-                  <Badge label={order.channel.toUpperCase()} tone="brand" />
+                  <Badge label={channelLabel(order.channel, t).toUpperCase()} tone="brand" />
                 </View>
                 <InfoRow
                   label={t("customerDetail.orderTotal")}

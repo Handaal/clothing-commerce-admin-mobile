@@ -7,6 +7,9 @@ import {
   Badge,
   Body,
   Divider,
+  FieldLabel,
+  FilterChips,
+  type FilterOption,
   Eyebrow,
   InfoRow,
   PageHeader,
@@ -158,19 +161,31 @@ function StaffListContent({
         testID="staff-search-term"
         autoCapitalize="none"
       />
-      <SelectField
-        label={t("staff.statusLabel")}
-        options={statusOptions}
-        selected={search.status}
-        onSelect={(value) => setSearch((prev) => ({ ...prev, status: value as StaffStatusFilter }))}
-        testIDPrefix="staff-status-filter"
-      />
+      {/* Status and role are one-tap filters that apply immediately (like every other list); the
+          Search button is only needed for the typed name/email term. */}
+      <View style={{ gap: 6 }}>
+        <FieldLabel label={t("staff.statusLabel")} />
+        <FilterChips<StaffStatusFilter>
+          options={statusOptions as FilterOption<StaffStatusFilter>[]}
+          selected={search.status}
+          onSelect={(status) => {
+            const next = { ...search, status };
+            setSearch(next);
+            setQuery(buildStaffListQuery(next));
+          }}
+          testIDPrefix="staff-status-filter"
+        />
+      </View>
       {showRoleFilter ? (
         <SelectField
           label={t("staff.roleLabel")}
           options={roleFilterOptions}
           selected={search.roleId}
-          onSelect={(value) => setSearch((prev) => ({ ...prev, roleId: value }))}
+          onSelect={(roleId) => {
+            const next = { ...search, roleId };
+            setSearch(next);
+            setQuery(buildStaffListQuery(next));
+          }}
           testIDPrefix="staff-role-filter"
         />
       ) : null}

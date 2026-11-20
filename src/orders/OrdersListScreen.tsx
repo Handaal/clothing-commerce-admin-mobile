@@ -6,7 +6,7 @@ import { useI18n, type MessageKey } from "../i18n";
 import { errorHeading, formatMoneyMinor, isRetryable } from "../products/display";
 import { useSession } from "../session/SessionProvider";
 import {
-  Badge,
+  StatusBadge,
   EmptyState,
   FilterChips,
   HeaderIconButton,
@@ -20,8 +20,8 @@ import {
   SearchField,
   SectionHeading,
   SkeletonRows,
-  SummaryStrip,
 } from "../ui/components";
+import { channelLabel } from "../ui/status";
 import { AppIcon, type AppIconName } from "../ui/Icon";
 import { radius, spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
@@ -68,7 +68,11 @@ export function OrdersListScreen({ tenantId, context, onOpenOrder }: OrdersListS
   return <OrdersListContent tenantId={tenantId} context={context} onOpenOrder={onOpenOrder} />;
 }
 
-function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps, "onBack">) {
+function OrdersListContent({
+  tenantId,
+  context,
+  onOpenOrder,
+}: Omit<OrdersListScreenProps, "onBack">) {
   const { orderStyles, colors } = useStyles();
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
@@ -106,11 +110,6 @@ function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps
     return byChannel.filter((order) => order.orderNumber.toLowerCase().includes(normalizedQuery));
   }, [allOrders, channel, normalizedQuery]);
 
-  const channelCount = useMemo(
-    () => new Set(visibleOrders.map((order) => order.channel)).size,
-    [visibleOrders],
-  );
-
   return (
     <ScrollScreen wide onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
@@ -130,7 +129,11 @@ function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps
         }
       />
 
-      <ReadOnlyChip testID="orders-readonly" label={t("orders.readonlyChip")} />
+      {/* Online orders can be fulfilled/cancelled from their detail page, so "View only" is shown
+          only when this account can do neither. */}
+      {context.access.orders.canFulfill || context.access.orders.canCancel ? null : (
+        <ReadOnlyChip testID="orders-readonly" label={t("orders.readonlyChip")} />
+      )}
 
       {state.status === "success" && allOrders.length > 0 ? (
         <SearchField
@@ -157,25 +160,6 @@ function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps
           testIDPrefix="order-channel-filter"
         />
       </View>
-
-      {state.status === "success" ? (
-        <SummaryStrip
-          testID="orders-summary"
-          items={[
-            {
-              label: t("orders.loadedOrders"),
-              value: String(visibleOrders.length),
-              icon: "receipt-text-check-outline",
-            },
-            {
-              label: t("orders.channelsShown"),
-              value: String(channelCount),
-              icon: "source-branch",
-              tone: "accent",
-            },
-          ]}
-        />
-      ) : null}
 
       {state.status === "loading" ? <SkeletonRows testID="orders-loading" /> : null}
       {state.status === "error" ? (
@@ -260,11 +244,11 @@ function OrdersListContent({ tenantId, onOpenOrder }: Omit<OrdersListScreenProps
                 <View style={orderStyles.orderCopy}>
                   <View style={orderStyles.titleRow}>
                     <Text style={orderStyles.orderNumber}>{order.orderNumber}</Text>
-                    <Badge label={order.status} testID={`order-status-${order.id}`} />
+                    <StatusBadge status={order.status} testID={`order-status-${order.id}`} />
                   </View>
                   <View style={orderStyles.metadataRow}>
                     <Text testID={`order-channel-${order.id}`} style={orderStyles.channelText}>
-                      {order.channel.toUpperCase()}
+                      {channelLabel(order.channel, t).toUpperCase()}
                     </Text>
                     <View style={orderStyles.metadataDot} />
                     <AppIcon name="clock-outline" size={14} color={colors.inkSubtle} />
@@ -328,7 +312,7 @@ const useStyles = createThemedStyles((colors) => {
       borderTopColor: colors.borderSoft,
     },
     totalLabel: { color: colors.inkSubtle, ...typography.micro, fontWeight: "700" },
-    totalValue: { color: colors.ink, ...typography.label, fontWeight: "800" },
+    totalValue: { flexShrink: 1, color: colors.ink, ...typography.label, fontWeight: "800" },
   });
   return { colors, orderStyles };
 });

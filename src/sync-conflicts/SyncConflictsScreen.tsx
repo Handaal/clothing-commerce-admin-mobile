@@ -25,6 +25,7 @@ import {
   Surface,
 } from "../ui/components";
 import { useAsync } from "../ui/useAsync";
+import { formatDateTime } from "../i18n/format-date";
 
 type KindFilter = PosSyncConflictKind | "all";
 const KINDS: readonly KindFilter[] = [
@@ -194,10 +195,7 @@ function ConflictCard({ item }: { item: PosSyncConflict }) {
         {item.references.orderId ? (
           <InfoRow label={t("syncConflicts.order")} value={item.references.orderId} />
         ) : null}
-        <InfoRow
-          label={t("syncConflicts.detected")}
-          value={new Date(item.detectedAt).toLocaleString()}
-        />
+        <InfoRow label={t("syncConflicts.detected")} value={formatDateTime(item.detectedAt)} />
         <Text>{t(`syncConflicts.next.${item.kind}` as MessageKey)}</Text>
       </View>
     </Surface>

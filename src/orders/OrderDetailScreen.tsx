@@ -9,6 +9,7 @@ import { hasReturnActivity, returnedQuantityByLine } from "../returns/summary";
 import { useSession } from "../session/SessionProvider";
 import {
   Badge,
+  StatusBadge,
   Body,
   EmptyState,
   InfoRow,
@@ -22,6 +23,7 @@ import {
   Surface,
   TextButton,
 } from "../ui/components";
+import { channelLabel } from "../ui/status";
 import { AppIcon } from "../ui/Icon";
 import { radius, spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
@@ -197,8 +199,8 @@ function OrderDetail({
           <View style={detailStyles.summaryCopy}>
             <Text style={detailStyles.cardTitle}>{t("orderDetail.summary")}</Text>
             <View style={detailStyles.badges}>
-              <Badge label={header.status} testID="order-detail-status" />
-              <Badge label={header.channel.toUpperCase()} tone="brand" />
+              <StatusBadge status={header.status} testID="order-detail-status" />
+              <Badge label={channelLabel(header.channel, t).toUpperCase()} tone="brand" />
             </View>
           </View>
         </View>

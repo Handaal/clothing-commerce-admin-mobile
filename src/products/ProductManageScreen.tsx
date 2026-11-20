@@ -44,6 +44,7 @@ import { AppIcon, type AppIconName } from "../ui/Icon";
 import {
   AccordionTrigger,
   Badge,
+  StatusBadge,
   Body,
   ConfirmButton,
   Divider,
@@ -75,8 +76,8 @@ import {
   SwatchesForm,
   VariantOptionsForm,
 } from "./ProductOptionsSection";
-import { errorHeading, formatMoneyMinor, isRetryable } from "./display";
 import { ProductBrandForm } from "./ProductBrandForm";
+import { errorHeading, formatMoneyMinor, isRetryable } from "./display";
 
 export interface ProductManageScreenProps {
   tenantId: string;
@@ -317,7 +318,6 @@ function ProductManage({
       ) : null}
 
       <SectionTab
-      <SectionTab
         label={t("brand.productTitle")}
         description={t("brand.sectionDesc")}
         icon="tag-multiple-outline"
@@ -331,6 +331,7 @@ function ProductManage({
         </Surface>
       ) : null}
 
+      <SectionTab
         label={t("pm.media")}
         description={t("pm.mediaDesc")}
         icon="image-multiple-outline"
@@ -677,7 +678,7 @@ function VariantsSection({
                   <Text style={productStyles.variantName}>
                     {variant.displayName ?? variant.sku}
                   </Text>
-                  <Badge label={variant.status} />
+                  <StatusBadge status={variant.status} />
                 </View>
                 {variantOptionLabel(data, variant.id) ? (
                   <InfoRow label={t("po.options")} value={variantOptionLabel(data, variant.id)!} />
