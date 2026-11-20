@@ -14,6 +14,7 @@ import {
   TextButton,
   webLift,
 } from "../ui/components";
+import { FitText } from "../ui/FitText";
 import { AppIcon, type AppIconName } from "../ui/Icon";
 import { radius, spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
@@ -110,9 +111,9 @@ function OverviewData({
             <Text style={styles.performanceEyebrow}>
               {t("home.salesCurrency", { currency: primary.currency })}
             </Text>
-            <Text testID="owner-net-sales" style={styles.performanceValue}>
+            <FitText testID="owner-net-sales" style={styles.performanceValue}>
               {formatMoneyMinor(primary.sales.netMinor, primary.currency)}
-            </Text>
+            </FitText>
             <Text style={styles.performanceCaption}>
               {t("home.netSalesWithOrders", { count: primary.sales.orders })}
             </Text>
@@ -270,7 +271,7 @@ const useStyles = createThemedStyles((colors) => {
       justifyContent: "space-between",
       gap: spacing.lg,
     },
-    performanceCopy: { flex: 1, gap: spacing.xs },
+    performanceCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
     performanceEyebrow: {
       color: colors.accent,
       ...typography.micro,

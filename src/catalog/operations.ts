@@ -93,6 +93,11 @@ export interface SetProductCategoriesArgs {
   categoryIds: string[];
 }
 
+export interface VendorArgs {
+  name: string;
+  slug: string;
+}
+
 export interface CategoryArgs {
   parentId: string | null;
   name: string;
@@ -353,4 +358,38 @@ export function normalizeSwatchHex(input: string): { hex: string | null; problem
 /** True for option names that represent colour (drives the swatch editor). */
 export function isColourName(name: string): boolean {
   return /^(colou?r|لون)$/iu.test(name.trim());
+}
+
+// ---- Brands (SDK 0.50 vendors): the labels the store sells, e.g. Zara ----
+export type VendorWriteClient = Pick<
+  TenantCommerceClient,
+  "createVendor" | "updateVendor" | "setVendorStatus"
+>;
+
+export function createVendor(client: VendorWriteClient, args: VendorArgs, key: string) {
+  return client.createVendor({ ...args, idempotencyKey: key });
+}
+
+export function updateVendor(
+  client: VendorWriteClient,
+  args: VendorArgs & { vendorId: string },
+  key: string,
+) {
+  return client.updateVendor({ ...args, idempotencyKey: key });
+}
+
+export function setVendorStatus(
+  client: VendorWriteClient,
+  args: { vendorId: string; status: "active" | "archived" },
+  key: string,
+) {
+  return client.setVendorStatus({ ...args, idempotencyKey: key });
+}
+
+export function setProductVendor(
+  client: Pick<TenantCommerceClient, "setProductVendor">,
+  args: { productId: string; vendorId: string | null },
+  key: string,
+) {
+  return client.setProductVendor({ ...args, idempotencyKey: key });
 }

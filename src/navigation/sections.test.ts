@@ -24,6 +24,7 @@ describe("management section registry", () => {
       "products",
       "collections",
       "categories",
+      "brands",
       "orders",
       "customers",
       "storefront",

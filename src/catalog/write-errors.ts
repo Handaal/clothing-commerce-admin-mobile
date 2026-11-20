@@ -105,6 +105,7 @@ export function describeCatalogWriteError(
         isNotPublishable: false,
       };
     case "CATEGORY_NOT_FOUND":
+    case "VENDOR_NOT_FOUND":
     case "OPTION_VALUE_NOT_FOUND":
       return {
         heading: t("catWriteErr.changedElsewhere"),

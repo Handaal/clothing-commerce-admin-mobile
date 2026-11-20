@@ -20,6 +20,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { directionalIcon, endAlign, startAlign, useI18n } from "../i18n";
 import { BrandSpinner } from "./BrandSpinner";
+import { FitText } from "./FitText";
 import { haptic } from "./haptics";
 import { AppIcon, type AppIconName } from "./Icon";
 import { layout, radius, shadows, spacing, typography } from "./theme";
@@ -574,7 +575,7 @@ export function MetricCard({
       <View style={[styles.metricIcon, { backgroundColor: iconBg }]}>
         <AppIcon name={icon} size={20} color={color} />
       </View>
-      <Text style={styles.metricValue}>{value}</Text>
+      <FitText style={styles.metricValue}>{value}</FitText>
       <Text style={styles.metricLabel}>{label}</Text>
     </View>
   );
@@ -617,7 +618,7 @@ export function SummaryStrip({
               <AppIcon name={item.icon} size={18} color={color} />
             </View>
             <View style={styles.summaryMetricCopy}>
-              <Text style={styles.summaryMetricValue}>{item.value}</Text>
+              <FitText style={styles.summaryMetricValue}>{item.value}</FitText>
               <Text numberOfLines={1} style={styles.summaryMetricLabel}>
                 {item.label}
               </Text>
@@ -1795,7 +1796,7 @@ const useStyles = createThemedStyles((colors) => {
       fontWeight: "800",
       letterSpacing: -0.4,
     },
-    metricLabel: { color: colors.inkMuted, ...typography.caption },
+    metricLabel: { color: colors.inkMuted, ...typography.caption, flexShrink: 1 },
     summaryStrip: {
       flexDirection: "row",
       flexWrap: "wrap",

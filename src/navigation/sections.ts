@@ -13,6 +13,7 @@ export type ManagementSectionId =
   | "products"
   | "collections"
   | "categories"
+  | "brands"
   | "orders"
   | "inventory"
   | "customers"
@@ -30,6 +31,7 @@ export type ManagementRoute =
   | "/products"
   | "/collections"
   | "/categories"
+  | "/brands"
   | "/orders"
   | "/inventory"
   | "/customers"
@@ -132,6 +134,17 @@ export const MANAGEMENT_SECTIONS: readonly ManagementSection[] = [
     descriptionKey: "section.categories.desc",
     icon: "file-tree-outline",
     route: "/categories",
+    group: "catalog",
+    visible: (context) => context.access.catalog.canRead,
+  },
+  {
+    id: "brands",
+    label: "Brands",
+    description: "Labels you sell, e.g. Zara. Shoppers browse by brand.",
+    labelKey: "section.brands.label",
+    descriptionKey: "section.brands.desc",
+    icon: "tag-multiple-outline",
+    route: "/brands",
     group: "catalog",
     visible: (context) => context.access.catalog.canRead,
   },

@@ -76,6 +76,7 @@ import {
   VariantOptionsForm,
 } from "./ProductOptionsSection";
 import { errorHeading, formatMoneyMinor, isRetryable } from "./display";
+import { ProductBrandForm } from "./ProductBrandForm";
 
 export interface ProductManageScreenProps {
   tenantId: string;
@@ -148,7 +149,7 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
   return <ProductManage {...props} client={client} data={state.data} reload={reload} />;
 }
 
-type Section = "details" | "variants" | "colours" | "categories" | "media" | "lifecycle";
+type Section = "details" | "variants" | "colours" | "categories" | "brand" | "media" | "lifecycle";
 
 /** "M · Black" from the variant's selected option values, or null when it has none. */
 function variantOptionLabel(data: ProductDetailResponse, variantId: string): string | null {
@@ -316,6 +317,20 @@ function ProductManage({
       ) : null}
 
       <SectionTab
+      <SectionTab
+        label={t("brand.productTitle")}
+        description={t("brand.sectionDesc")}
+        icon="tag-multiple-outline"
+        testID="section-brand"
+        active={section === "brand"}
+        onPress={() => setSection(section === "brand" ? null : "brand")}
+      />
+      {section === "brand" ? (
+        <Surface style={productStyles.expandedSection}>
+          <ProductBrandForm client={client} data={data} generateKey={generateKey} reload={reload} />
+        </Surface>
+      ) : null}
+
         label={t("pm.media")}
         description={t("pm.mediaDesc")}
         icon="image-multiple-outline"
