@@ -178,11 +178,7 @@ export function PosAccountsScreen({ client, canManage, onBack }: PosAccountsScre
 
   return (
     <ScrollScreen>
-      <PageHeader
-        title={t("posAccounts.title")}
-        description={t("posAccounts.description")}
-        icon="account-group"
-      />
+      <PageHeader title={t("posAccounts.title")} icon="account-group" />
       {notice ? (
         <Notice tone={notice.tone} message={notice.text} testID="pos-accounts-notice" />
       ) : null}

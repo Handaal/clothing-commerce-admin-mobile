@@ -18,7 +18,9 @@ describe("ReportsDashboardScreen", () => {
         onBack={() => undefined}
       />,
     );
-    expect(await screen.findByText("Africa/Cairo")).toBeTruthy();
+    // Reporting boundaries (timezone, from/to) sit behind "More details".
+    fireEvent.click(await screen.findByTestId("report-meta-toggle"));
+    expect(screen.getByText("Africa/Cairo")).toBeTruthy();
     expect(screen.getAllByText("Gross").length).toBeGreaterThan(0);
     expect(screen.getAllByText("AOV").length).toBe(2);
     expect(screen.getAllByText("Returns and refunds — separate from sales").length).toBe(2);
@@ -56,7 +58,7 @@ describe("ReportsDashboardScreen", () => {
         onBack={() => undefined}
       />,
     );
-    await screen.findByText("Africa/Cairo");
+    await screen.findByTestId("report-meta-toggle");
     fireEvent.click(screen.getByTestId("report-date-preset-7-days"));
     await waitFor(() =>
       expect(getDashboard).toHaveBeenLastCalledWith({ range: { preset: "7-days" } }),
@@ -165,7 +167,7 @@ describe("ReportsDashboardScreen", () => {
         onBack={() => undefined}
       />,
     );
-    await screen.findByText("Africa/Cairo");
+    await screen.findByTestId("report-meta-toggle");
     for (const report of [
       "sales",
       "products",

@@ -19,6 +19,7 @@ import {
   SectionHeading,
   SkeletonRows,
   Surface,
+  ReadOnlyChip,
 } from "../ui/components";
 import { typography } from "../ui/theme";
 import { useTheme } from "../ui/useTheme";
@@ -93,16 +94,11 @@ function SuppliersListContent({
       <PageHeader
         eyebrow={t("suppliers.eyebrow")}
         title={t("suppliers.title")}
-        description={t("suppliers.headerDesc")}
         icon="truck-delivery-outline"
         onBack={onBack}
       />
       <Surface tone="accent">
-        <SectionHeading
-          title={t("suppliers.workspaceTitle")}
-          detail={t("suppliers.managementOnly")}
-        />
-        <Body>{t("suppliers.workspaceBody")}</Body>
+        <SectionHeading title={t("suppliers.workspaceTitle")} />
         {canManage ? (
           <PrimaryButton
             label={t("suppliers.addCta")}
@@ -111,7 +107,7 @@ function SuppliersListContent({
             onPress={onCreateSupplier}
           />
         ) : (
-          <Notice testID="suppliers-read-only" message={t("suppliers.readOnly")} />
+          <ReadOnlyChip testID="suppliers-read-only" />
         )}
       </Surface>
       <Surface>

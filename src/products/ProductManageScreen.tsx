@@ -115,7 +115,6 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
         <PageHeader
           eyebrow={t("products.eyebrow")}
           title={t("pm.productTitle")}
-          description={t("pm.loadingDesc")}
           icon="tshirt-crew-outline"
           onBack={onBack}
         />
@@ -191,7 +190,6 @@ function ProductManage({
       <PageHeader
         eyebrow={t("products.eyebrow")}
         title={product.name}
-        description={t("pm.manageDesc")}
         icon="tshirt-crew-outline"
         onBack={onBack}
       />
@@ -248,7 +246,7 @@ function ProductManage({
         observationStore={observationStore}
       />
 
-      <SectionHeading title={t("pm.manageTitle")} detail={t("pm.chooseSection")} />
+      <SectionHeading title={t("pm.manageTitle")} />
       <SectionTab
         label={t("pm.editDetails")}
         description={t("pm.editDetailsDesc")}
@@ -1035,7 +1033,6 @@ function MediaSection({
   return (
     <View style={productStyles.sectionBody}>
       <Eyebrow>{t("pm.productMedia")}</Eyebrow>
-      <Body>{t("pm.mediaIntro")}</Body>
       {registered.length > 0 ? (
         <View style={productStyles.mediaList}>
           {registered.map((media) => (

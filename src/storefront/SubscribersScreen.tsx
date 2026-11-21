@@ -80,7 +80,6 @@ export function SubscribersScreen({ tenantId, context, onBack }: SubscribersScre
       <PageHeader
         eyebrow={t("subs.eyebrow")}
         title={t("subs.title")}
-        description={t("subs.desc")}
         icon="email-newsletter"
         onBack={onBack}
       />

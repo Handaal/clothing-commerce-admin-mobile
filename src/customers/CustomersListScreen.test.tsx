@@ -102,7 +102,7 @@ describe("CustomersListScreen", () => {
     renderScreen();
     expect(await screen.findByTestId(`customer-row-${CUSTOMER_A}`)).toBeTruthy();
     expect(screen.getByText("Mona Adel")).toBeTruthy();
-    expect(screen.getByText("USD 1200.00")).toBeTruthy();
+    expect(screen.getByText("USD 1,200.00")).toBeTruthy();
   });
 
   it("opens a customer on press", async () => {

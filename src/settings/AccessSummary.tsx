@@ -24,7 +24,7 @@ export function AccessSummary({ context }: { context: MeContextResponse }) {
   const settings = settingsCapabilities(context);
   return (
     <>
-      <SectionHeading title={t("home.yourAccess")} detail={t("common.serverAuthoritative")} />
+      <SectionHeading title={t("home.yourAccess")} />
       <View style={styles.accessPanel}>
         <InfoRow
           label={t("home.access.catalog")}

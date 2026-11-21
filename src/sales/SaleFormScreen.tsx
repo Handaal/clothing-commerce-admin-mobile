@@ -28,6 +28,7 @@ import {
   TextButton,
   TextField,
   Toggle,
+  ReadOnlyChip,
 } from "../ui/components";
 import { radius, spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
@@ -79,7 +80,7 @@ export function SaleFormScreen(props: {
           icon="sale-outline"
           onBack={props.onBack}
         />
-        <Notice message={t("sales.readOnly")} />
+        <ReadOnlyChip />
       </ScrollScreen>
     );
   }
@@ -219,7 +220,6 @@ function SaleEditor({
       <PageHeader
         eyebrow={t("sales.title")}
         title={mode === "create" ? t("sales.createTitle") : t("sales.editTitle")}
-        description={t("sales.formDesc")}
         icon={mode === "create" ? "sale-outline" : "pencil-outline"}
         onBack={onBack}
       />

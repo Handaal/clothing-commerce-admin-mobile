@@ -227,7 +227,6 @@ function CurrencyDashboard({ group }: { group: CurrencySalesGroup }) {
 
       <Divider />
       <Title>{t("reportDash.salesTrend")}</Title>
-      <Body>{t("reportDash.trendNote")}</Body>
       {group.trend.map((point) => (
         <SurfaceRow key={`${group.currency}-${point.fromInclusive}`}>
           <Title>{point.label}</Title>

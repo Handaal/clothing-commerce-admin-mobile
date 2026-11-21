@@ -85,7 +85,6 @@ export function ReturnRequestsScreen({
       <PageHeader
         eyebrow={t("returnReq.eyebrow")}
         title={t("returnReq.title")}
-        description={t("returnReq.desc")}
         icon="keyboard-return"
         onBack={onBack}
       />

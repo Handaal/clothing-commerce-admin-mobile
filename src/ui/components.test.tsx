@@ -78,13 +78,7 @@ describe("shared UI controls", () => {
   it("uses an icon-only accessible back control on detail-page headers", () => {
     const onBack = vi.fn();
     render(
-      <PageHeader
-        eyebrow="Orders"
-        title="ORD-1001"
-        description="Online order details"
-        icon="receipt-text-outline"
-        onBack={onBack}
-      />,
+      <PageHeader eyebrow="Orders" title="ORD-1001" icon="receipt-text-outline" onBack={onBack} />,
     );
 
     const back = screen.getByLabelText("Back");
@@ -131,15 +125,12 @@ describe("shared UI controls", () => {
 
   it("applies RTL direction and start alignment immediately for Arabic", () => {
     setLocale("ar");
-    render(<PageHeader eyebrow="القسم" title="الطلبات" description="إدارة طلبات المتجر" />);
+    render(<PageHeader eyebrow="القسم" title="الطلبات" />);
 
     expect(getComputedStyle(screen.getByTestId("page-header")).direction).toBe("rtl");
     const title = getComputedStyle(screen.getByTestId("page-header-title"));
-    const description = getComputedStyle(screen.getByTestId("page-header-description"));
     expect(title.textAlign).toBe("right");
     expect(title.width).toBe("100%");
-    expect(description.textAlign).toBe("right");
-    expect(description.alignSelf).toBe("flex-end");
   });
 
   it("auto-tones a captured payment as success and an authorized one as a warning", () => {

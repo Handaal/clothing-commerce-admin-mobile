@@ -176,7 +176,6 @@ function ManageContent({
       <PageHeader
         eyebrow={t("collections.eyebrow")}
         title={collection.name}
-        description={collection.description ?? t("manageCollection.membershipDesc")}
         icon="shape-outline"
         onBack={onBack}
       />

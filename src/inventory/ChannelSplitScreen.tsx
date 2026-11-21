@@ -97,12 +97,7 @@ export function ChannelSplitScreen({
 
   return (
     <ScrollScreen wide>
-      <PageHeader
-        title={t("split.title")}
-        description={t("split.headerDesc")}
-        icon="call-split"
-        onBack={onBack}
-      />
+      <PageHeader title={t("split.title")} icon="call-split" onBack={onBack} />
       {locations.length > 1 ? (
         <FilterChips
           testIDPrefix="split-location"

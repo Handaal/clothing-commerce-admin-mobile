@@ -14,7 +14,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useI18n, type MessageKey } from "../i18n";
 import { useSession } from "../session/SessionProvider";
-import { haptic } from "../ui/haptics";
 import { AppIcon, type AppIconName } from "../ui/Icon";
 import { radius, shadows, spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
@@ -96,7 +95,6 @@ export function ManagementShell({ children }: { children: ReactNode }) {
         selected={selected}
         onNavigate={(item) => {
           if (pathname === item.route) return;
-          if (selected !== item.id) haptic("light");
           router.replace(item.route);
         }}
       />

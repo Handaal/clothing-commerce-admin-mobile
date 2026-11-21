@@ -44,7 +44,7 @@ export function CustomerMessage({
 
   return (
     <Surface testID="order-customer-message">
-      <SectionHeading title={t("orderMessage.title")} detail={t("orderMessage.detail")} />
+      <SectionHeading title={t("orderMessage.title")} />
       <Text style={styles.preview} selectable testID="order-message-preview">
         {links.text}
       </Text>

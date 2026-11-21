@@ -200,14 +200,12 @@ export function ActionDock({ actions }: { actions: readonly ActionDockItem[] }) 
 export function PageHeader({
   title,
   eyebrow,
-  description,
   icon,
   action,
   onBack,
 }: {
   title: string;
   eyebrow?: string;
-  description?: string;
   icon?: AppIconName;
   action?: ReactNode;
   onBack?: () => void;
@@ -242,19 +240,6 @@ export function PageHeader({
             >
               {title}
             </Text>
-            {description ? (
-              <Text
-                testID="page-header-description"
-                numberOfLines={2}
-                style={[
-                  styles.pageHeaderDescription,
-                  pageHeaderReadingDirection(isRTL),
-                  { alignSelf: isRTL ? "flex-end" : "flex-start" },
-                ]}
-              >
-                {description}
-              </Text>
-            ) : null}
           </View>
         </View>
         {action ? <View style={styles.pageHeaderAction}>{action}</View> : null}
@@ -872,10 +857,7 @@ export function PrimaryButton({
       testID={testID}
       accessibilityRole="button"
       disabled={disabled}
-      onPress={() => {
-        haptic(variant === "primary" ? "medium" : "light");
-        onPress();
-      }}
+      onPress={onPress}
       {...(variant === "primary" && !disabled ? webLift : {})}
       style={({ pressed }) => [
         styles.button,
@@ -996,12 +978,85 @@ export function SectionHeading({ title, detail }: { title: string; detail?: stri
   return (
     <View style={[styles.sectionHeading, { direction: dir }]}>
       <View style={styles.sectionHeadingMain}>
-        <View style={styles.sectionMarker} />
         <Text style={[styles.sectionTitle, readingDirection(isRTL)]}>{title}</Text>
       </View>
       {detail ? (
         <Text style={[styles.sectionDetail, readingDirection(isRTL)]}>{detail}</Text>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * A quiet, plain card with a small title — the calm default for grouping facts on detail screens.
+ * No tint, no icon tile, no subtitle: the content carries the meaning.
+ */
+export function DetailCard({
+  title,
+  action,
+  children,
+  testID,
+}: {
+  title?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  testID?: string;
+}) {
+  const { styles } = useStyles();
+  const { isRTL, dir } = useI18n();
+  return (
+    <View testID={testID} style={[styles.surface, styles.detailCard]}>
+      {title || action ? (
+        <View style={[styles.detailCardHeader, { direction: dir }]}>
+          {title ? (
+            <Text style={[styles.detailCardTitle, readingDirection(isRTL)]}>{title}</Text>
+          ) : (
+            <View />
+          )}
+          {action}
+        </View>
+      ) : null}
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Secondary information folded behind a single quiet "More details" line. Keeps every fact one tap
+ * away without putting it on the first screen.
+ */
+export function Disclosure({
+  label,
+  children,
+  testID,
+  defaultOpen = false,
+}: {
+  label: string;
+  children: ReactNode;
+  testID?: string;
+  defaultOpen?: boolean;
+}) {
+  const { styles, colors } = useStyles();
+  const { isRTL, dir } = useI18n();
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View style={styles.disclosure}>
+      <Pressable
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        aria-expanded={open}
+        onPress={() => setOpen((value) => !value)}
+        style={({ pressed }) => [
+          styles.disclosureTrigger,
+          { direction: dir },
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        <Text style={[styles.disclosureLabel, readingDirection(isRTL)]}>{label}</Text>
+        <AppIcon name={open ? "chevron-up" : "chevron-down"} size={20} color={colors.inkSubtle} />
+      </Pressable>
+      {open ? <View style={styles.disclosureBody}>{children}</View> : null}
     </View>
   );
 }
@@ -1617,19 +1672,21 @@ const useStyles = createThemedStyles((colors) => {
   const surfaceToneStyles = StyleSheet.create({
     default: { backgroundColor: colors.surface },
     muted: { backgroundColor: colors.surfaceMuted },
-    brand: { backgroundColor: colors.brandSoft, borderColor: colors.brandSoftStrong },
-    accent: { backgroundColor: colors.accentSoft, borderColor: colors.accentSoft },
+    // Calm by default: emphasis tones no longer tint whole cards. Colour is reserved for status and
+    // the primary action, so these render as plain surfaces.
+    brand: { backgroundColor: colors.surface },
+    accent: { backgroundColor: colors.surface },
   });
 
   const noticeStyles = StyleSheet.create({
-    info: { backgroundColor: colors.infoSoft, borderColor: colors.infoBorder },
+    info: { backgroundColor: colors.surfaceMuted, borderColor: colors.borderSoft },
     success: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
     warning: { backgroundColor: colors.warningSoft, borderColor: colors.warningBorder },
     danger: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerBorder },
   });
 
   const noticeInk = {
-    info: colors.info,
+    info: colors.inkMuted,
     success: colors.success,
     warning: colors.warning,
     danger: colors.danger,
@@ -1637,7 +1694,7 @@ const useStyles = createThemedStyles((colors) => {
 
   // Tonal borders also provide the stronger fill behind notice icons.
   const noticeIconBg = {
-    info: colors.infoBorder,
+    info: "transparent",
     success: colors.successBorder,
     warning: colors.warningBorder,
     danger: colors.dangerBorder,
@@ -1730,12 +1787,6 @@ const useStyles = createThemedStyles((colors) => {
       alignItems: "center",
       gap: 6,
     },
-    pageHeaderDescription: {
-      width: "100%",
-      maxWidth: 640,
-      color: colors.inkMuted,
-      ...typography.body,
-    },
     pageHeaderAction: {
       maxWidth: "100%",
       flexShrink: 0,
@@ -1765,7 +1816,6 @@ const useStyles = createThemedStyles((colors) => {
       padding: spacing.lg,
       gap: spacing.md,
       backgroundColor: colors.surface,
-      ...shadows.card,
     },
     formSection: {
       width: "100%",
@@ -1792,18 +1842,18 @@ const useStyles = createThemedStyles((colors) => {
       gap: spacing.md,
       borderWidth: 1,
       borderRadius: radius.md,
-      padding: spacing.lg,
+      padding: spacing.md,
     },
     noticeIcon: {
-      width: 32,
-      height: 32,
+      width: 28,
+      height: 28,
       alignItems: "center",
       justifyContent: "center",
       borderRadius: radius.sm,
     },
     noticeCopy: { flex: 1, gap: spacing.xs },
     noticeTitle: { ...typography.cardTitle },
-    noticeMessage: { ...typography.body },
+    noticeMessage: { ...typography.bodySmall },
     noticeAction: { marginTop: spacing.xs },
     searchField: {
       minHeight: 52,
@@ -2149,12 +2199,20 @@ const useStyles = createThemedStyles((colors) => {
     textButton: {
       minHeight: 40,
       alignSelf: "flex-start",
+      // Never push past the card edge: shrink and wrap inside narrow rows (long Arabic labels).
+      flexShrink: 1,
+      maxWidth: "100%",
       flexDirection: "row",
       alignItems: "center",
       gap: spacing.sm,
       paddingVertical: spacing.sm,
     },
-    textButtonLabel: { color: colors.brand, ...typography.bodySmall, fontWeight: "800" },
+    textButtonLabel: {
+      flexShrink: 1,
+      color: colors.brand,
+      ...typography.bodySmall,
+      fontWeight: "800",
+    },
     infoRow: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -2181,14 +2239,32 @@ const useStyles = createThemedStyles((colors) => {
       marginBottom: spacing.xs,
     },
     sectionHeadingMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-    sectionMarker: {
-      width: 4,
-      height: 18,
-      borderRadius: radius.pill,
-      backgroundColor: colors.accent,
-    },
     sectionTitle: { color: colors.ink, ...typography.sectionTitle },
     sectionDetail: { color: colors.inkSubtle, ...typography.caption, fontWeight: "700" },
+    detailCard: { gap: spacing.xs, shadowOpacity: 0, elevation: 0 },
+    detailCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.md,
+      marginBottom: spacing.xs,
+    },
+    detailCardTitle: {
+      flexShrink: 1,
+      color: colors.inkMuted,
+      ...typography.label,
+      fontWeight: "700",
+    },
+    disclosure: { gap: spacing.sm },
+    disclosureTrigger: {
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.xs,
+    },
+    disclosureLabel: { color: colors.inkMuted, ...typography.bodySmall, fontWeight: "700" },
+    disclosureBody: { gap: spacing.md },
     emptyState: {
       alignItems: "center",
       paddingHorizontal: spacing.xxl,

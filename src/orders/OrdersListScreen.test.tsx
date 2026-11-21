@@ -171,7 +171,7 @@ describe("OrdersListScreen", () => {
 
     expect(await screen.findByText("ORD-1001")).toBeTruthy();
     expect(screen.getByTestId(`order-status-${ORDER_A}`).textContent).toBe("Placed");
-    expect(screen.getByText("ONLINE")).toBeTruthy();
+    expect(screen.getByTestId(`order-channel-${ORDER_A}`).textContent).toMatch(/^Online · /);
     expect(screen.getByText("USD 129.95")).toBeTruthy();
     expect(screen.queryByText("Back")).toBeNull();
     expect(screen.getByLabelText("Refresh orders").textContent).toBe("");

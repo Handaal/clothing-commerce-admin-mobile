@@ -18,12 +18,11 @@ import {
   ResponsiveList,
   ScrollScreen,
   SearchField,
-  SectionHeading,
   SkeletonRows,
 } from "../ui/components";
 import { channelLabel } from "../ui/status";
-import { AppIcon, type AppIconName } from "../ui/Icon";
-import { radius, spacing, typography } from "../ui/theme";
+import type { AppIconName } from "../ui/Icon";
+import { spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { formatOrderDate } from "./display";
@@ -57,7 +56,6 @@ export function OrdersListScreen({ tenantId, context, onOpenOrder }: OrdersListS
         <PageHeader
           eyebrow={t("orders.eyebrow")}
           title={t("orders.title")}
-          description={t("orders.headerNoAccessDesc")}
           icon="receipt-text-outline"
         />
         <Notice tone="warning" title={t("orders.accessTitle")} message={t("orders.accessBody")} />
@@ -73,7 +71,7 @@ function OrdersListContent({
   context,
   onOpenOrder,
 }: Omit<OrdersListScreenProps, "onBack">) {
-  const { orderStyles, colors } = useStyles();
+  const { orderStyles } = useStyles();
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
   const { t } = useI18n();
@@ -107,16 +105,22 @@ function OrdersListContent({
     const byChannel =
       channel === "all" ? allOrders : allOrders.filter((order) => order.channel === channel);
     if (!normalizedQuery) return byChannel;
-    return byChannel.filter((order) => order.orderNumber.toLowerCase().includes(normalizedQuery));
+    // SDK 0.51 summaries carry the customer, so staff can find "Omar" or "0101…" without the number.
+    const digits = normalizedQuery.replace(/[^0-9]/g, "");
+    return byChannel.filter(
+      (order) =>
+        order.orderNumber.toLowerCase().includes(normalizedQuery) ||
+        (order.customerName?.toLowerCase().includes(normalizedQuery) ?? false) ||
+        (digits.length >= 3 &&
+          (order.customerPhone?.replace(/[^0-9]/g, "").includes(digits.replace(/^0/, "")) ??
+            false)),
+    );
   }, [allOrders, channel, normalizedQuery]);
 
   return (
     <ScrollScreen wide onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
-        eyebrow={t("orders.eyebrow")}
         title={t("orders.title")}
-        description={t("orders.headerDesc")}
-        icon="receipt-text-outline"
         action={
           state.status === "success" && allOrders.length > 0 ? (
             <HeaderIconButton
@@ -144,22 +148,12 @@ function OrdersListContent({
         />
       ) : null}
 
-      <View style={orderStyles.filterBlock}>
-        <SectionHeading
-          title={t("orders.historyHeading")}
-          detail={
-            state.status === "success"
-              ? t("common.shown", { count: visibleOrders.length })
-              : undefined
-          }
-        />
-        <FilterChips
-          options={channelOptions}
-          selected={channel}
-          onSelect={setChannel}
-          testIDPrefix="order-channel-filter"
-        />
-      </View>
+      <FilterChips
+        options={channelOptions}
+        selected={channel}
+        onSelect={setChannel}
+        testIDPrefix="order-channel-filter"
+      />
 
       {state.status === "loading" ? <SkeletonRows testID="orders-loading" /> : null}
       {state.status === "error" ? (
@@ -228,41 +222,37 @@ function OrdersListContent({
               onPress={() => onOpenOrder(order.id)}
               density="compact"
             >
-              <View style={orderStyles.orderLead}>
-                <View
-                  style={[
-                    orderStyles.channelIcon,
-                    order.channel === "online" && orderStyles.channelIconOnline,
-                  ]}
-                >
-                  <AppIcon
-                    name={order.channel === "online" ? "web" : "store-outline"}
-                    size={22}
-                    color={order.channel === "online" ? colors.accent : colors.brand}
+              <View style={orderStyles.orderCopy}>
+                <View style={orderStyles.titleRow}>
+                  <Text numberOfLines={1} style={orderStyles.orderNumber}>
+                    {order.orderNumber}
+                  </Text>
+                  <Text style={orderStyles.totalValue}>
+                    {formatMoneyMinor(order.totalMinor, order.currency)}
+                  </Text>
+                </View>
+                <View style={orderStyles.metadataRow}>
+                  {/* An open online order shows how far it has shipped (To fulfil / Partly / Fulfilled),
+                      which is what staff act on; cancelled and POS orders keep the order status. */}
+                  <StatusBadge
+                    status={
+                      order.channel === "online" &&
+                      order.status === "placed" &&
+                      order.fulfillmentStatus
+                        ? order.fulfillmentStatus
+                        : order.status
+                    }
+                    testID={`order-status-${order.id}`}
                   />
+                  <Text
+                    testID={`order-channel-${order.id}`}
+                    numberOfLines={1}
+                    style={orderStyles.dateText}
+                  >
+                    {channelLabel(order.channel, t)} · {formatOrderDate(order.placedAt)}
+                    {order.customerName ? ` · ${order.customerName}` : ""}
+                  </Text>
                 </View>
-                <View style={orderStyles.orderCopy}>
-                  <View style={orderStyles.titleRow}>
-                    <Text style={orderStyles.orderNumber}>{order.orderNumber}</Text>
-                    <StatusBadge status={order.status} testID={`order-status-${order.id}`} />
-                  </View>
-                  <View style={orderStyles.metadataRow}>
-                    <Text testID={`order-channel-${order.id}`} style={orderStyles.channelText}>
-                      {channelLabel(order.channel, t).toUpperCase()}
-                    </Text>
-                    <View style={orderStyles.metadataDot} />
-                    <AppIcon name="clock-outline" size={14} color={colors.inkSubtle} />
-                    <Text numberOfLines={1} style={orderStyles.dateText}>
-                      {formatOrderDate(order.placedAt)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-              <View style={orderStyles.totalRow}>
-                <Text style={orderStyles.totalLabel}>{t("orders.total")}</Text>
-                <Text style={orderStyles.totalValue}>
-                  {formatMoneyMinor(order.totalMinor, order.currency)}
-                </Text>
               </View>
             </PressableRow>
           ))}
@@ -274,45 +264,17 @@ function OrdersListContent({
 
 const useStyles = createThemedStyles((colors) => {
   const orderStyles = StyleSheet.create({
-    filterBlock: { gap: spacing.sm },
-    orderLead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-    channelIcon: {
-      width: 40,
-      height: 40,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: radius.md,
-      backgroundColor: colors.brandSoft,
-    },
-    channelIconOnline: { backgroundColor: colors.accentSoft },
-    orderCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
-    orderNumber: { flex: 1, color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
+    orderCopy: { flex: 1, minWidth: 0, gap: spacing.sm },
+    orderNumber: { flex: 1, color: colors.ink, ...typography.cardTitle, fontWeight: "700" },
     titleRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-      gap: spacing.sm,
-    },
-    metadataRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-    channelText: { color: colors.accent, ...typography.micro, fontWeight: "800" },
-    metadataDot: {
-      width: 3,
-      height: 3,
-      borderRadius: radius.pill,
-      backgroundColor: colors.borderStrong,
-    },
-    dateText: { flex: 1, color: colors.inkMuted, ...typography.micro, fontWeight: "600" },
-    totalRow: {
       flexDirection: "row",
       alignItems: "baseline",
       justifyContent: "space-between",
       gap: spacing.md,
-      paddingTop: spacing.xs,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderSoft,
     },
-    totalLabel: { color: colors.inkSubtle, ...typography.micro, fontWeight: "700" },
-    totalValue: { flexShrink: 1, color: colors.ink, ...typography.label, fontWeight: "800" },
+    metadataRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+    dateText: { flex: 1, color: colors.inkMuted, ...typography.caption },
+    totalValue: { color: colors.ink, ...typography.label, fontWeight: "800" },
   });
   return { colors, orderStyles };
 });

@@ -10,6 +10,7 @@ import type { SelectOption } from "../ui/components";
 import {
   Badge,
   Body,
+  ReadOnlyChip,
   ConfirmButton,
   FormSection,
   InfoRow,
@@ -207,7 +208,6 @@ function SupplierDetailContent({
       <PageHeader
         eyebrow={t("supplierDetail.recordEyebrow")}
         title={supplier.name}
-        description={t("supplierDetail.recordDesc")}
         icon="truck-delivery-outline"
         onBack={onBack}
       />
@@ -229,7 +229,7 @@ function SupplierDetailContent({
           />
         </Surface>
       ) : (
-        <Notice message={t("suppliers.readOnly")} />
+        <ReadOnlyChip />
       )}
 
       <FormSection title={t("supplierDetail.profileSection")} icon="account-box-outline">

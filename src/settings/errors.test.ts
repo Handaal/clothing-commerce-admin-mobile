@@ -54,7 +54,7 @@ describe("Settings canonical error UX", () => {
       describeSettingsError(new ApiHttpError("raw", 422, "INVALID_SETTINGS", null)),
     ).toMatchObject({
       kind: "validation",
-      message: expect.stringContaining("same Branch"),
+      message: expect.stringContaining("same branch"),
     });
     expect(describeSettingsError(new ApiNetworkError("offline")).kind).toBe("network");
     expect(describeSettingsError(new ApiHttpError("raw", 500, "INTERNAL", null)).kind).toBe(

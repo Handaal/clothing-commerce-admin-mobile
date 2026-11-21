@@ -363,7 +363,6 @@ function InventoryData({ data, pager }: { data: InventoryReport; pager: CursorPa
     <View style={{ gap: 12 }}>
       {data.meta ? <ReportMetaBlock meta={data.meta} /> : null}
       {data.asOf ? <InfoRow label={t("rpt.balancesAsOf")} value={data.asOf} /> : null}
-      <Body>{t("rpt.invLocationNote")}</Body>
       <Title>{inventoryViewTitle(data.view)}</Title>
       {data.items.items.map((row) => (
         <InventoryRow key={row.id} row={row} />

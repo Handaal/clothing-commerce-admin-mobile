@@ -55,7 +55,6 @@ export function CustomersListScreen({
       <PageHeader
         eyebrow={t("customers.eyebrow")}
         title={t("customers.title")}
-        description={t("customers.headerDesc")}
         icon="account-group-outline"
         onBack={onBack}
       />

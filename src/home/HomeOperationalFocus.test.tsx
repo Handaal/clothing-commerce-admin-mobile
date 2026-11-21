@@ -93,4 +93,39 @@ describe("HomeOperationalFocus", () => {
     expect(client.listOrders).not.toHaveBeenCalled();
     expect(client.listInventory).not.toHaveBeenCalled();
   });
+
+  it("leads with website orders still to ship, oldest first, when the list carries ship status", async () => {
+    const newest = orderListItem({
+      id: "c1111111-1111-4111-8111-111111111111",
+      orderNumber: "W-3",
+      channel: "online",
+      fulfillmentStatus: "unfulfilled",
+      customerName: "Omar Hassan",
+      deliveryCity: "Dokki",
+    } as never);
+    const shipped = orderListItem({
+      id: "c2222222-2222-4222-8222-222222222222",
+      orderNumber: "W-2",
+      channel: "online",
+      fulfillmentStatus: "fulfilled",
+    } as never);
+    const oldest = orderListItem({
+      id: "c3333333-3333-4333-8333-333333333333",
+      orderNumber: "W-1",
+      channel: "online",
+      fulfillmentStatus: "partially_fulfilled",
+    } as never);
+    const client = {
+      ...clientWithSignals(),
+      listOrders: vi.fn(async () => orderList([newest, shipped, oldest])),
+    } as unknown as TenantCommerceClient;
+    renderFocus({ client });
+
+    expect(await screen.findByText("Website orders to ship (2)")).toBeTruthy();
+    const rows = screen
+      .getAllByTestId(/^home-order-/u)
+      .map((row) => row.getAttribute("data-testid"));
+    expect(rows).toEqual([`home-order-${oldest.id}`, `home-order-${newest.id}`]);
+    expect(screen.getByText(/Omar Hassan · Dokki/u)).toBeTruthy();
+  });
 });

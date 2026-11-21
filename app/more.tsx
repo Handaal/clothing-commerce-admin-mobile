@@ -35,11 +35,7 @@ export default function MoreRoute() {
 
   return (
     <ScrollScreen>
-      <PageHeader
-        eyebrow={t("more.eyebrow")}
-        title={t("more.title")}
-        description={t("more.subtitle", { tenant: businessName })}
-      />
+      <PageHeader eyebrow={t("more.eyebrow")} title={t("more.title")} />
 
       {/* Tools grouped by the task the owner is doing, most frequent first. */}
       {groups.map((bucket) => (

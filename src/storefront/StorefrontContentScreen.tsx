@@ -81,7 +81,6 @@ export function StorefrontContentScreen({
     <PageHeader
       eyebrow={t("storefront.title")}
       title={t("sfContent.title")}
-      description={t("sfContent.headerDesc")}
       icon="home-edit-outline"
       onBack={onBack}
     />

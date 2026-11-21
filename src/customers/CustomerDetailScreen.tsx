@@ -90,7 +90,6 @@ export function CustomerDetailScreen({
       <PageHeader
         eyebrow={t("customers.eyebrow")}
         title={customer.name}
-        description={t("customerDetail.recordDesc")}
         icon="account-outline"
         onBack={onBack}
       />
@@ -143,10 +142,7 @@ function CustomerOrders({
 
   return (
     <>
-      <SectionHeading
-        title={t("customerDetail.ordersSection")}
-        detail={t("customerDetail.ordersDetail")}
-      />
+      <SectionHeading title={t("customerDetail.ordersSection")} />
       {state.status === "loading" ? (
         <LoadingBlock label={t("customerDetail.ordersLoading")} />
       ) : null}

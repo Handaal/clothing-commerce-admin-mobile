@@ -31,8 +31,15 @@ export function errorHeading(kind: CommerceErrorKind): string {
  * returns `amountMinor` in the currency's minor units; we render two fraction digits, which is
  * correct for the currencies this catalog uses. No rounding or currency conversion is invented.
  */
+/**
+ * "EGP 12,199.70" — thousands grouped like the Storefront and POS, so large figures read at a glance.
+ * Grouping is done by hand (not Intl) so Hermes on every device prints the same thing.
+ */
 export function formatMoneyMinor(amountMinor: number, currency: string): string {
-  return `${currency} ${(amountMinor / 100).toFixed(2)}`;
+  const sign = amountMinor < 0 ? "-" : "";
+  const [whole = "0", fraction = "00"] = (Math.abs(amountMinor) / 100).toFixed(2).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${currency} ${sign}${grouped}.${fraction}`;
 }
 
 /**

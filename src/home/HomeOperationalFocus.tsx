@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { directionalIcon, endAlign, useI18n } from "../i18n";
 import { loadAllInventory, type InventoryItem } from "../inventory/load";
+import { loadAllOrders } from "../orders/load";
 import { formatOrderDate } from "../orders/display";
 import { formatMoneyMinor } from "../products/display";
 import type { SupplierAdapter } from "../suppliers/adapter";
@@ -17,7 +18,7 @@ import {
   webLift,
 } from "../ui/components";
 import { AppIcon, type AppIconName } from "../ui/Icon";
-import { radius, spacing, typography } from "../ui/theme";
+import { spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
 import { useAsync, type AsyncState } from "../ui/useAsync";
 
@@ -39,6 +40,12 @@ interface HomeOperationalFocusProps {
 interface PlacedOrdersSnapshot {
   items: OrderListResponse["items"];
   hasMore: boolean;
+  /**
+   * "toShip": website orders still to ship, oldest first (SDK 0.51 list status), with their total.
+   * "placed": an older server without that status — the latest placed orders, as before.
+   */
+  mode: "toShip" | "placed";
+  total: number;
 }
 
 /**
@@ -58,10 +65,27 @@ export function HomeOperationalFocus({
 }: HomeOperationalFocusProps) {
   const { styles } = useStyles();
   const { t } = useI18n();
+  // The owner's first job on Home is the website orders waiting to be packed and shipped (POS sales
+  // are already complete at the till). Falls back to the latest placed orders on an older server.
   const loadPlacedOrders = useCallback(async (): Promise<PlacedOrdersSnapshot> => {
-    if (!canReadOrders) return { items: [], hasMore: false };
+    if (!canReadOrders) return { items: [], hasMore: false, mode: "placed", total: 0 };
+    const online = await loadAllOrders(client, { channel: "online", status: "placed" });
+    if (online.every((order) => order.fulfillmentStatus !== undefined)) {
+      const queue = online.filter((order) => order.fulfillmentStatus !== "fulfilled").reverse();
+      return {
+        items: queue.slice(0, HOME_LIST_LIMIT),
+        hasMore: queue.length > HOME_LIST_LIMIT,
+        mode: "toShip",
+        total: queue.length,
+      };
+    }
     const response = await client.listOrders({ status: "placed", limit: HOME_LIST_LIMIT });
-    return { items: response.items, hasMore: response.pageInfo.hasMore };
+    return {
+      items: response.items,
+      hasMore: response.pageInfo.hasMore,
+      mode: "placed",
+      total: response.items.length,
+    };
   }, [canReadOrders, client]);
   const loadInventory = useCallback(
     () => (canReadInventory ? loadAllInventory(client) : Promise.resolve<InventoryItem[]>([])),
@@ -81,12 +105,18 @@ export function HomeOperationalFocus({
 
   return (
     <View style={styles.section}>
-      <SectionHeading title={t("home.operationalFocus")} detail={t("home.liveFromApi")} />
+      <SectionHeading title={t("home.operationalFocus")} />
       <Surface style={styles.focusSurface}>
         {canReadOrders ? (
           <OperationalGroup
             icon="receipt-text-outline"
-            title={t("home.placedOrders")}
+            title={
+              orders.state.status === "success" && orders.state.data.mode === "toShip"
+                ? orders.state.data.total > 0
+                  ? t("home.ordersToShipCount", { count: orders.state.data.total })
+                  : t("home.ordersToShip")
+                : t("home.placedOrders")
+            }
             actionLabel={t("home.viewAllOrders")}
             onAction={onOpenOrders}
           >
@@ -99,7 +129,7 @@ export function HomeOperationalFocus({
         {canReadInventory ? (
           <OperationalGroup
             icon="package-variant-closed"
-            title={t("home.lowStockCue")}
+            title={t("home.lowStockTitle")}
             actionLabel={t("home.openInventory")}
             onAction={onOpenInventory}
           >
@@ -146,7 +176,7 @@ function OperationalGroup({
       <View style={styles.groupHeader}>
         <View style={styles.groupTitleRow}>
           <View style={styles.groupIcon}>
-            <AppIcon name={icon} size={18} color={colors.brand} />
+            <AppIcon name={icon} size={18} color={colors.inkMuted} />
           </View>
           <Text style={styles.groupTitle}>{title}</Text>
         </View>
@@ -173,7 +203,11 @@ function OrdersContent({
   if (state.status === "loading") return <LoadingBlock label={t("home.loadingPlacedOrders")} />;
   if (state.status === "error") return <CompactUnavailable />;
   if (state.data.items.length === 0) {
-    return <CompactEmpty message={t("home.noPlacedOrders")} />;
+    return (
+      <CompactEmpty
+        message={state.data.mode === "toShip" ? t("home.noOrdersToShip") : t("home.noPlacedOrders")}
+      />
+    );
   }
   return (
     <View style={styles.compactList}>
@@ -182,16 +216,24 @@ function OrdersContent({
           key={order.id}
           testID={`home-order-${order.id}`}
           title={order.orderNumber}
-          detail={t("home.orderMeta", {
-            channel: order.channel.toUpperCase(),
-            date: formatOrderDate(order.placedAt),
-          })}
+          detail={
+            state.data.mode === "toShip"
+              ? [order.customerName, order.deliveryCity, formatOrderDate(order.placedAt)]
+                  .filter(Boolean)
+                  .join(" · ")
+              : t("home.orderMeta", {
+                  channel: order.channel.toUpperCase(),
+                  date: formatOrderDate(order.placedAt),
+                })
+          }
           trailing={formatMoneyMinor(order.totalMinor, order.currency)}
           onPress={() => onOpenOrder(order.id)}
         />
       ))}
       {state.data.hasMore ? (
-        <Text style={styles.moreHint}>{t("home.morePlacedOrders")}</Text>
+        <Text style={styles.moreHint}>
+          {state.data.mode === "toShip" ? t("home.moreOrdersToShip") : t("home.morePlacedOrders")}
+        </Text>
       ) : null}
     </View>
   );
@@ -257,7 +299,6 @@ function SupplierDuesContent({
           onPress={() => onOpenSupplier(due.supplierId)}
         />
       ))}
-      <Text style={styles.thresholdNote}>{t("home.currenciesSeparate")}</Text>
     </View>
   );
 }
@@ -332,16 +373,15 @@ const useStyles = createThemedStyles((colors) => {
       justifyContent: "space-between",
       gap: spacing.md,
     },
-    groupTitleRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-    groupIcon: {
-      width: 32,
-      height: 32,
+    groupTitleRow: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
-      borderRadius: radius.sm,
-      backgroundColor: colors.brandSoft,
+      gap: spacing.sm,
     },
-    groupTitle: { color: colors.ink, ...typography.cardTitle },
+    groupIcon: { width: 24, alignItems: "center", justifyContent: "center" },
+    groupTitle: { flexShrink: 1, color: colors.ink, ...typography.cardTitle },
     divider: { marginVertical: spacing.sm },
     compactList: { gap: 0 },
     compactRow: {
@@ -356,7 +396,13 @@ const useStyles = createThemedStyles((colors) => {
     rowCopy: { flex: 1, minWidth: 0, gap: 2 },
     rowTitle: { color: colors.ink, ...typography.bodySmall, fontWeight: "800" },
     rowDetail: { color: colors.inkMuted, ...typography.micro, fontWeight: "600" },
-    rowTrailing: { color: colors.ink, ...typography.caption, fontWeight: "800" },
+    rowTrailing: {
+      flexShrink: 0,
+      maxWidth: "45%",
+      color: colors.ink,
+      ...typography.caption,
+      fontWeight: "800",
+    },
     rowTrailingDanger: { color: colors.danger },
     compactMessage: {
       minHeight: 50,

@@ -106,7 +106,6 @@ function CategoriesContent({
       <PageHeader
         eyebrow={t("cat.eyebrow")}
         title={t("cat.title")}
-        description={t("cat.desc")}
         icon="file-tree-outline"
         onBack={onBack}
       />
@@ -119,7 +118,7 @@ function CategoriesContent({
         />
       </Surface>
 
-      <SectionHeading title={t("cat.listTitle")} detail={t("cat.listDesc")} />
+      <SectionHeading title={t("cat.listTitle")} />
       {state.status === "loading" ? <LoadingBlock label={t("cat.loading")} /> : null}
       {state.status === "error" ? (
         <Notice

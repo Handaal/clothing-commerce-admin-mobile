@@ -21,6 +21,7 @@ import {
   SelectField,
   TextField,
   type SelectOption,
+  ReadOnlyChip,
 } from "../ui/components";
 import { t, useI18n } from "../i18n";
 import type { AppIconName } from "../ui/Icon";
@@ -131,7 +132,7 @@ export function PromotionForm({
           icon="ticket-percent-outline"
           onBack={onBack}
         />
-        <Notice message={t("promoForm.readOnlyMsg")} />
+        <ReadOnlyChip />
       </ScrollScreen>
     );
   }
@@ -203,7 +204,6 @@ export function PromotionForm({
       <PageHeader
         eyebrow={t("promotions.title")}
         title={mode === "create" ? t("promoForm.createTitle") : t("promoForm.editTitle")}
-        description={t("promoForm.desc")}
         icon={mode === "create" ? "ticket-confirmation-outline" : "pencil-outline"}
         onBack={onBack}
       />

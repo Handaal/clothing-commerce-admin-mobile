@@ -144,7 +144,7 @@ export function OrderOperations({
 
   return (
     <Surface tone="accent" testID="order-operations">
-      <SectionHeading title={t("orderOps.title")} detail={t("orderOps.detail")} />
+      <SectionHeading title={t("orderOps.title")} />
 
       {failure ? (
         <Notice

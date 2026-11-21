@@ -5,8 +5,8 @@ import { Platform, Vibration } from "react-native";
  * no extra native module / rebuild is required; a no-op on web. Durations are tuned to feel like a
  * crisp tap (light), a firmer press (medium), and a short double-pulse for success/confirm.
  *
- * Call these from interaction handlers (primary actions, confirmations, tab switches) to make the app
- * feel tactile and premium. They never throw — a platform without a vibrator simply ignores them.
+ * Reserved for deliberate confirmations (confirm dialogs). Never fire on navigation, tab switches or
+ * ordinary button presses. They never throw — a platform without a vibrator simply ignores them.
  */
 type HapticKind = "light" | "medium" | "success" | "warning";
 

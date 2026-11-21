@@ -529,7 +529,6 @@ function InventoryContent({
   return (
     <SettingsFrame title={t("set.inventorySettings")} onBack={onBack}>
       {!canManage ? <ReadOnlyNotice /> : null}
-      <Body>{t("set.inventoryIntro")}</Body>
       <SettingsAsync
         state={state}
         reload={reload}
@@ -1004,7 +1003,6 @@ function DeviceDetailContent({
   return (
     <SettingsFrame title={t("set.deviceGovernance")} onBack={onBack}>
       {!canManage ? <ReadOnlyNotice /> : null}
-      <Body>{t("set.deviceIntro")}</Body>
       <SettingsAsync state={state} reload={reload} empty={() => false}>
         {({ device, registers }) => (
           <DevicePanel
@@ -1069,7 +1067,11 @@ function CommerceSettingsContent({
                       <InfoRow label={t("set.brandContext")} value={storefront.brandName} />
                       <InfoRow
                         label={t("set.fulfillmentInvLocation")}
-                        value={storefront.fulfillmentInventoryLocationId}
+                        value={
+                          locations.find(
+                            (location) => location.id === storefront.fulfillmentInventoryLocationId,
+                          )?.label ?? storefront.fulfillmentInventoryLocationId
+                        }
                       />
                       <InfoRow label={t("set.currency")} value={storefront.currency} />
                       <InfoRow
@@ -1254,7 +1256,6 @@ function LifecycleActions({
   const [action, setAction] = useState<ActionState>({ status: "idle" });
   return (
     <SettingsSection title={t("set.lifecycle")}>
-      <Body>{t("set.lifecycleNote")}</Body>
       <ConfirmButton
         label={
           status === "active"

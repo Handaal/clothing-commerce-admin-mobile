@@ -3,18 +3,8 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { useI18n, type MessageKey } from "../i18n";
 import { formatMoneyMinor } from "../products/display";
-import {
-  Badge,
-  Body,
-  FormSection,
-  InfoRow,
-  Notice,
-  SectionHeading,
-  Surface,
-  SurfaceRow,
-} from "../ui/components";
-import { AppIcon } from "../ui/Icon";
-import { radius, spacing, typography } from "../ui/theme";
+import { Badge, Body, DetailCard, InfoRow, Notice } from "../ui/components";
+import { spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
 
 const paymentMethodKey: Record<NonNullable<OrderCommerceDetails["payment"]>["method"], MessageKey> =
@@ -31,45 +21,29 @@ const reservationKey: Record<OrderCommerceDetails["reservations"][number]["statu
   expired: "reservation.expired",
 };
 
-/** Historical checkout snapshots and current operational facts, exclusively from the API. */
-export function OrderCommerce({ data }: { data: OrderDetailResponse }) {
-  const { commerceStyles, colors } = useStyles();
+/** Customer + delivery snapshot captured at checkout, in one calm card. */
+export function OrderCustomerCard({ data }: { data: OrderDetailResponse }) {
   const { t } = useI18n();
-  const { commerce, lines } = data;
-  const customer = commerce?.customer;
-  const delivery = commerce?.delivery;
-  const payment = commerce?.payment;
+  const customer = data.commerce?.customer;
+  const delivery = data.commerce?.delivery;
 
   return (
     <>
-      <Surface>
-        <View style={commerceStyles.sectionLead}>
-          <View style={commerceStyles.icon}>
-            <AppIcon name="account-details-outline" size={22} color={colors.brand} />
-          </View>
-          <View style={commerceStyles.copy}>
-            <Text style={commerceStyles.cardTitle}>{t("orderCommerce.snapshot")}</Text>
-            <Body>{t("orderCommerce.snapshotBody")}</Body>
-          </View>
-        </View>
-      </Surface>
-
-      <FormSection title={t("orderCommerce.customerSection")} icon="account-outline">
+      <DetailCard title={t("orderCommerce.customerSection")} testID="order-customer">
         {customer ? (
           <View>
             <InfoRow label={t("orderCommerce.name")} value={customer.name} />
             <InfoRow label={t("orderCommerce.phone")} value={customer.phone} />
-            <InfoRow
-              label={t("orderCommerce.email")}
-              value={customer.email ?? t("orderCommerce.notProvided")}
-            />
+            {customer.email ? (
+              <InfoRow label={t("orderCommerce.email")} value={customer.email} />
+            ) : null}
           </View>
         ) : (
           <Body>{t("orderCommerce.customerUnavailable")}</Body>
         )}
-      </FormSection>
+      </DetailCard>
 
-      <FormSection title={t("orderCommerce.deliverySection")} icon="truck-delivery-outline">
+      <DetailCard title={t("orderCommerce.deliverySection")} testID="order-delivery">
         {delivery ? (
           <View>
             <InfoRow label={t("orderCommerce.recipient")} value={delivery.recipientName} />
@@ -93,97 +67,101 @@ export function OrderCommerce({ data }: { data: OrderDetailResponse }) {
         ) : (
           <Body>{t("orderCommerce.deliveryUnavailable")}</Body>
         )}
-      </FormSection>
-
-      <Surface>
-        <SectionHeading
-          title={t("orderCommerce.paymentSection")}
-          detail={t("orderCommerce.recordedState")}
-        />
-        {payment ? (
-          <View style={commerceStyles.payment}>
-            <Badge label={payment.status} testID="order-payment-status" />
-            <InfoRow
-              label={t("orderCommerce.method")}
-              value={t(paymentMethodKey[payment.method])}
-            />
-            <InfoRow
-              label={t("orderCommerce.paymentAmount")}
-              value={formatMoneyMinor(payment.amountMinor, payment.currency)}
-            />
-            {payment.provider ? (
-              <InfoRow label={t("orderCommerce.provider")} value={payment.provider} />
-            ) : null}
-            {payment.method === "cash_on_delivery" && payment.status === "pending" ? (
-              <Notice tone="warning" message={t("orderCommerce.codPending")} />
-            ) : null}
-          </View>
-        ) : (
-          <Body>{t("orderCommerce.paymentUnavailable")}</Body>
-        )}
-      </Surface>
-
-      <Surface tone="accent">
-        <SectionHeading
-          title={t("orderCommerce.stockCommitment")}
-          detail={t("orderCommerce.reservationState")}
-        />
-        {commerce && commerce.reservations.length > 0 ? (
-          <View style={commerceStyles.reservations}>
-            {commerce.reservations.map((reservation, index) => {
-              const line = lines.find((item) => item.variantId === reservation.variantId);
-              return (
-                <SurfaceRow
-                  key={`${reservation.variantId}-${reservation.inventoryLocationId}-${index}`}
-                >
-                  <View style={commerceStyles.reservationCopy}>
-                    <Body>
-                      {line ? `${line.productName} · ${line.sku}` : t("orderCommerce.orderItem")}
-                    </Body>
-                    <Badge
-                      label={t(reservationKey[reservation.status])}
-                      testID={`order-reservation-${index}`}
-                    />
-                    <InfoRow
-                      label={t("orderCommerce.committedQty")}
-                      value={String(reservation.quantity)}
-                    />
-                    <InfoRow
-                      label={t("orderCommerce.consumedQty")}
-                      value={String(reservation.consumedQuantity)}
-                    />
-                    {reservation.expiresAt ? (
-                      <InfoRow label={t("orderCommerce.expires")} value={reservation.expiresAt} />
-                    ) : null}
-                  </View>
-                </SurfaceRow>
-              );
-            })}
-          </View>
-        ) : (
-          <Body>{t("orderCommerce.noStockCommitment")}</Body>
-        )}
-      </Surface>
+      </DetailCard>
     </>
   );
 }
 
+/** The recorded payment state. Status sits beside the title instead of on its own line. */
+export function OrderPaymentCard({ data }: { data: OrderDetailResponse }) {
+  const { t } = useI18n();
+  const payment = data.commerce?.payment;
+  return (
+    <DetailCard
+      title={t("orderCommerce.paymentSection")}
+      action={payment ? <Badge label={payment.status} testID="order-payment-status" /> : undefined}
+      testID="order-payment"
+    >
+      {payment ? (
+        <View>
+          <InfoRow label={t("orderCommerce.method")} value={t(paymentMethodKey[payment.method])} />
+          <InfoRow
+            label={t("orderCommerce.paymentAmount")}
+            value={formatMoneyMinor(payment.amountMinor, payment.currency)}
+          />
+          {payment.provider ? (
+            <InfoRow label={t("orderCommerce.provider")} value={payment.provider} />
+          ) : null}
+        </View>
+      ) : (
+        <Body>{t("orderCommerce.paymentUnavailable")}</Body>
+      )}
+      {payment?.method === "cash_on_delivery" && payment.status === "pending" ? (
+        <Notice tone="warning" message={t("orderCommerce.codPending")} />
+      ) : null}
+    </DetailCard>
+  );
+}
+
+/** Stock reservations — operational detail, shown inside "More details". */
+export function OrderReservations({ data }: { data: OrderDetailResponse }) {
+  const { styles } = useStyles();
+  const { t } = useI18n();
+  const { commerce, lines } = data;
+  return (
+    <DetailCard title={t("orderCommerce.stockCommitment")} testID="order-reservations">
+      {commerce && commerce.reservations.length > 0 ? (
+        <View style={styles.list}>
+          {commerce.reservations.map((reservation, index) => {
+            const line = lines.find((item) => item.variantId === reservation.variantId);
+            return (
+              <View
+                key={`${reservation.variantId}-${reservation.inventoryLocationId}-${index}`}
+                style={[styles.item, index > 0 && styles.itemDivided]}
+              >
+                <View style={styles.itemHeader}>
+                  <Text numberOfLines={1} style={styles.itemTitle}>
+                    {line ? `${line.productName} · ${line.sku}` : t("orderCommerce.orderItem")}
+                  </Text>
+                  <Badge
+                    label={t(reservationKey[reservation.status])}
+                    testID={`order-reservation-${index}`}
+                  />
+                </View>
+                <InfoRow
+                  label={t("orderCommerce.committedQty")}
+                  value={String(reservation.quantity)}
+                />
+                <InfoRow
+                  label={t("orderCommerce.consumedQty")}
+                  value={String(reservation.consumedQuantity)}
+                />
+                {reservation.expiresAt ? (
+                  <InfoRow label={t("orderCommerce.expires")} value={reservation.expiresAt} />
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <Body>{t("orderCommerce.noStockCommitment")}</Body>
+      )}
+    </DetailCard>
+  );
+}
+
 const useStyles = createThemedStyles((colors) => {
-  const commerceStyles = StyleSheet.create({
-    sectionLead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-    icon: {
-      width: 44,
-      height: 44,
+  const styles = StyleSheet.create({
+    list: { gap: spacing.md },
+    item: { gap: 0 },
+    itemDivided: { paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+    itemHeader: {
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
-      borderRadius: radius.md,
-      backgroundColor: colors.brandSoft,
+      justifyContent: "space-between",
+      gap: spacing.sm,
     },
-    copy: { flex: 1, gap: spacing.xs },
-    cardTitle: { color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
-    payment: { gap: spacing.sm },
-    reservations: { gap: spacing.md },
-    reservationCopy: { flex: 1, gap: spacing.sm },
+    itemTitle: { flex: 1, color: colors.ink, ...typography.bodySmall, fontWeight: "700" },
   });
-  return { colors, commerceStyles };
+  return { colors, styles };
 });

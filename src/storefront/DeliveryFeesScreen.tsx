@@ -27,6 +27,7 @@ import {
   Surface,
   TextButton,
   TextField,
+  ReadOnlyChip,
 } from "../ui/components";
 import { radius, spacing, typography } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
@@ -158,7 +159,6 @@ export function DeliveryFeesScreen({
     <PageHeader
       eyebrow={t("storefront.eyebrow")}
       title={t("dlv.title")}
-      description={t("dlv.desc")}
       icon="truck-delivery-outline"
       onBack={onBack}
     />
@@ -445,7 +445,7 @@ function DeliveryForm({
           onPress={onSave}
         />
       ) : (
-        <Notice message={t("dlv.readOnly")} />
+        <ReadOnlyChip />
       )}
     </View>
   );

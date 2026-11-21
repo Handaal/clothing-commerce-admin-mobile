@@ -18,6 +18,7 @@ import {
   SummaryStrip,
   Surface,
   TextButton,
+  ReadOnlyChip,
 } from "../ui/components";
 import { spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
@@ -56,7 +57,6 @@ export function SalesListScreen({
     <PageHeader
       eyebrow={t("storefront.title")}
       title={t("sales.title")}
-      description={t("sales.headerDesc")}
       icon="sale-outline"
       onBack={onBack}
     />
@@ -119,10 +119,7 @@ function SalesListContent({
       {header}
       {canManage ? (
         <Surface tone="brand">
-          <SectionHeading
-            title={t("sales.workspaceTitle")}
-            detail={t("common.serverAuthoritative")}
-          />
+          <SectionHeading title={t("sales.workspaceTitle")} />
           <Body>{t("sales.workspaceBody")}</Body>
           <PrimaryButton
             label={t("sales.createCta")}
@@ -132,7 +129,7 @@ function SalesListContent({
           />
         </Surface>
       ) : (
-        <Notice message={t("sales.readOnly")} />
+        <ReadOnlyChip />
       )}
 
       {state.status === "loading" ? <SkeletonRows rows={3} /> : null}

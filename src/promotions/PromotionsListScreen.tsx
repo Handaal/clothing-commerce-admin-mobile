@@ -18,6 +18,7 @@ import {
   SkeletonRows,
   SummaryStrip,
   Surface,
+  ReadOnlyChip,
 } from "../ui/components";
 import { AppIcon } from "../ui/Icon";
 import { radius, spacing, typography } from "../ui/theme";
@@ -57,7 +58,6 @@ export function PromotionsListScreen({
         <PageHeader
           eyebrow={t("promotions.eyebrow")}
           title={t("promotions.title")}
-          description={t("promotions.accessDesc")}
           icon="ticket-percent-outline"
           onBack={onBack}
         />
@@ -110,18 +110,13 @@ function PromotionsListContent({
       <PageHeader
         eyebrow={t("promotions.eyebrow")}
         title={t("promotions.title")}
-        description={t("promotions.headerDesc")}
         icon="ticket-percent-outline"
         onBack={onBack}
       />
 
       {canManage ? (
         <Surface tone="brand">
-          <SectionHeading
-            title={t("promotions.workspaceTitle")}
-            detail={t("common.serverAuthoritative")}
-          />
-          <Body>{t("promotions.workspaceBody")}</Body>
+          <SectionHeading title={t("promotions.workspaceTitle")} />
           <PrimaryButton
             label={t("promotions.createCta")}
             icon="plus"
@@ -130,7 +125,7 @@ function PromotionsListContent({
           />
         </Surface>
       ) : (
-        <Notice testID="promotions-read-only" message={t("promotions.readOnly")} />
+        <ReadOnlyChip testID="promotions-read-only" />
       )}
 
       {state.status === "success" ? (

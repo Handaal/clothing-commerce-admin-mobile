@@ -10,7 +10,6 @@ import type { CommerceSettings } from "../settings/model";
 import { useSession } from "../session/SessionProvider";
 import {
   Badge,
-  Body,
   InfoRow,
   LoadingBlock,
   Notice,
@@ -80,27 +79,9 @@ export function StorefrontScreen({
       <PageHeader
         eyebrow={t("storefront.eyebrow")}
         title={t("storefront.title")}
-        description={t("storefront.headerDesc")}
         icon="storefront-outline"
         onBack={onBack}
       />
-
-      <Surface tone="brand" style={styles.intro}>
-        <Text style={styles.introTitle}>{t("storefront.introTitle")}</Text>
-        <Text style={styles.introBody}>{t("storefront.introBody")}</Text>
-      </Surface>
-
-      <SectionHeading title={t("storefront.checkoutTitle")} />
-      <Body>{t("storefront.checkoutBody")}</Body>
-      {settings.canRead ? (
-        <CheckoutConfig
-          tenantId={tenantId}
-          canManage={settings.canManage}
-          onManage={onManageCheckout}
-        />
-      ) : (
-        <Notice tone="warning" message={t("storefront.checkoutNoAccess")} />
-      )}
 
       <SectionHeading title={t("storefront.manageHeading")} />
       <View style={styles.cards}>
@@ -177,6 +158,17 @@ export function StorefrontScreen({
           />
         ) : null}
       </View>
+
+      <SectionHeading title={t("storefront.checkoutTitle")} />
+      {settings.canRead ? (
+        <CheckoutConfig
+          tenantId={tenantId}
+          canManage={settings.canManage}
+          onManage={onManageCheckout}
+        />
+      ) : (
+        <Notice tone="warning" message={t("storefront.checkoutNoAccess")} />
+      )}
     </ScrollScreen>
   );
 }
@@ -193,11 +185,22 @@ function CheckoutConfig({
   const { styles } = useStyles();
   const { getTenantClient } = useSession();
   const { t } = useI18n();
-  const load = useCallback(
-    () => resolveSettingsAdapter(getTenantClient(tenantId)).getCommerce(),
-    [getTenantClient, tenantId],
-  );
-  const { state, reload } = useAsync<CommerceSettings>(load);
+  // Location names come with the settings so "Ships from" reads "Main warehouse", never an id.
+  const load = useCallback(async () => {
+    const adapter = resolveSettingsAdapter(getTenantClient(tenantId));
+    const [commerce, locations] = await Promise.all([
+      adapter.getCommerce(),
+      // Names are a nicety: a failed lookup never hides the checkout facts.
+      Promise.resolve()
+        .then(() => adapter.listInventoryLocationOptions())
+        .catch(() => []),
+    ]);
+    return { commerce, locationNames: new Map(locations.map((item) => [item.id, item.label])) };
+  }, [getTenantClient, tenantId]);
+  const { state, reload } = useAsync<{
+    commerce: CommerceSettings;
+    locationNames: Map<string, string>;
+  }>(load);
 
   if (state.status === "loading") return <LoadingBlock label={t("storefront.loading")} />;
   if (state.status === "error") {
@@ -215,7 +218,8 @@ function CheckoutConfig({
     );
   }
 
-  const storefronts = state.data.storefronts;
+  const storefronts = state.data.commerce.storefronts;
+  const locationNames = state.data.locationNames;
   return (
     <View style={styles.config}>
       {storefronts.length ? (
@@ -235,7 +239,10 @@ function CheckoutConfig({
             <InfoRow label={t("set.currency")} value={storefront.currency} />
             <InfoRow
               label={t("set.fulfillmentInvLocation")}
-              value={storefront.fulfillmentInventoryLocationId}
+              value={
+                locationNames.get(storefront.fulfillmentInventoryLocationId) ??
+                t("storefront.locationUnnamed")
+              }
             />
             <InfoRow
               label={t("set.codShort")}
@@ -290,9 +297,6 @@ function WebsiteCard({
 
 const useStyles = createThemedStyles((colors) => {
   const styles = StyleSheet.create({
-    intro: { gap: spacing.sm },
-    introTitle: { color: colors.ink, ...typography.sectionTitle },
-    introBody: { color: colors.inkMuted, ...typography.body },
     config: { gap: spacing.md },
     brandCard: { gap: 6 },
     brandHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

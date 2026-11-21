@@ -172,7 +172,7 @@ export function VariantOptionsForm({ client, data, generateKey, reload }: Sectio
 
   return (
     <View style={styles.body}>
-      <SectionHeading title={t("po.editVariantOptions")} detail={t("po.editVariantOptionsDesc")} />
+      <SectionHeading title={t("po.editVariantOptions")} />
       <SelectField
         label={t("po.variant")}
         options={data.variants.map((variant) => ({
@@ -370,7 +370,7 @@ export function ProductCategoriesForm({ client, data, generateKey, reload }: Sec
 
   return (
     <View style={styles.body}>
-      <SectionHeading title={t("po.categories")} detail={t("po.categoriesDesc")} />
+      <SectionHeading title={t("po.categories")} />
       <Eyebrow>{t("po.selectedCount", { count: selected.size })}</Eyebrow>
       {ordered.map(({ category, depth }) => (
         <View key={category.id} style={{ paddingStart: depth * spacing.lg }}>

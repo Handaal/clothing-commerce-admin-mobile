@@ -32,7 +32,7 @@ export function OrderReturnRequests({
   if (state.status !== "success" || state.data.requests.length === 0) return null;
   return (
     <View style={{ gap: spacing.md }} testID="order-return-requests">
-      <SectionHeading title={t("returnReq.orderTitle")} detail={t("returnReq.orderDetail")} />
+      <SectionHeading title={t("returnReq.orderTitle")} />
       {state.data.requests.map((request) => (
         <ReturnRequestCard
           key={request.id}

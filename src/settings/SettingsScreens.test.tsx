@@ -128,7 +128,7 @@ describe("Phase 2R Settings preparation", () => {
     expect(screen.queryByText("Delete")).toBeNull();
   });
 
-  it("uses explicit Warehouse and InventoryLocation terminology", async () => {
+  it("uses plain Warehouse and stock location terminology", async () => {
     render(
       <InventorySettingsScreen
         adapter={fakeSettingsAdapter()}
@@ -140,7 +140,7 @@ describe("Phase 2R Settings preparation", () => {
       />,
     );
     expect(await screen.findByText("Warehouses")).toBeTruthy();
-    expect(screen.getByText("InventoryLocations")).toBeTruthy();
+    expect(screen.getByText("Stock locations")).toBeTruthy();
     expect(screen.getByText("Cairo Warehouse")).toBeTruthy();
     expect(screen.getByText("Flagship Stockroom")).toBeTruthy();
   });

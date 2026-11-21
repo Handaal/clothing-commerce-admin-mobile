@@ -100,7 +100,6 @@ function BrandsContent({
       <PageHeader
         eyebrow={t("cat.eyebrow")}
         title={t("brand.title")}
-        description={t("brand.desc")}
         icon="tag-multiple-outline"
         onBack={onBack}
       />

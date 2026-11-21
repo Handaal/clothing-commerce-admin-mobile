@@ -122,7 +122,7 @@ function OverviewData({
             <View style={styles.stockIcon}>
               <AppIcon name="package-variant-closed" size={19} color={colors.accent} />
             </View>
-            <Text style={styles.stockValue}>{data.stock.totalOnHand}</Text>
+            <FitText style={styles.stockValue}>{String(data.stock.totalOnHand)}</FitText>
             <Text style={styles.stockLabel}>{t("home.unitsOnHand")}</Text>
           </View>
         </View>
@@ -135,7 +135,7 @@ function OverviewData({
               {t("home.moreCurrencies", { count: additionalCurrencyCount })}
             </Text>
           ) : (
-            <Text style={styles.currencyNote}>{t("home.reportingPeriod")}</Text>
+            <View style={styles.currencyNote} />
           )}
           <TextButton
             label={t("home.openReports")}
@@ -153,7 +153,6 @@ function OverviewData({
             </View>
             <View style={styles.attentionHeadingCopy}>
               <Text style={styles.attentionTitle}>{t("home.attentionTitle")}</Text>
-              <Text style={styles.attentionBody}>{t("home.attentionBody")}</Text>
             </View>
           </View>
           {data.noSalesWithCurrentStock.length > 0 ? (
@@ -238,6 +237,7 @@ function AttentionRow({
     <Pressable
       testID={testID}
       accessibilityRole="button"
+      accessibilityHint={detail}
       onPress={onPress}
       {...webLift}
       style={({ pressed }) => [styles.attentionRow, pressed && styles.pressed]}
@@ -247,7 +247,6 @@ function AttentionRow({
       </View>
       <View style={styles.attentionRowCopy}>
         <Text style={styles.attentionRowTitle}>{title}</Text>
-        <Text style={styles.attentionRowDetail}>{detail}</Text>
       </View>
       <AppIcon name={directionalIcon("chevron-right", isRTL)} size={21} color={colors.inkSubtle} />
     </Pressable>
@@ -288,6 +287,8 @@ const useStyles = createThemedStyles((colors) => {
     performanceCaption: { color: colors.inkMuted, ...typography.caption },
     stockMetric: {
       minWidth: 94,
+      maxWidth: "40%",
+      flexShrink: 1,
       alignItems: "flex-end",
       gap: 2,
       padding: spacing.md,
@@ -304,10 +305,14 @@ const useStyles = createThemedStyles((colors) => {
       marginBottom: spacing.xs,
     },
     stockValue: { color: colors.ink, ...typography.sectionTitle, fontWeight: "800" },
-    stockLabel: { color: colors.inkMuted, ...typography.micro, fontWeight: "700" },
+    stockLabel: {
+      color: colors.inkMuted,
+      ...typography.micro,
+      fontWeight: "700",
+    },
     chartBlock: { gap: spacing.sm },
     chartHeading: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
-    chartTitle: { color: colors.ink, ...typography.label, fontWeight: "800" },
+    chartTitle: { flexShrink: 1, color: colors.ink, ...typography.label, fontWeight: "800" },
     chartCurrency: { color: colors.inkSubtle, ...typography.micro, fontWeight: "800" },
     chart: {
       minHeight: 102,
@@ -343,7 +348,13 @@ const useStyles = createThemedStyles((colors) => {
       borderTopColor: colors.borderSoft,
       paddingTop: spacing.md,
     },
-    currencyNote: { flex: 1, color: colors.inkSubtle, ...typography.micro, fontWeight: "600" },
+    currencyNote: {
+      flex: 1,
+      minWidth: 0,
+      color: colors.inkSubtle,
+      ...typography.micro,
+      fontWeight: "600",
+    },
     attentionCard: { gap: spacing.sm },
     attentionHeading: { flexDirection: "row", alignItems: "center", gap: spacing.md },
     attentionIcon: {
@@ -354,9 +365,8 @@ const useStyles = createThemedStyles((colors) => {
       borderRadius: radius.sm,
       backgroundColor: colors.warningSoft,
     },
-    attentionHeadingCopy: { flex: 1, gap: 2 },
+    attentionHeadingCopy: { flex: 1, minWidth: 0, gap: 2 },
     attentionTitle: { color: colors.ink, ...typography.cardTitle },
-    attentionBody: { color: colors.inkMuted, ...typography.caption },
     attentionRow: {
       minHeight: 62,
       flexDirection: "row",
@@ -374,9 +384,8 @@ const useStyles = createThemedStyles((colors) => {
       borderRadius: radius.sm,
       backgroundColor: colors.brandSoft,
     },
-    attentionRowCopy: { flex: 1, gap: 2 },
+    attentionRowCopy: { flex: 1, minWidth: 0, gap: 2 },
     attentionRowTitle: { color: colors.ink, ...typography.bodySmall, fontWeight: "800" },
-    attentionRowDetail: { color: colors.inkMuted, ...typography.micro, fontWeight: "600" },
     emptyOverview: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
     emptyIcon: {
       width: 44,

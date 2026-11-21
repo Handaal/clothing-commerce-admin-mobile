@@ -8,7 +8,6 @@ import { useSession } from "../session/SessionProvider";
 import { AppIcon } from "../ui/Icon";
 import {
   Badge,
-  Body,
   EmptyState,
   MetricCard,
   Notice,
@@ -52,7 +51,6 @@ export function CollectionsListScreen({
         <PageHeader
           eyebrow={t("collections.eyebrow")}
           title={t("collections.title")}
-          description={t("collections.headerDesc")}
           icon="shape-outline"
           onBack={onBack}
         />
@@ -96,7 +94,6 @@ function CollectionsListContent({
       <PageHeader
         eyebrow={t("collections.eyebrow")}
         title={t("collections.title")}
-        description={t("collections.headerDesc")}
         icon="shape-outline"
         onBack={onBack}
       />
@@ -104,7 +101,6 @@ function CollectionsListContent({
       <Surface tone="brand" style={styles.overview}>
         <View style={styles.overviewCopy}>
           <Text style={styles.overviewTitle}>{t("collections.title")}</Text>
-          <Body>{t("collections.headerDesc")}</Body>
         </View>
         <PrimaryButton
           label={t("collections.createCta")}

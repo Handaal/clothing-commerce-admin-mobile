@@ -50,6 +50,22 @@ describe("order confirmation links", () => {
     expect(links.text).not.toContain("/track");
   });
 
+  it("switches to the on-its-way message once shipped, and offers nothing once cancelled", () => {
+    const shipped = {
+      ...detail("+201001234567"),
+      fulfillmentProgress: { status: "fulfilled", lines: [] },
+    } as OrderDetailResponse;
+    const text = confirmationLinks(shipped, { storeName: "Zee Store", language: "en" })!.text;
+    expect(text).toContain("is on its way");
+    expect(text).not.toContain("Confirm");
+    const base = detail("+201001234567");
+    const cancelled = {
+      ...base,
+      header: { ...base.header, status: "cancelled" },
+    } as OrderDetailResponse;
+    expect(confirmationLinks(cancelled, { storeName: "Zee", language: "en" })).toBeNull();
+  });
+
   it("offers nothing without a usable phone", () => {
     expect(confirmationLinks(detail(null), { storeName: "Zee", language: "en" })).toBeNull();
   });

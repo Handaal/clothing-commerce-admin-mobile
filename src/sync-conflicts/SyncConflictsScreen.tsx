@@ -87,11 +87,7 @@ export function SyncConflictsScreen({ client, context }: SyncConflictsScreenProp
 
   return (
     <ScrollScreen wide onRefresh={refresh} refreshing={refreshing}>
-      <PageHeader
-        title={t("syncConflicts.title")}
-        description={t("syncConflicts.intro")}
-        icon="sync-alert"
-      />
+      <PageHeader title={t("syncConflicts.title")} icon="sync-alert" />
       {report ? (
         <SummaryStrip
           testID="sync-conflicts-summary"

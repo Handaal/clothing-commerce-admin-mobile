@@ -166,11 +166,7 @@ function StockContent({
 
   return (
     <ScrollScreen wide onRefresh={refresh} refreshing={refreshing}>
-      <PageHeader
-        title={t("inventory.title")}
-        description={t("inventory.headerDesc")}
-        icon="warehouse"
-      />
+      <PageHeader title={t("inventory.title")} icon="warehouse" />
 
       {canReceiveNew && onReceiveNew ? (
         <PrimaryButton

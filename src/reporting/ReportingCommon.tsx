@@ -6,6 +6,7 @@ import { t, useI18n, type MessageKey } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import {
   Body,
+  Disclosure,
   Divider,
   FieldLabel,
   FilterChips,
@@ -142,11 +143,15 @@ export function CurrencySelector({
 export function ReportMetaBlock({ meta }: { meta: ReportMeta }) {
   const { t } = useI18n();
   return (
-    <View testID="report-meta" style={{ gap: 4 }}>
-      <InfoRow label={t("report.timezone")} value={meta.timezone} />
-      <InfoRow label={t("report.fromInclusive")} value={meta.fromInclusive} />
-      <InfoRow label={t("report.toExclusive")} value={meta.toExclusive} />
-      <Body>{t("report.metaNote")}</Body>
+    <View testID="report-meta">
+      {/* Exact reporting boundaries are technical detail — one tap away, not on the first screen. */}
+      <Disclosure label={t("common.moreDetails")} testID="report-meta-toggle">
+        <View>
+          <InfoRow label={t("report.timezone")} value={meta.timezone} />
+          <InfoRow label={t("report.fromInclusive")} value={meta.fromInclusive} />
+          <InfoRow label={t("report.toExclusive")} value={meta.toExclusive} />
+        </View>
+      </Disclosure>
     </View>
   );
 }

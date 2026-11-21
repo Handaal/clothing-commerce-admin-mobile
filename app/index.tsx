@@ -223,6 +223,7 @@ function QuickActionCard({ action, riseIndex }: { action: QuickAction; riseIndex
     <Pressable
       testID={`quick-${action.id}`}
       accessibilityRole="button"
+      accessibilityHint={action.detail}
       onPress={action.onPress}
       {...webLiftRise(riseIndex)}
       style={({ pressed }) => [dashboardStyles.quickAction, pressed && dashboardStyles.pressed]}
@@ -233,9 +234,6 @@ function QuickActionCard({ action, riseIndex }: { action: QuickAction; riseIndex
       <View style={dashboardStyles.quickActionCopy}>
         <Text numberOfLines={1} style={dashboardStyles.quickActionTitle}>
           {action.label}
-        </Text>
-        <Text numberOfLines={2} style={dashboardStyles.quickActionBody}>
-          {action.detail}
         </Text>
       </View>
       <AppIcon name={directionalIcon("chevron-right", isRTL)} size={20} color={colors.inkSubtle} />
@@ -364,7 +362,7 @@ const useStyles = createThemedStyles((colors) => {
   const dashboardStyles = StyleSheet.create({
     quickActions: { gap: spacing.sm },
     quickAction: {
-      minHeight: 68,
+      minHeight: 56,
       flexDirection: "row",
       alignItems: "center",
       gap: spacing.md,
@@ -372,8 +370,7 @@ const useStyles = createThemedStyles((colors) => {
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.lg,
-      backgroundColor: colors.surfaceRaised,
-      ...shadows.card,
+      backgroundColor: colors.surface,
     },
     quickActionIcon: {
       width: 44,
@@ -385,7 +382,6 @@ const useStyles = createThemedStyles((colors) => {
     },
     quickActionCopy: { flex: 1, minWidth: 0, gap: 2 },
     quickActionTitle: { color: colors.ink, ...typography.cardTitle },
-    quickActionBody: { color: colors.inkMuted, ...typography.caption },
     heroStage: {
       position: "relative",
       paddingTop: 8,

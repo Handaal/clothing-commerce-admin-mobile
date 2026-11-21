@@ -152,9 +152,11 @@ describe("OrderDetailScreen", () => {
     ]) {
       expect(screen.getByText(value)).toBeTruthy();
     }
-    expect(screen.getByText(/separate from a customer profile/)).toBeTruthy();
     expect(screen.getByTestId("order-payment-status").textContent).toBe("pending");
     expect(screen.getByText("Cash on delivery")).toBeTruthy();
+    // Stock reservations are operational detail, folded under "More details".
+    expect(screen.queryByTestId("order-reservation-0")).toBeNull();
+    fireEvent.click(screen.getByTestId("order-more-details"));
     expect(screen.getByTestId("order-reservation-0").textContent).toBe("Stock reserved");
     expect(screen.getByTestId("order-fulfillment-status").textContent).toBe("Partially fulfilled");
     expect(screen.queryByRole("button", { name: /capture|refund|edit|fulfill/i })).toBeNull();
@@ -200,6 +202,7 @@ describe("OrderDetailScreen", () => {
         }),
       );
       renderDetail();
+      fireEvent.click(await screen.findByTestId("order-more-details"));
       expect((await screen.findByTestId("order-reservation-0")).textContent).toBe(label);
       expect(screen.getByText("2020-01-01T00:00:00.000Z")).toBeTruthy();
     },
@@ -216,6 +219,7 @@ describe("OrderDetailScreen", () => {
     ).toBeTruthy();
     expect(screen.getByText("Delivery snapshot is not available for this order.")).toBeTruthy();
     expect(screen.getByText("Payment information is not available for this order.")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("order-more-details"));
     expect(
       screen.getByText("No stock commitment information supplied for this order."),
     ).toBeTruthy();
@@ -256,10 +260,10 @@ describe("OrderDetailScreen", () => {
       .mockRejectedValueOnce(new ApiNetworkError("offline"));
     renderDetail();
     await screen.findByTestId("order-payment-status");
-    fireEvent.click(screen.getByText("Refresh order"));
+    fireEvent.click(screen.getByTestId("order-refresh"));
     await screen.findByText("Payment information is not available for this order.");
     expect(screen.queryByTestId("order-payment-status")).toBeNull();
-    fireEvent.click(screen.getByText("Refresh order"));
+    fireEvent.click(screen.getByTestId("order-refresh"));
     await screen.findByText("No connection");
     expect(screen.queryByText("Checkout Guest")).toBeNull();
   });
@@ -283,7 +287,7 @@ describe("OrderDetailScreen", () => {
     // Summary
     expect(await screen.findByText("ORD-1001")).toBeTruthy();
     expect(screen.getByTestId("order-detail-status").textContent).toBe("Placed");
-    expect(screen.getByText("ONLINE")).toBeTruthy();
+    expect(screen.getByText("Online")).toBeTruthy();
     expect(screen.getByText("USD 129.95")).toBeTruthy();
 
     // Lines (two lines, both "Linen Shirt")

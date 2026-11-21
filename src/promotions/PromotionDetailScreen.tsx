@@ -21,6 +21,7 @@ import {
   ScrollScreen,
   Surface,
   SurfaceRow,
+  ReadOnlyChip,
 } from "../ui/components";
 import type { AppIconName } from "../ui/Icon";
 import { useAsync } from "../ui/useAsync";
@@ -67,7 +68,6 @@ export function PromotionDetailScreen({
         <PageHeader
           eyebrow={t("promotions.eyebrow")}
           title={t("promoDetail.singular")}
-          description={t("promoDetail.accessDesc")}
           icon="ticket-percent-outline"
           onBack={onBack}
         />
@@ -212,7 +212,6 @@ function PromotionDetailContent({
       <PageHeader
         eyebrow={t("promoDetail.recordEyebrow")}
         title={promotion.name}
-        description={t("promoDetail.recordDesc")}
         icon="ticket-percent-outline"
         onBack={onBack}
       />
@@ -261,7 +260,7 @@ function PromotionDetailContent({
           />
         </Surface>
       ) : (
-        <Notice testID="promotion-detail-read-only" message={t("promotions.readOnly")} />
+        <ReadOnlyChip testID="promotion-detail-read-only" />
       )}
       {statusError ? (
         <Notice

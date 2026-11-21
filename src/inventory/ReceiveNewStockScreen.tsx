@@ -354,12 +354,7 @@ export function ReceiveNewStockScreen(props: ReceiveNewStockScreenProps) {
 
   return (
     <ScrollScreen>
-      <PageHeader
-        title={t("receive.title")}
-        description={t("receive.subtitle")}
-        icon="package-variant-plus"
-        onBack={onBack}
-      />
+      <PageHeader title={t("receive.title")} icon="package-variant-plus" onBack={onBack} />
 
       <FormSection title={t("receive.sectionItem")} icon="tag-outline">
         <TextField

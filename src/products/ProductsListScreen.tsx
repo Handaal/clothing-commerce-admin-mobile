@@ -66,7 +66,6 @@ export function ProductsListScreen({
         <PageHeader
           eyebrow={t("products.eyebrow")}
           title={t("products.title")}
-          description={t("products.headerNoAccessDesc")}
           icon="tag-multiple-outline"
         />
         <Notice
@@ -182,7 +181,6 @@ function ProductsListContent({
       <PageHeader
         eyebrow={t("products.eyebrow")}
         title={t("products.title")}
-        description={t("products.headerDesc")}
         icon="tag-multiple-outline"
         action={
           canAuthor && !isEmpty ? (

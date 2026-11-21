@@ -1,5 +1,6 @@
 import {
   orderConfirmationMessage,
+  orderShippedMessage,
   smsLink,
   whatsAppLink,
   type MeContextResponse,
@@ -24,7 +25,8 @@ export function storeNameFor(context: MeContextResponse | null, brandId: string)
 }
 
 /**
- * Click-to-chat confirmation for an online order (SDK 0.48 wording, EN/AR). Free: WhatsApp or the
+ * Click-to-chat message for an online order (SDK wording, EN/AR): the confirmation while it is being
+ * prepared, "on its way" once fully shipped (SDK 0.51), nothing once cancelled. Free: WhatsApp or the
  * Messages app opens on this device with the text filled in; staff press send. Null when the order has
  * no usable customer phone.
  */
@@ -35,7 +37,11 @@ export function confirmationLinks(
   const customer = detail.commerce?.customer;
   const phone = customer?.phone ?? detail.commerce?.delivery?.phone;
   if (!phone) return null;
-  const text = orderConfirmationMessage({
+  // Nothing to confirm on a cancelled order; once it has shipped, "reply Confirm so we can start
+  // preparing it" would be wrong, so the customer gets the "on its way" message instead.
+  if (detail.header.status === "cancelled") return null;
+  const shipped = detail.fulfillmentProgress.status === "fulfilled";
+  const text = (shipped ? orderShippedMessage : orderConfirmationMessage)({
     storeName: options.storeName || "our store",
     orderReference: detail.header.orderNumber,
     customerName: customer?.name ?? detail.commerce?.delivery?.recipientName ?? null,

@@ -80,10 +80,7 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
       <View style={{ gap: 12 }}>
         {receipts.map((receipt) => (
           <SurfaceRow key={receipt.id} testID={`supplier-receipt-${receipt.id}`}>
-            <SectionHeading
-              title={formatReceiptDate(receipt.receivedAt)}
-              detail={t("supReceiving.stockReceipt")}
-            />
+            <SectionHeading title={formatReceiptDate(receipt.receivedAt)} />
             {receipt.locationName || receipt.locationId ? (
               <InfoRow
                 label={t("supReceiving.destination")}
