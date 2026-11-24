@@ -38,6 +38,9 @@ const mocks = vi.hoisted(() => ({
   createProductMediaUploadIntent: vi.fn(),
   registerProductMedia: vi.fn(),
   archiveProductMedia: vi.fn(),
+  listProductMedia: vi.fn(),
+  updateProductMedia: vi.fn(),
+  reorderProductMedia: vi.fn(),
   setVariantOptions: vi.fn(),
   updateOptionValues: vi.fn(),
   listCategories: vi.fn(),
@@ -104,6 +107,7 @@ function renderScreen() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.listProductMedia.mockResolvedValue({ media: [] });
   store = createObservationStore();
   keySeq = 0;
   mocks.getMyTenants.mockResolvedValue([tenant(TENANT_A, "Acme", MEMBERSHIP_A)]);
@@ -267,6 +271,53 @@ describe("ProductManageScreen", () => {
     expect(screen.getByTestId("write-refresh")).toBeTruthy();
   });
 
+  it("lists the product's existing photos and edits them (SDK 0.53)", async () => {
+    const A = "c1000000-0000-4000-8000-00000000000a";
+    const B = "c1000000-0000-4000-8000-00000000000b";
+    const photo = (id: string, isPrimary: boolean, altText: string | null, position: number) => ({
+      id,
+      variantId: null,
+      bucket: "product-media",
+      path: `t/p/${id}.jpg`,
+      altText,
+      position,
+      isPrimary,
+    });
+    mocks.listProductMedia.mockResolvedValue({
+      media: [photo(A, true, "Front", 0), photo(B, false, null, 1)],
+    });
+    mocks.updateProductMedia.mockResolvedValue({ mediaId: B, isPrimary: true, altText: null });
+    mocks.reorderProductMedia.mockResolvedValue({ productId: PRODUCT_A, mediaCount: 2 });
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-media"));
+    expect(await screen.findByTestId(`media-${A}`)).toBeTruthy();
+    expect(screen.queryByTestId(`media-main-${A}`)).toBeNull(); // already the main photo
+
+    fireEvent.click(screen.getByTestId(`media-main-${B}`));
+    await waitFor(() =>
+      expect(mocks.updateProductMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ productId: PRODUCT_A, mediaId: B, isPrimary: true }),
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId(`media-down-${A}`));
+    await waitFor(() =>
+      expect(mocks.reorderProductMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ productId: PRODUCT_A, mediaIds: [B, A] }),
+      ),
+    );
+
+    const altInput = screen.getByTestId(`media-alt-${B}`);
+    fireEvent.change(altInput, { target: { value: "Back view" } });
+    fireEvent.click(screen.getByTestId(`media-alt-save-${B}`));
+    await waitFor(() =>
+      expect(mocks.updateProductMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ mediaId: B, altText: "Back view" }),
+      ),
+    );
+    expect(mocks.listProductMedia.mock.calls.length).toBeGreaterThanOrEqual(3); // refreshed after edits
+  });
+
   it("runs the media flow: pick → signed upload → register", async () => {
     picker.mockResolvedValue(image);
     uploadFetch.mockResolvedValue({ ok: true, status: 200 });
@@ -282,6 +333,20 @@ describe("ProductManageScreen", () => {
     fireEvent.click(await screen.findByTestId("section-media"));
     fireEvent.click(screen.getByTestId("media-pick"));
     await screen.findByTestId("media-picked");
+    // After registering, the refreshed photo list (SDK 0.53) includes the new photo.
+    mocks.listProductMedia.mockResolvedValue({
+      media: [
+        {
+          id: MEDIA_A,
+          variantId: null,
+          bucket: "product-media",
+          path: "tenant/p/photo.jpg",
+          altText: null,
+          position: 0,
+          isPrimary: true,
+        },
+      ],
+    });
     fireEvent.click(screen.getByTestId("media-upload"));
 
     expect(await screen.findByTestId("media-success")).toBeTruthy();

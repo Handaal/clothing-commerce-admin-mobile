@@ -1,5 +1,5 @@
 import type { ProductDetailResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -37,6 +37,7 @@ import {
 import { formatMinorToInput, parseAmountToMinor } from "../catalog/money";
 import { OPERATING_CURRENCY } from "../commerce/currency";
 import { classifyCommerceError } from "../commerce/errors";
+import { getPublicMediaBaseUrl } from "../config/env";
 import { useI18n } from "../i18n";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import { useSession } from "../session/SessionProvider";
@@ -921,7 +922,7 @@ function SetPriceForm({
 // Media
 // ---------------------------------------------------------------------------------------------------
 
-interface RegisteredMedia {
+interface PhotoRow {
   mediaId: string;
   isPrimary: boolean;
   previewUri?: string;
@@ -950,9 +951,36 @@ function MediaSection({
   const [isPrimary, setIsPrimary] = useState(false);
   const [prepareError, setPrepareError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
-  // Media is NOT returned by the authenticated read contract, so we list what was registered this
-  // session (verify the full set via the published Storefront projection).
-  const [registered, setRegistered] = useState<RegisteredMedia[]>([]);
+  // SDK 0.53: the product's existing photos come from the API (main photo first), so photos uploaded
+  // earlier — from any app — can be described, reordered, made main or removed.
+  const [photos, setPhotos] = useState<PhotoRow[]>([]);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busyPhoto, setBusyPhoto] = useState(false);
+  const mediaBase = getPublicMediaBaseUrl();
+
+  const loadPhotos = useCallback(async () => {
+    if (typeof client.listProductMedia !== "function") return;
+    try {
+      const { media } = await client.listProductMedia(productId);
+      setPhotos(
+        media.map((m) => ({
+          mediaId: m.id,
+          isPrimary: m.isPrimary,
+          ...(mediaBase ? { previewUri: `${mediaBase}/${m.bucket}/${m.path}` } : {}),
+          ...(m.altText ? { altText: m.altText } : {}),
+        })),
+      );
+      setDrafts({});
+    } catch (error) {
+      setPhotoError(classifyCommerceError(error).message);
+    }
+  }, [client, productId, mediaBase]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial read of the product's photos
+    void loadPhotos();
+  }, [loadPhotos]);
 
   const register = useMutation(
     (
@@ -972,27 +1000,48 @@ function MediaSection({
     generateKey,
   );
 
-  // Media is NOT part of the authenticated product read, so a getProduct reload would show nothing new
-  // for media and would only flash the screen back to loading (dropping this session list). The
-  // register/archive responses ARE the authoritative confirmation; we keep the session list from them.
-  // (`reload` is still used for MEDIA_NOT_FOUND refresh recovery in the error panel.)
   useOnSuccess(register.state, (data) => {
-    setRegistered((prev) => [
+    setPhotos((prev) => [
       ...prev,
       {
         mediaId: data.mediaId,
         isPrimary: data.isPrimary,
-        previewUri: picked?.previewUri,
-        altText: altText.trim() || undefined,
+        ...(picked?.previewUri ? { previewUri: picked.previewUri } : {}),
+        ...(altText.trim() ? { altText: altText.trim() } : {}),
       },
     ]);
     setPicked(null);
     setAltText("");
     setIsPrimary(false);
+    void loadPhotos();
   });
   useOnSuccess(archive.state, (data) => {
-    setRegistered((prev) => prev.filter((m) => m.mediaId !== data.mediaId));
+    setPhotos((prev) => prev.filter((m) => m.mediaId !== data.mediaId));
+    void loadPhotos();
   });
+
+  async function runPhotoChange(change: () => Promise<unknown>) {
+    setBusyPhoto(true);
+    setPhotoError(null);
+    try {
+      await change();
+      await loadPhotos();
+    } catch (error) {
+      setPhotoError(classifyCommerceError(error).message);
+    } finally {
+      setBusyPhoto(false);
+    }
+  }
+
+  function move(index: number, delta: number) {
+    const target = index + delta;
+    if (target < 0 || target >= photos.length) return;
+    const order = photos.map((p) => p.mediaId);
+    [order[index], order[target]] = [order[target]!, order[index]!];
+    void runPhotoChange(() =>
+      client.reorderProductMedia({ productId, mediaIds: order, idempotencyKey: generateKey() }),
+    );
+  }
 
   async function onPick() {
     setPrepareError(null);
@@ -1033,37 +1082,99 @@ function MediaSection({
   return (
     <View style={productStyles.sectionBody}>
       <Eyebrow>{t("pm.productMedia")}</Eyebrow>
-      {registered.length > 0 ? (
+      {photos.length > 0 ? <Body>{t("pm.photoOrderHint")}</Body> : null}
+      {photos.length > 0 ? (
         <View style={productStyles.mediaList}>
-          {registered.map((media) => (
-            <Surface
-              key={media.mediaId}
-              testID={`media-${media.mediaId}`}
-              tone="muted"
-              style={productStyles.mediaCard}
-            >
-              {media.previewUri ? (
-                <Image
-                  source={{ uri: media.previewUri }}
-                  style={productStyles.mediaThumbnail}
-                  accessibilityLabel={media.altText ?? t("pm.productImageAlt")}
+          {photos.map((media, index) => {
+            const draft = drafts[media.mediaId];
+            return (
+              <Surface
+                key={media.mediaId}
+                testID={`media-${media.mediaId}`}
+                tone="muted"
+                style={productStyles.mediaCard}
+              >
+                {media.previewUri ? (
+                  <Image
+                    source={{ uri: media.previewUri }}
+                    style={productStyles.mediaThumbnail}
+                    accessibilityLabel={media.altText ?? t("pm.productImageAlt")}
+                  />
+                ) : null}
+                <View style={productStyles.mediaMeta}>
+                  {media.isPrimary ? <Badge label={t("pm.primary")} /> : null}
+                  <TextField
+                    label={t("pm.altText")}
+                    value={draft ?? media.altText ?? ""}
+                    onChangeText={(v) => setDrafts((d) => ({ ...d, [media.mediaId]: v }))}
+                    testID={`media-alt-${media.mediaId}`}
+                  />
+                  {draft !== undefined && draft.trim() !== (media.altText ?? "") ? (
+                    <TextButton
+                      label={t("pm.saveDescription")}
+                      icon="content-save-outline"
+                      testID={`media-alt-save-${media.mediaId}`}
+                      onPress={() =>
+                        void runPhotoChange(() =>
+                          client.updateProductMedia({
+                            productId,
+                            mediaId: media.mediaId,
+                            altText: draft.trim() || null,
+                            idempotencyKey: generateKey(),
+                          }),
+                        )
+                      }
+                    />
+                  ) : null}
+                </View>
+                <View style={productStyles.mediaMeta}>
+                  {!media.isPrimary ? (
+                    <TextButton
+                      label={t("pm.makeMain")}
+                      icon="star-outline"
+                      testID={`media-main-${media.mediaId}`}
+                      onPress={() =>
+                        void runPhotoChange(() =>
+                          client.updateProductMedia({
+                            productId,
+                            mediaId: media.mediaId,
+                            isPrimary: true,
+                            idempotencyKey: generateKey(),
+                          }),
+                        )
+                      }
+                    />
+                  ) : null}
+                  {index > 0 ? (
+                    <TextButton
+                      label={t("pm.moveEarlier")}
+                      icon="arrow-up"
+                      testID={`media-up-${media.mediaId}`}
+                      onPress={() => move(index, -1)}
+                    />
+                  ) : null}
+                  {index < photos.length - 1 ? (
+                    <TextButton
+                      label={t("pm.moveLater")}
+                      icon="arrow-down"
+                      testID={`media-down-${media.mediaId}`}
+                      onPress={() => move(index, 1)}
+                    />
+                  ) : null}
+                </View>
+                <ConfirmButton
+                  label={t("pm.removeImage")}
+                  confirmLabel={t("pm.confirmRemove")}
+                  testID={`media-archive-${media.mediaId}`}
+                  disabled={archive.state.status === "submitting" || busyPhoto}
+                  onConfirm={() => archive.submit({ productId, mediaId: media.mediaId })}
                 />
-              ) : null}
-              <View style={productStyles.mediaMeta}>
-                {media.isPrimary ? <Badge label={t("pm.primary")} /> : null}
-                <Body>{media.altText ?? media.mediaId}</Body>
-              </View>
-              <ConfirmButton
-                label={t("pm.removeImage")}
-                confirmLabel={t("pm.confirmRemove")}
-                testID={`media-archive-${media.mediaId}`}
-                disabled={archive.state.status === "submitting"}
-                onConfirm={() => archive.submit({ productId, mediaId: media.mediaId })}
-              />
-            </Surface>
-          ))}
+              </Surface>
+            );
+          })}
         </View>
       ) : null}
+      {photoError ? <Notice tone="danger" message={photoError} testID="media-photo-error" /> : null}
 
       <Divider />
       <SectionHeading title={t("pm.addImage")} detail={t("pm.imageFormats")} />

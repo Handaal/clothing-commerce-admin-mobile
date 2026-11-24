@@ -40,6 +40,7 @@ import { spacing, typography } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
 import { useMutation } from "../ui/useMutation";
 import { createThemedStyles } from "../ui/useTheme";
+import { CatalogImageField } from "../catalog/CatalogImageField";
 import { SizeGuideEditor } from "./SizeGuideEditor";
 
 type Category = CategoryListResponse["categories"][number];
@@ -164,6 +165,22 @@ function CategoriesContent({
                 generateKey={generateKey}
                 onSaved={() => {
                   setEditing(null);
+                  reload();
+                }}
+              />
+              <Divider />
+              <CatalogImageField
+                client={client}
+                label={t("cat.image")}
+                hint={t("cat.imageHint")}
+                image={category.image}
+                testID={`cat-image-${category.slug}`}
+                onSave={async (image) => {
+                  await client.setCategoryImage({
+                    categoryId: category.id,
+                    image,
+                    idempotencyKey: generateKey(),
+                  });
                   reload();
                 }}
               />

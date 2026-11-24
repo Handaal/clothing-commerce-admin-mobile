@@ -297,6 +297,7 @@ function ContentEditor({
           value={form.eyebrow}
           onChangeText={(v) => update("eyebrow", v)}
           placeholder={t("sfContent.eyebrowPlaceholder")}
+          hint={t("sfContent.hideHint")}
           testID="hero-eyebrow"
           error={errors.eyebrow}
         />
@@ -313,6 +314,7 @@ function ContentEditor({
           value={form.subtitle}
           onChangeText={(v) => update("subtitle", v)}
           multiline
+          hint={t("sfContent.hideHint")}
           testID="hero-subtitle"
           error={errors.subtitle}
         />
