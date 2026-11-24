@@ -36,6 +36,7 @@ export interface StorefrontScreenProps {
   onOpenPromotions: () => void;
   /** Home-page editor (hero + featured picks). */
   onOpenContent?: () => void;
+  onOpenSiteText?: () => void;
   /** Sales on items (struck-through price + % badge on the website). */
   onOpenSales?: () => void;
   /** Delivery areas and fees charged at checkout. */
@@ -62,6 +63,7 @@ export function StorefrontScreen({
   onOpenProducts,
   onOpenPromotions,
   onOpenContent,
+  onOpenSiteText,
   onOpenSales,
   onOpenDelivery,
   onOpenSubscribers,
@@ -92,6 +94,15 @@ export function StorefrontScreen({
             title={t("storefront.contentTitle")}
             body={t("storefront.contentBody")}
             onPress={onOpenContent}
+          />
+        ) : null}
+        {canReadCatalog && onOpenSiteText ? (
+          <WebsiteCard
+            testID="storefront-open-site-text"
+            icon="format-text"
+            title={t("storefront.siteTextTitle")}
+            body={t("storefront.siteTextBody")}
+            onPress={onOpenSiteText}
           />
         ) : null}
         {promotions.canRead && onOpenSales ? (
