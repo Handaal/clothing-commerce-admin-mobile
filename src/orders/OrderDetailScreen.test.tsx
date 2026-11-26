@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   listReturns: vi.fn(),
   fulfillOrder: vi.fn(),
   cancelOrder: vi.fn(),
+  collectOrderPayment: vi.fn(),
   listReturnRequests: vi.fn(),
   updateReturnRequestStatus: vi.fn(),
   withTenant: vi.fn(),
@@ -60,6 +61,7 @@ vi.mock("../commerce/client", () => ({
         listReturns: mocks.listReturns,
         fulfillOrder: mocks.fulfillOrder,
         cancelOrder: mocks.cancelOrder,
+        collectOrderPayment: mocks.collectOrderPayment,
         listReturnRequests: mocks.listReturnRequests,
         updateReturnRequestStatus: mocks.updateReturnRequestStatus,
       };
@@ -100,6 +102,15 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+const paymentLabels = {
+  pending: "Not collected yet",
+  authorized: "Authorized",
+  captured: "Collected",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  refunded: "Refunded",
+} as const;
+
 describe("OrderDetailScreen", () => {
   it("offers fulfil on an online order when the account may fulfil, and shows the updated order", async () => {
     mocks.getContext.mockResolvedValue(
@@ -130,7 +141,9 @@ describe("OrderDetailScreen", () => {
       expect.objectContaining({ orderId: ORDER_A, lines: [{ lineNumber: 2, quantity: 1 }] }),
     );
     expect((await screen.findByTestId("order-fulfillment-status")).textContent).toBe("Fulfilled");
-    expect(screen.queryByTestId("order-operations")).toBeNull();
+    // Fully shipped but the cash-on-delivery payment is still open: record the delivery next.
+    expect(await screen.findByTestId("order-collect")).toBeTruthy();
+    expect(screen.queryByTestId("order-fulfil")).toBeNull();
   });
 
   it("shows checkout snapshots, pending COD and partial consumption without inventing completion", async () => {
@@ -152,7 +165,7 @@ describe("OrderDetailScreen", () => {
     ]) {
       expect(screen.getByText(value)).toBeTruthy();
     }
-    expect(screen.getByTestId("order-payment-status").textContent).toBe("pending");
+    expect(screen.getByTestId("order-payment-status").textContent).toBe("Not collected yet");
     expect(screen.getByText("Cash on delivery")).toBeTruthy();
     // Stock reservations are operational detail, folded under "More details".
     expect(screen.queryByTestId("order-reservation-0")).toBeNull();
@@ -179,7 +192,9 @@ describe("OrderDetailScreen", () => {
         }),
       );
       renderDetail();
-      expect((await screen.findByTestId("order-payment-status")).textContent).toBe(status);
+      expect((await screen.findByTestId("order-payment-status")).textContent).toBe(
+        paymentLabels[status],
+      );
       expect(screen.getByText("Electronic")).toBeTruthy();
       expect(screen.getByText("EUR 50.00")).toBeTruthy();
     },
@@ -247,7 +262,7 @@ describe("OrderDetailScreen", () => {
     renderDetail();
     expect(await screen.findByText("POS")).toBeTruthy();
     expect(screen.getByText("Cash")).toBeTruthy();
-    expect(screen.getByTestId("order-payment-status").textContent).toBe("captured");
+    expect(screen.getByTestId("order-payment-status").textContent).toBe("Collected");
     expect(screen.getByText("3 / 3 fulfilled")).toBeTruthy();
   });
 

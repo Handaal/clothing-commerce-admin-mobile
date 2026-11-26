@@ -65,6 +65,18 @@ export function describeOrderWriteError(error: ClassifiedCommerceError): Describ
         message: t("orderWriteErr.location"),
         recovery: "none",
       };
+    case "ORDER_NOT_FULLY_SHIPPED":
+      return {
+        heading: t("orderWriteErr.changed"),
+        message: t("orderWriteErr.notFullyShipped"),
+        recovery: "reload",
+      };
+    case "PAYMENT_NOT_CASH_ON_DELIVERY":
+      return {
+        heading: t("orderWriteErr.notAllowed"),
+        message: t("orderWriteErr.notCod"),
+        recovery: "none",
+      };
     case "ORDER_CHANNEL_UNSUPPORTED":
       return {
         heading: t("orderWriteErr.notAllowed"),

@@ -4,8 +4,10 @@ import { StyleSheet, View } from "react-native";
 
 import { classifyCommerceError } from "../commerce/errors";
 import { useI18n } from "../i18n";
+import { formatMoneyMinor } from "../products/display";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import {
+  Body,
   ConfirmDialog,
   Notice,
   PrimaryButton,
@@ -17,7 +19,10 @@ import { spacing } from "../ui/theme";
 import { useToast } from "../ui/Toast";
 import { describeOrderWriteError, type DescribedOrderWriteError } from "./write-errors";
 
-export type OrderOperationsClient = Pick<TenantCommerceClient, "fulfillOrder" | "cancelOrder">;
+export type OrderOperationsClient = Pick<
+  TenantCommerceClient,
+  "fulfillOrder" | "cancelOrder" | "collectOrderPayment"
+>;
 
 /** Units still to ship per line number (only lines with a remainder). Display/input helper only. */
 export function remainingByLine(detail: OrderDetailResponse): Map<number, number> {
@@ -38,20 +43,23 @@ function defaults(detail: OrderDetailResponse): Record<number, string> {
   );
 }
 
-type Operation = "fulfil" | "cancel";
+type Operation = "fulfil" | "cancel" | "collect";
 
 /**
  * Staff actions on an ONLINE order: ship items (orders.fulfill + inventory.issue — the API takes the stock
  * from the location holding it for the order) and cancel an order nothing has shipped from (orders.cancel —
  * releases the held stock). Shown only when `/me/context` advertises the grant; the API still authorizes
  * every request. One idempotency key per confirmed intent: an ambiguous network failure retries with the
- * same key so the order is shipped or cancelled at most once.
+ * same key so the order is shipped or cancelled at most once. Once everything has shipped, a
+ * cash-on-delivery order offers "Delivered · cash collected" (orders.fulfill; SDK 0.54), which captures
+ * the payment so the customer's tracking shows Delivered and the order becomes returnable.
  */
 export function OrderOperations({
   data,
   client,
   canFulfill,
   canCancel,
+  canCollect = false,
   onUpdated,
   onReload,
   newKey = secureIdempotencyKey,
@@ -60,6 +68,7 @@ export function OrderOperations({
   client: OrderOperationsClient;
   canFulfill: boolean;
   canCancel: boolean;
+  canCollect?: boolean;
   onUpdated: (detail: OrderDetailResponse) => void;
   onReload: () => void;
   newKey?: IdempotencyKeyFactory;
@@ -79,6 +88,18 @@ export function OrderOperations({
   const placed = data.header.status === "placed" && data.header.channel === "online";
   const showFulfil = placed && canFulfill && remaining.size > 0;
   const showCancel = placed && canCancel && data.fulfillmentProgress.status === "unfulfilled";
+  const codPayment =
+    data.commerce?.payment?.method === "cash_on_delivery" ? data.commerce.payment : null;
+  const showCollect =
+    placed &&
+    canCollect &&
+    data.fulfillmentProgress.status === "fulfilled" &&
+    codPayment !== null &&
+    (codPayment.status === "pending" || codPayment.status === "authorized");
+  const collectAmount = formatMoneyMinor(
+    codPayment?.amountMinor ?? data.header.totalMinor,
+    codPayment?.currency ?? data.header.currency,
+  );
 
   const plan = useMemo(() => {
     const lines: { lineNumber: number; quantity: number }[] = [];
@@ -98,7 +119,7 @@ export function OrderOperations({
     return { lines, invalid, units, all };
   }, [remaining, ship]);
 
-  if (!showFulfil && !showCancel) return null;
+  if (!showFulfil && !showCancel && !showCollect) return null;
 
   const run = async (operation: Operation) => {
     setConfirm(null);
@@ -117,11 +138,13 @@ export function OrderOperations({
               idempotencyKey,
               lines: plan.lines,
             })
-          : await client.cancelOrder({
-              orderId: data.header.id,
-              idempotencyKey,
-              ...(reason.trim() ? { reason: reason.trim() } : {}),
-            });
+          : operation === "collect"
+            ? await client.collectOrderPayment({ orderId: data.header.id, idempotencyKey })
+            : await client.cancelOrder({
+                orderId: data.header.id,
+                idempotencyKey,
+                ...(reason.trim() ? { reason: reason.trim() } : {}),
+              });
       pendingKey.current = null;
       setShip(defaults(next));
       setReason("");
@@ -129,9 +152,17 @@ export function OrderOperations({
       toast.success(
         operation === "cancel"
           ? t("orderOps.cancelledToast", { number: next.header.orderNumber })
-          : next.fulfillmentProgress.status === "fulfilled"
-            ? t("orderOps.fulfilledToast", { number: next.header.orderNumber })
-            : t("orderOps.partialToast", { number: next.header.orderNumber }),
+          : operation === "collect"
+            ? t("orderOps.collectedToast", {
+                number: next.header.orderNumber,
+                amount: formatMoneyMinor(
+                  next.commerce?.payment?.amountMinor ?? next.header.totalMinor,
+                  next.header.currency,
+                ),
+              })
+            : next.fulfillmentProgress.status === "fulfilled"
+              ? t("orderOps.fulfilledToast", { number: next.header.orderNumber })
+              : t("orderOps.partialToast", { number: next.header.orderNumber }),
       );
     } catch (error) {
       const described = describeOrderWriteError(classifyCommerceError(error));
@@ -144,7 +175,7 @@ export function OrderOperations({
 
   return (
     <Surface tone="accent" testID="order-operations">
-      <SectionHeading title={t("orderOps.title")} />
+      <SectionHeading title={showCollect ? t("orderOps.collectTitle") : t("orderOps.title")} />
 
       {failure ? (
         <Notice
@@ -207,6 +238,19 @@ export function OrderOperations({
         </View>
       ) : null}
 
+      {showCollect ? (
+        <View style={styles.block}>
+          <Body>{t("orderOps.collectBody", { amount: collectAmount })}</Body>
+          <PrimaryButton
+            label={t("orderOps.collect")}
+            icon="cash-check"
+            testID="order-collect"
+            disabled={busy}
+            onPress={() => setConfirm("collect")}
+          />
+        </View>
+      ) : null}
+
       {showCancel ? (
         <View style={styles.block}>
           <TextField
@@ -237,6 +281,17 @@ export function OrderOperations({
         testID="order-fulfil-dialog"
         onCancel={() => setConfirm(null)}
         onConfirm={() => void run("fulfil")}
+      />
+      <ConfirmDialog
+        visible={confirm === "collect"}
+        tone="brand"
+        icon="cash-check"
+        title={t("orderOps.collectDialogTitle", { number: data.header.orderNumber })}
+        message={t("orderOps.collectMessage", { amount: collectAmount })}
+        confirmLabel={t("orderOps.collectConfirm")}
+        testID="order-collect-dialog"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void run("collect")}
       />
       <ConfirmDialog
         visible={confirm === "cancel"}

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { useI18n, type MessageKey } from "../i18n";
 import { formatMoneyMinor } from "../products/display";
+import { formatOrderDate } from "./display";
 import { Badge, Body, DetailCard, InfoRow, Notice } from "../ui/components";
 import { spacing, typography } from "../ui/theme";
 import { createThemedStyles } from "../ui/useTheme";
@@ -12,6 +13,16 @@ const paymentMethodKey: Record<NonNullable<OrderCommerceDetails["payment"]>["met
     cash: "payMethod.cash",
     cash_on_delivery: "payMethod.cod",
     electronic: "payMethod.electronic",
+  };
+
+const paymentStatusKey: Record<NonNullable<OrderCommerceDetails["payment"]>["status"], MessageKey> =
+  {
+    pending: "orderCommerce.paymentStatus.pending",
+    authorized: "orderCommerce.paymentStatus.authorized",
+    captured: "orderCommerce.paymentStatus.captured",
+    failed: "orderCommerce.paymentStatus.failed",
+    cancelled: "orderCommerce.paymentStatus.cancelled",
+    refunded: "orderCommerce.paymentStatus.refunded",
   };
 
 const reservationKey: Record<OrderCommerceDetails["reservations"][number]["status"], MessageKey> = {
@@ -79,7 +90,11 @@ export function OrderPaymentCard({ data }: { data: OrderDetailResponse }) {
   return (
     <DetailCard
       title={t("orderCommerce.paymentSection")}
-      action={payment ? <Badge label={payment.status} testID="order-payment-status" /> : undefined}
+      action={
+        payment ? (
+          <Badge label={t(paymentStatusKey[payment.status])} testID="order-payment-status" />
+        ) : undefined
+      }
       testID="order-payment"
     >
       {payment ? (
@@ -91,6 +106,12 @@ export function OrderPaymentCard({ data }: { data: OrderDetailResponse }) {
           />
           {payment.provider ? (
             <InfoRow label={t("orderCommerce.provider")} value={payment.provider} />
+          ) : null}
+          {payment.status === "captured" && payment.capturedAt ? (
+            <InfoRow
+              label={t("orderCommerce.collectedOn")}
+              value={formatOrderDate(payment.capturedAt)}
+            />
           ) : null}
         </View>
       ) : (

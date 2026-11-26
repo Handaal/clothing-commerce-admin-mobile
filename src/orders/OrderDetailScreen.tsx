@@ -107,6 +107,7 @@ export function OrderDetailScreen({
       client={client}
       canFulfill={Boolean(orders?.canRead && orders.canFulfill)}
       canCancel={Boolean(orders?.canRead && orders.canCancel)}
+      canCollect={Boolean(orders?.canRead && (orders.canCollect ?? orders.canFulfill))}
       onUpdated={setUpdated}
       storeName={storeNameFor(
         session.phase === "ready" ? session.context : null,
@@ -126,6 +127,7 @@ function OrderDetail({
   client,
   canFulfill,
   canCancel,
+  canCollect,
   onUpdated,
   storeName,
   canDecideReturns,
@@ -140,6 +142,7 @@ function OrderDetail({
     | "listReturns"
     | "fulfillOrder"
     | "cancelOrder"
+    | "collectOrderPayment"
     | "listReturnRequests"
     | "updateReturnRequestStatus"
   >;
@@ -147,6 +150,7 @@ function OrderDetail({
   canDecideReturns: boolean;
   canFulfill: boolean;
   canCancel: boolean;
+  canCollect: boolean;
   onUpdated: (detail: OrderDetailResponse) => void;
   onBack: () => void;
   onRefresh: () => void;
@@ -231,11 +235,12 @@ function OrderDetail({
       {/* 2. What can be done now. */}
       {header.channel === "online" ? (
         <OrderOperations
-          key={`${header.id}-${header.status}-${fulfillmentProgress.status}`}
+          key={`${header.id}-${header.status}-${fulfillmentProgress.status}-${data.commerce?.payment?.status ?? ""}`}
           data={data}
           client={client}
           canFulfill={canFulfill}
           canCancel={canCancel}
+          canCollect={canCollect}
           onUpdated={onUpdated}
           onReload={onRefresh}
         />

@@ -45,12 +45,37 @@ function order(
   };
 }
 
+/** The same order paid cash on delivery, with the payment in the given state. */
+function cod(
+  data: OrderDetailResponse,
+  status: "pending" | "captured" = "pending",
+): OrderDetailResponse {
+  return {
+    ...data,
+    commerce: {
+      customerId: null,
+      customer: null,
+      delivery: null,
+      reservations: [],
+      payment: {
+        method: "cash_on_delivery",
+        provider: null,
+        status,
+        amountMinor: data.header.totalMinor,
+        currency: data.header.currency,
+        capturedAt: status === "captured" ? "2026-11-26T10:00:00.000Z" : null,
+      },
+    },
+  } as OrderDetailResponse;
+}
+
 function setup(
   data: OrderDetailResponse,
-  options: { canFulfill?: boolean; canCancel?: boolean } = {},
+  options: { canFulfill?: boolean; canCancel?: boolean; canCollect?: boolean } = {},
   client = {
     fulfillOrder: vi.fn().mockResolvedValue(order([3, 2])),
     cancelOrder: vi.fn().mockResolvedValue(order([0, 0], "cancelled")),
+    collectOrderPayment: vi.fn().mockResolvedValue(cod(order([3, 2]), "captured")),
   },
 ) {
   const onUpdated = vi.fn();
@@ -63,6 +88,7 @@ function setup(
       client={client}
       canFulfill={options.canFulfill ?? true}
       canCancel={options.canCancel ?? true}
+      canCollect={options.canCollect ?? false}
       onUpdated={onUpdated}
       onReload={onReload}
       newKey={newKey}
@@ -127,6 +153,7 @@ describe("OrderOperations", () => {
         .mockRejectedValueOnce(new ApiNetworkError("offline"))
         .mockResolvedValueOnce(order([3, 2])),
       cancelOrder: vi.fn(),
+      collectOrderPayment: vi.fn(),
     };
     setup(order([0, 0]), {}, client);
     fireEvent.click(screen.getByTestId("order-fulfil"));
@@ -142,6 +169,7 @@ describe("OrderOperations", () => {
     const client = {
       fulfillOrder: vi.fn().mockRejectedValue(new ApiHttpError("x", 409, "OVER_FULFILLMENT", null)),
       cancelOrder: vi.fn(),
+      collectOrderPayment: vi.fn(),
     };
     const { onReload } = setup(order([0, 0]), {}, client);
     fireEvent.click(screen.getByTestId("order-fulfil"));
@@ -194,5 +222,49 @@ describe("OrderOperations", () => {
     const pos = order([0, 0]);
     setup({ ...pos, header: { ...pos.header, channel: "pos" } });
     expect(screen.queryByTestId("order-operations")).toBeNull();
+  });
+});
+
+describe("OrderOperations — delivered + cash collected (SDK 0.54)", () => {
+  it("records the courier's cash once everything has shipped, with one key", async () => {
+    const { client, onUpdated } = setup(cod(order([3, 2])), { canCollect: true });
+    expect(screen.queryByTestId("order-fulfil")).toBeNull();
+    fireEvent.click(screen.getByTestId("order-collect"));
+    confirm("order-collect-dialog");
+    await waitFor(() =>
+      expect(client.collectOrderPayment).toHaveBeenCalledWith({
+        orderId: ORDER_A,
+        idempotencyKey: "key-1",
+      }),
+    );
+    await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(cod(order([3, 2]), "captured")));
+  });
+
+  it("is offered only when fully shipped, still unpaid, and granted", () => {
+    setup(cod(order([3, 1])), { canCollect: true });
+    expect(screen.queryByTestId("order-collect")).toBeNull();
+    cleanup();
+    setup(cod(order([3, 2]), "captured"), { canCollect: true });
+    expect(screen.queryByTestId("order-operations")).toBeNull();
+    cleanup();
+    setup(cod(order([3, 2])), { canCollect: false });
+    expect(screen.queryByTestId("order-operations")).toBeNull();
+  });
+
+  it("explains a not-fully-shipped refusal and offers a reload", async () => {
+    const client = {
+      fulfillOrder: vi.fn(),
+      cancelOrder: vi.fn(),
+      collectOrderPayment: vi
+        .fn()
+        .mockRejectedValue(new ApiHttpError("x", 409, "ORDER_NOT_FULLY_SHIPPED", null)),
+    };
+    setup(cod(order([3, 2])), { canCollect: true }, client);
+    fireEvent.click(screen.getByTestId("order-collect"));
+    confirm("order-collect-dialog");
+    expect((await screen.findByTestId("order-ops-error")).textContent).toContain(
+      "Ship every item before marking the order delivered.",
+    );
+    expect(screen.getByTestId("order-ops-reload")).toBeTruthy();
   });
 });
