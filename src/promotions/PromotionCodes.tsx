@@ -170,10 +170,7 @@ export function PromotionCodes({
 
       {canManage ? (
         <Surface>
-          <SectionHeading
-            title={t("promoCodes.createTitle")}
-            detail={t("promoCodes.voucherAccess")}
-          />
+          <SectionHeading title={t("promoCodes.createTitle")} />
           <TextField
             label={t("promoCodes.codeLabel")}
             value={code}

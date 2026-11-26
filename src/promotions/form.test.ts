@@ -93,11 +93,18 @@ describe("Promotion form mapping", () => {
     expect(errors.endsAt).toBe("End must be after start.");
   });
 
-  it("omits economic fields from post-redemption edits but keeps metadata and schedule", () => {
+  it("sends changed economics even after redemption (every setting is editable)", () => {
     const detail = promotionDetail({ economicsLocked: true });
     expect(
       buildUpdatePromotionRequest(
-        form({ name: "Renamed", startsAt: "2026-10-01T00:00:00Z", benefitValue: "50" }),
+        form({
+          name: "Renamed",
+          startsAt: "2026-10-01T00:00:00Z",
+          benefitValue: "50",
+          minimumSubtotal: "50.00",
+          maximumDiscount: "25.00",
+          globalLimit: "10",
+        }),
         detail,
       ),
     ).toEqual({
@@ -105,6 +112,7 @@ describe("Promotion form mapping", () => {
       description: null,
       startsAt: "2026-10-01T00:00:00.000Z",
       endsAt: null,
+      benefitPercentBp: 5000,
     });
   });
 
@@ -116,6 +124,7 @@ describe("Promotion form mapping", () => {
       benefitValue: "10",
       minimumSubtotal: "50.00",
       maximumDiscount: "25.00",
+      globalLimit: "10",
     };
     expect(buildUpdatePromotionRequest(state, detail)).toEqual({
       name: "Renamed only",

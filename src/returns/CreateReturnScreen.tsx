@@ -268,7 +268,6 @@ function CreateReturnForm({
       <PageHeader
         eyebrow={t("createReturn.eyebrow")}
         title={t("createReturn.title")}
-        description={t("createReturn.formDesc", { number: order.header.orderNumber })}
         icon="keyboard-return"
         onBack={onBack}
       />
@@ -306,10 +305,7 @@ function CreateReturnForm({
         />
       ) : (
         <>
-          <SectionHeading
-            title={t("createReturn.selectItems")}
-            detail={t("createReturn.selectItemsDetail")}
-          />
+          <SectionHeading title={t("createReturn.selectItems")} />
           <View style={{ gap: 12 }}>
             {eligibility.lines.map((line) => {
               const selected = selection[line.orderLineId];

@@ -784,6 +784,7 @@ export function CommerceForm({
           label={t("set.returnWindowDays")}
           value={windowDays}
           onChangeText={setWindowDays}
+          hint={t("set.returnWindowDaysHint")}
           testID="returns-window"
         />
         <BooleanField

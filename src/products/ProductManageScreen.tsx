@@ -1,5 +1,5 @@
 import type { ProductDetailResponse, TenantCommerceClient } from "@shifted/clothing-commerce-sdk";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -12,11 +12,13 @@ import {
   prepareMediaUpload,
   webImagePicker,
   MediaStorageUnavailableError,
+  MediaUploadFailedError,
   type ImagePicker,
   type PickedImage,
 } from "../catalog/media";
 import {
   archiveProductMedia,
+  cleanOptionEntries,
   createVariant,
   publishProduct,
   registerProductMedia,
@@ -30,11 +32,12 @@ import {
   validateSlug,
   validateStyleCode,
   type ProductStatus,
+  type VariantOptionEntry,
 } from "../catalog/operations";
 import { formatMinorToInput, parseAmountToMinor } from "../catalog/money";
-import { describeCatalogWriteError } from "../catalog/write-errors";
 import { OPERATING_CURRENCY } from "../commerce/currency";
 import { classifyCommerceError } from "../commerce/errors";
+import { getPublicMediaBaseUrl } from "../config/env";
 import { useI18n } from "../i18n";
 import { secureIdempotencyKey, type IdempotencyKeyFactory } from "../inventory/idempotency";
 import { useSession } from "../session/SessionProvider";
@@ -42,6 +45,7 @@ import { AppIcon, type AppIconName } from "../ui/Icon";
 import {
   AccordionTrigger,
   Badge,
+  StatusBadge,
   Body,
   ConfirmButton,
   Divider,
@@ -60,10 +64,20 @@ import {
   TextButton,
   TextField,
 } from "../ui/components";
-import { colors, radius, spacing, typography } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { useToast } from "../ui/Toast";
-import { useMutation, type Mutation, type MutationState } from "../ui/useMutation";
+import { useMutation } from "../ui/useMutation";
+import { CatalogWriteError, useOnSuccess } from "./catalog-write-ui";
+import {
+  OptionRowsField,
+  optionRowsFor,
+  ProductCategoriesForm,
+  SwatchesForm,
+  VariantOptionsForm,
+} from "./ProductOptionsSection";
+import { ProductBrandForm } from "./ProductBrandForm";
 import { errorHeading, formatMoneyMinor, isRetryable } from "./display";
 
 export interface ProductManageScreenProps {
@@ -102,7 +116,6 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
         <PageHeader
           eyebrow={t("products.eyebrow")}
           title={t("pm.productTitle")}
-          description={t("pm.loadingDesc")}
           icon="tshirt-crew-outline"
           onBack={onBack}
         />
@@ -137,7 +150,19 @@ export function ProductManageScreen(props: ProductManageScreenProps) {
   return <ProductManage {...props} client={client} data={state.data} reload={reload} />;
 }
 
-type Section = "details" | "variants" | "media" | "lifecycle";
+type Section = "details" | "variants" | "colours" | "categories" | "brand" | "media" | "lifecycle";
+
+/** "M · Black" from the variant's selected option values, or null when it has none. */
+function variantOptionLabel(data: ProductDetailResponse, variantId: string): string | null {
+  const variant = data.variants.find((v) => v.id === variantId);
+  const values = (variant?.optionValues ?? [])
+    .map((entry) =>
+      data.options.find((o) => o.id === entry.optionId)?.values.find((v) => v.id === entry.valueId),
+    )
+    .filter((value): value is NonNullable<typeof value> => value !== undefined)
+    .map((value) => value.value);
+  return values.length > 0 ? values.join(" · ") : null;
+}
 
 function ProductManage({
   productId,
@@ -154,6 +179,7 @@ function ProductManage({
   data: ProductDetailResponse;
   reload: () => void;
 }) {
+  const { productStyles, colors } = useStyles();
   const generateKey = generateIdempotencyKey ?? secureIdempotencyKey;
   const { t } = useI18n();
   const observation = useProductObservation(productId, observationStore);
@@ -165,14 +191,13 @@ function ProductManage({
       <PageHeader
         eyebrow={t("products.eyebrow")}
         title={product.name}
-        description={t("pm.manageDesc")}
         icon="tshirt-crew-outline"
         onBack={onBack}
       />
       <Surface tone="brand" style={productStyles.summaryCard}>
         <View style={productStyles.summaryTop}>
           <View style={productStyles.summaryIcon}>
-            <AppIcon name="tshirt-crew-outline" size={30} color={colors.white} />
+            <AppIcon name="tshirt-crew-outline" size={30} color={colors.onBrand} />
           </View>
           <View style={productStyles.summaryCopy}>
             <Text style={productStyles.summaryName}>{product.name}</Text>
@@ -222,7 +247,7 @@ function ProductManage({
         observationStore={observationStore}
       />
 
-      <SectionHeading title={t("pm.manageTitle")} detail={t("pm.chooseSection")} />
+      <SectionHeading title={t("pm.manageTitle")} />
       <SectionTab
         label={t("pm.editDetails")}
         description={t("pm.editDetailsDesc")}
@@ -255,6 +280,53 @@ function ProductManage({
       {section === "variants" ? (
         <Surface style={productStyles.expandedSection}>
           <VariantsSection client={client} data={data} generateKey={generateKey} reload={reload} />
+        </Surface>
+      ) : null}
+
+      <SectionTab
+        label={t("po.sectionColours")}
+        description={t("po.sectionColoursDesc")}
+        icon="palette-outline"
+        testID="section-colours"
+        active={section === "colours"}
+        onPress={() => setSection(section === "colours" ? null : "colours")}
+      />
+      {section === "colours" ? (
+        <Surface style={productStyles.expandedSection}>
+          <SwatchesForm client={client} data={data} generateKey={generateKey} reload={reload} />
+        </Surface>
+      ) : null}
+
+      <SectionTab
+        label={t("po.sectionCategories")}
+        description={t("po.sectionCategoriesDesc")}
+        icon="file-tree-outline"
+        testID="section-categories"
+        active={section === "categories"}
+        onPress={() => setSection(section === "categories" ? null : "categories")}
+      />
+      {section === "categories" ? (
+        <Surface style={productStyles.expandedSection}>
+          <ProductCategoriesForm
+            client={client}
+            data={data}
+            generateKey={generateKey}
+            reload={reload}
+          />
+        </Surface>
+      ) : null}
+
+      <SectionTab
+        label={t("brand.productTitle")}
+        description={t("brand.sectionDesc")}
+        icon="tag-multiple-outline"
+        testID="section-brand"
+        active={section === "brand"}
+        onPress={() => setSection(section === "brand" ? null : "brand")}
+      />
+      {section === "brand" ? (
+        <Surface style={productStyles.expandedSection}>
+          <ProductBrandForm client={client} data={data} generateKey={generateKey} reload={reload} />
         </Surface>
       ) : null}
 
@@ -331,66 +403,6 @@ function SectionTab({
 }
 
 /** Run a callback once when a mutation transitions to success (used to re-read the product). */
-function useOnSuccess<T>(state: MutationState<T>, onSuccess: (data: T) => void) {
-  const latest = useRef(onSuccess);
-  useEffect(() => {
-    latest.current = onSuccess;
-  });
-  useEffect(() => {
-    if (state.status === "success") latest.current(state.data);
-  }, [state]);
-}
-
-/**
- * Shared error panel for catalog writes. `refresh` recovery re-reads the product (state drift); `retry`
- * reuses the same idempotency key (ambiguous outcome); `edit`/`none` just dismiss so the manager can
- * correct inputs and submit a genuinely new operation.
- */
-function CatalogWriteError<TArgs, TResult>({
-  state,
-  mutation,
-  onRefresh,
-  testID,
-}: {
-  state: Extract<MutationState<TResult>, { status: "error" }>;
-  mutation: Mutation<TArgs, TResult>;
-  onRefresh: () => void;
-  testID?: string;
-}) {
-  const { t } = useI18n();
-  const described = describeCatalogWriteError(state.error);
-  return (
-    <Notice
-      tone="danger"
-      title={described.heading}
-      message={described.message}
-      testID={testID ?? "write-error"}
-      action={
-        described.recovery === "retry" ? (
-          <TextButton
-            label={t("common.retry")}
-            icon="refresh"
-            testID="write-retry"
-            onPress={() => mutation.retry()}
-          />
-        ) : described.recovery === "refresh" ? (
-          <TextButton
-            label={t("pm.refreshProduct")}
-            icon="refresh"
-            testID="write-refresh"
-            onPress={() => {
-              mutation.reset();
-              onRefresh();
-            }}
-          />
-        ) : (
-          <TextButton label={t("common.dismiss")} icon="close" onPress={() => mutation.reset()} />
-        )
-      }
-    />
-  );
-}
-
 // ---------------------------------------------------------------------------------------------------
 // Publication
 // ---------------------------------------------------------------------------------------------------
@@ -408,24 +420,22 @@ function PublicationSection({
   reload: () => void;
   observationStore: CatalogObservationStore;
 }) {
+  const { productStyles, colors } = useStyles();
   const observation = useProductObservation(productId, observationStore);
   const isPublished = observation?.storefrontStatus === "published";
   const toast = useToast();
   const { t } = useI18n();
-  const toastWriteError = (error: Parameters<typeof describeCatalogWriteError>[0]) => {
-    const described = describeCatalogWriteError(error);
-    toast.error(described.message, { title: described.heading });
-  };
-
+  // Write failures surface once — through the inline, actionable CatalogWriteError below (retry /
+  // refresh / dismiss). We intentionally do NOT also fire an error toast here: a transient toast plus a
+  // persistent notice for the same failure crowds the screen and duplicates the message. Success stays
+  // a toast (there is no persistent success surface to duplicate).
   const publish = useMutation(
     (_args: Record<string, never>, key) => publishProduct(client, productId, key),
     generateKey,
-    { onError: toastWriteError },
   );
   const unpublish = useMutation(
     (_args: Record<string, never>, key) => unpublishProduct(client, productId, key),
     generateKey,
-    { onError: toastWriteError },
   );
 
   useOnSuccess(publish.state, (data) => {
@@ -526,6 +536,7 @@ function EditDetailsForm({
   reload: () => void;
   observationStore: CatalogObservationStore;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [name, setName] = useState(product.name);
   // The read contract returns no slug/description; seed the slug from this session's observation when
@@ -630,8 +641,9 @@ function VariantsSection({
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { productStyles, colors } = useStyles();
   const { t } = useI18n();
-  const { product, variants, prices } = data;
+  const { variants, prices } = data;
   const priceByVariant = useMemo(() => {
     const map = new Map<string, { currency: string; amountMinor: number }>();
     for (const price of prices) {
@@ -665,8 +677,11 @@ function VariantsSection({
                   <Text style={productStyles.variantName}>
                     {variant.displayName ?? variant.sku}
                   </Text>
-                  <Badge label={variant.status} />
+                  <StatusBadge status={variant.status} />
                 </View>
+                {variantOptionLabel(data, variant.id) ? (
+                  <InfoRow label={t("po.options")} value={variantOptionLabel(data, variant.id)!} />
+                ) : null}
                 <InfoRow label="SKU" value={variant.sku} />
                 <InfoRow
                   label="Price"
@@ -678,12 +693,9 @@ function VariantsSection({
         </View>
       )}
       <Divider />
-      <CreateVariantForm
-        client={client}
-        productId={product.id}
-        generateKey={generateKey}
-        reload={reload}
-      />
+      <CreateVariantForm client={client} data={data} generateKey={generateKey} reload={reload} />
+      <Divider />
+      <VariantOptionsForm client={client} data={data} generateKey={generateKey} reload={reload} />
       <Divider />
       <SetPriceForm
         client={client}
@@ -698,35 +710,53 @@ function VariantsSection({
 
 function CreateVariantForm({
   client,
-  productId,
+  data,
   generateKey,
   reload,
 }: {
   client: TenantCommerceClient;
-  productId: string;
+  data: ProductDetailResponse;
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
+  const productId = data.product.id;
   const [sku, setSku] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [optionRows, setOptionRows] = useState<VariantOptionEntry[]>(() =>
+    optionRowsFor(data, null),
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const mutation = useMutation(
-    (args: { productId: string; sku: string; displayName?: string }, key) =>
-      createVariant(client, args, key),
+    (
+      args: {
+        productId: string;
+        sku: string;
+        displayName?: string;
+        options?: VariantOptionEntry[];
+      },
+      key,
+    ) => createVariant(client, args, key),
     generateKey,
   );
-  useOnSuccess(mutation.state, () => reload());
+  useOnSuccess(mutation.state, () => {
+    setSku("");
+    setOptionRows(optionRowsFor(data, null));
+    reload();
+  });
 
   function onSubmit() {
     const problem = validateSku(sku);
-    setLocalError(problem);
-    if (problem) return;
+    const { entries, problem: optionProblem } = cleanOptionEntries(optionRows);
+    setLocalError(problem ?? optionProblem);
+    if (problem || optionProblem) return;
     mutation.submit({
       productId,
       sku: sku.trim(),
       ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
+      ...(entries.length > 0 ? { options: entries } : {}),
     });
   }
 
@@ -748,6 +778,7 @@ function CreateVariantForm({
         placeholder={t("pm.displayNamePlaceholder")}
         testID="variant-display-name"
       />
+      <OptionRowsField rows={optionRows} onChange={setOptionRows} testIDPrefix="variant-option" />
       {localError ? <Notice tone="danger" message={localError} /> : null}
       {mutation.state.status === "success" ? (
         <Notice tone="success" message={t("pm.variantAdded")} testID="variant-success" />
@@ -784,6 +815,7 @@ function SetPriceForm({
   generateKey: IdempotencyKeyFactory;
   reload: () => void;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [variantId, setVariantId] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
@@ -890,7 +922,7 @@ function SetPriceForm({
 // Media
 // ---------------------------------------------------------------------------------------------------
 
-interface RegisteredMedia {
+interface PhotoRow {
   mediaId: string;
   isPrimary: boolean;
   previewUri?: string;
@@ -912,15 +944,43 @@ function MediaSection({
   imagePicker: ImagePicker;
   uploadFetch?: typeof globalThis.fetch;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [altText, setAltText] = useState("");
   const [isPrimary, setIsPrimary] = useState(false);
   const [prepareError, setPrepareError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
-  // Media is NOT returned by the authenticated read contract, so we list what was registered this
-  // session (verify the full set via the published Storefront projection).
-  const [registered, setRegistered] = useState<RegisteredMedia[]>([]);
+  // SDK 0.53: the product's existing photos come from the API (main photo first), so photos uploaded
+  // earlier — from any app — can be described, reordered, made main or removed.
+  const [photos, setPhotos] = useState<PhotoRow[]>([]);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busyPhoto, setBusyPhoto] = useState(false);
+  const mediaBase = getPublicMediaBaseUrl();
+
+  const loadPhotos = useCallback(async () => {
+    if (typeof client.listProductMedia !== "function") return;
+    try {
+      const { media } = await client.listProductMedia(productId);
+      setPhotos(
+        media.map((m) => ({
+          mediaId: m.id,
+          isPrimary: m.isPrimary,
+          ...(mediaBase ? { previewUri: `${mediaBase}/${m.bucket}/${m.path}` } : {}),
+          ...(m.altText ? { altText: m.altText } : {}),
+        })),
+      );
+      setDrafts({});
+    } catch (error) {
+      setPhotoError(classifyCommerceError(error).message);
+    }
+  }, [client, productId, mediaBase]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial read of the product's photos
+    void loadPhotos();
+  }, [loadPhotos]);
 
   const register = useMutation(
     (
@@ -940,27 +1000,48 @@ function MediaSection({
     generateKey,
   );
 
-  // Media is NOT part of the authenticated product read, so a getProduct reload would show nothing new
-  // for media and would only flash the screen back to loading (dropping this session list). The
-  // register/archive responses ARE the authoritative confirmation; we keep the session list from them.
-  // (`reload` is still used for MEDIA_NOT_FOUND refresh recovery in the error panel.)
   useOnSuccess(register.state, (data) => {
-    setRegistered((prev) => [
+    setPhotos((prev) => [
       ...prev,
       {
         mediaId: data.mediaId,
         isPrimary: data.isPrimary,
-        previewUri: picked?.previewUri,
-        altText: altText.trim() || undefined,
+        ...(picked?.previewUri ? { previewUri: picked.previewUri } : {}),
+        ...(altText.trim() ? { altText: altText.trim() } : {}),
       },
     ]);
     setPicked(null);
     setAltText("");
     setIsPrimary(false);
+    void loadPhotos();
   });
   useOnSuccess(archive.state, (data) => {
-    setRegistered((prev) => prev.filter((m) => m.mediaId !== data.mediaId));
+    setPhotos((prev) => prev.filter((m) => m.mediaId !== data.mediaId));
+    void loadPhotos();
   });
+
+  async function runPhotoChange(change: () => Promise<unknown>) {
+    setBusyPhoto(true);
+    setPhotoError(null);
+    try {
+      await change();
+      await loadPhotos();
+    } catch (error) {
+      setPhotoError(classifyCommerceError(error).message);
+    } finally {
+      setBusyPhoto(false);
+    }
+  }
+
+  function move(index: number, delta: number) {
+    const target = index + delta;
+    if (target < 0 || target >= photos.length) return;
+    const order = photos.map((p) => p.mediaId);
+    [order[index], order[target]] = [order[target]!, order[index]!];
+    void runPhotoChange(() =>
+      client.reorderProductMedia({ productId, mediaIds: order, idempotencyKey: generateKey() }),
+    );
+  }
 
   async function onPick() {
     setPrepareError(null);
@@ -987,7 +1068,9 @@ function MediaSection({
       });
     } catch (error) {
       if (error instanceof MediaStorageUnavailableError) {
-        setPrepareError(error.message);
+        setPrepareError(t("pm.uploadUnavailable"));
+      } else if (error instanceof MediaUploadFailedError) {
+        setPrepareError(t("pm.uploadFailed"));
       } else {
         setPrepareError(classifyCommerceError(error).message);
       }
@@ -999,38 +1082,99 @@ function MediaSection({
   return (
     <View style={productStyles.sectionBody}>
       <Eyebrow>{t("pm.productMedia")}</Eyebrow>
-      <Body>{t("pm.mediaIntro")}</Body>
-      {registered.length > 0 ? (
+      {photos.length > 0 ? <Body>{t("pm.photoOrderHint")}</Body> : null}
+      {photos.length > 0 ? (
         <View style={productStyles.mediaList}>
-          {registered.map((media) => (
-            <Surface
-              key={media.mediaId}
-              testID={`media-${media.mediaId}`}
-              tone="muted"
-              style={productStyles.mediaCard}
-            >
-              {media.previewUri ? (
-                <Image
-                  source={{ uri: media.previewUri }}
-                  style={productStyles.mediaThumbnail}
-                  accessibilityLabel={media.altText ?? t("pm.productImageAlt")}
+          {photos.map((media, index) => {
+            const draft = drafts[media.mediaId];
+            return (
+              <Surface
+                key={media.mediaId}
+                testID={`media-${media.mediaId}`}
+                tone="muted"
+                style={productStyles.mediaCard}
+              >
+                {media.previewUri ? (
+                  <Image
+                    source={{ uri: media.previewUri }}
+                    style={productStyles.mediaThumbnail}
+                    accessibilityLabel={media.altText ?? t("pm.productImageAlt")}
+                  />
+                ) : null}
+                <View style={productStyles.mediaMeta}>
+                  {media.isPrimary ? <Badge label={t("pm.primary")} /> : null}
+                  <TextField
+                    label={t("pm.altText")}
+                    value={draft ?? media.altText ?? ""}
+                    onChangeText={(v) => setDrafts((d) => ({ ...d, [media.mediaId]: v }))}
+                    testID={`media-alt-${media.mediaId}`}
+                  />
+                  {draft !== undefined && draft.trim() !== (media.altText ?? "") ? (
+                    <TextButton
+                      label={t("pm.saveDescription")}
+                      icon="content-save-outline"
+                      testID={`media-alt-save-${media.mediaId}`}
+                      onPress={() =>
+                        void runPhotoChange(() =>
+                          client.updateProductMedia({
+                            productId,
+                            mediaId: media.mediaId,
+                            altText: draft.trim() || null,
+                            idempotencyKey: generateKey(),
+                          }),
+                        )
+                      }
+                    />
+                  ) : null}
+                </View>
+                <View style={productStyles.mediaMeta}>
+                  {!media.isPrimary ? (
+                    <TextButton
+                      label={t("pm.makeMain")}
+                      icon="star-outline"
+                      testID={`media-main-${media.mediaId}`}
+                      onPress={() =>
+                        void runPhotoChange(() =>
+                          client.updateProductMedia({
+                            productId,
+                            mediaId: media.mediaId,
+                            isPrimary: true,
+                            idempotencyKey: generateKey(),
+                          }),
+                        )
+                      }
+                    />
+                  ) : null}
+                  {index > 0 ? (
+                    <TextButton
+                      label={t("pm.moveEarlier")}
+                      icon="arrow-up"
+                      testID={`media-up-${media.mediaId}`}
+                      onPress={() => move(index, -1)}
+                    />
+                  ) : null}
+                  {index < photos.length - 1 ? (
+                    <TextButton
+                      label={t("pm.moveLater")}
+                      icon="arrow-down"
+                      testID={`media-down-${media.mediaId}`}
+                      onPress={() => move(index, 1)}
+                    />
+                  ) : null}
+                </View>
+                <ConfirmButton
+                  label={t("pm.removeImage")}
+                  confirmLabel={t("pm.confirmRemove")}
+                  testID={`media-archive-${media.mediaId}`}
+                  disabled={archive.state.status === "submitting" || busyPhoto}
+                  onConfirm={() => archive.submit({ productId, mediaId: media.mediaId })}
                 />
-              ) : null}
-              <View style={productStyles.mediaMeta}>
-                {media.isPrimary ? <Badge label={t("pm.primary")} /> : null}
-                <Body>{media.altText ?? media.mediaId}</Body>
-              </View>
-              <ConfirmButton
-                label={t("pm.removeImage")}
-                confirmLabel={t("pm.confirmRemove")}
-                testID={`media-archive-${media.mediaId}`}
-                disabled={archive.state.status === "submitting"}
-                onConfirm={() => archive.submit({ productId, mediaId: media.mediaId })}
-              />
-            </Surface>
-          ))}
+              </Surface>
+            );
+          })}
         </View>
       ) : null}
+      {photoError ? <Notice tone="danger" message={photoError} testID="media-photo-error" /> : null}
 
       <Divider />
       <SectionHeading title={t("pm.addImage")} detail={t("pm.imageFormats")} />
@@ -1147,6 +1291,7 @@ function LifecycleSection({
   reload: () => void;
   observationStore: CatalogObservationStore;
 }) {
+  const { productStyles } = useStyles();
   const { t } = useI18n();
   const [archiveReason, setArchiveReason] = useState("");
   const mutation = useMutation(
@@ -1230,52 +1375,55 @@ function LifecycleSection({
   );
 }
 
-const productStyles = StyleSheet.create({
-  summaryCard: { gap: spacing.lg },
-  summaryTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  summaryIcon: {
-    width: 56,
-    height: 56,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.lg,
-    backgroundColor: colors.brand,
-  },
-  summaryCopy: { flex: 1, gap: spacing.xs },
-  summaryName: { color: colors.ink, fontSize: 23, lineHeight: 29, fontWeight: "800" },
-  summaryMeta: { color: colors.inkMuted, ...typography.caption },
-  badges: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  publicationCard: { gap: spacing.lg },
-  sectionIntro: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  accentIcon: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-  },
-  sectionIntroCopy: { flex: 1, gap: 2 },
-  sectionTitle: { color: colors.ink, ...typography.sectionTitle },
-  sectionDescription: { color: colors.inkMuted, ...typography.caption },
-  expandedSection: { borderColor: colors.brandSoftStrong, gap: spacing.lg },
-  sectionBody: { gap: spacing.md },
-  variantList: { gap: spacing.md },
-  variantCard: { gap: spacing.sm, shadowOpacity: 0, elevation: 0 },
-  variantTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  variantIcon: {
-    width: 38,
-    height: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.sm,
-    backgroundColor: colors.brandSoft,
-  },
-  variantName: { flex: 1, color: colors.ink, ...typography.cardTitle },
-  mediaList: { gap: spacing.md },
-  mediaCard: { gap: spacing.md, shadowOpacity: 0, elevation: 0 },
-  mediaThumbnail: { width: 112, height: 112, borderRadius: radius.md },
-  mediaPreview: { width: 152, height: 152, borderRadius: radius.lg },
-  mediaMeta: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+const useStyles = createThemedStyles((colors) => {
+  const productStyles = StyleSheet.create({
+    summaryCard: { gap: spacing.lg },
+    summaryTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    summaryIcon: {
+      width: 56,
+      height: 56,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.lg,
+      backgroundColor: colors.brand,
+    },
+    summaryCopy: { flex: 1, gap: spacing.xs },
+    summaryName: { color: colors.ink, ...typography.title, fontWeight: "800" },
+    summaryMeta: { color: colors.inkMuted, ...typography.caption },
+    badges: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+    metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+    publicationCard: { gap: spacing.lg },
+    sectionIntro: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    accentIcon: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+    },
+    sectionIntroCopy: { flex: 1, gap: 2 },
+    sectionTitle: { color: colors.ink, ...typography.sectionTitle },
+    sectionDescription: { color: colors.inkMuted, ...typography.caption },
+    expandedSection: { borderColor: colors.brandSoftStrong, gap: spacing.lg },
+    sectionBody: { gap: spacing.md },
+    variantList: { gap: spacing.md },
+    variantCard: { gap: spacing.sm, shadowOpacity: 0, elevation: 0 },
+    variantTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    variantIcon: {
+      width: 38,
+      height: 38,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.sm,
+      backgroundColor: colors.brandSoft,
+    },
+    variantName: { flex: 1, color: colors.ink, ...typography.cardTitle },
+    mediaList: { gap: spacing.md },
+    mediaCard: { gap: spacing.md, shadowOpacity: 0, elevation: 0 },
+    mediaThumbnail: { width: 112, height: 112, borderRadius: radius.md },
+    mediaPreview: { width: 152, height: 152, borderRadius: radius.lg },
+    mediaMeta: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  });
+  return { colors, productStyles };
 });

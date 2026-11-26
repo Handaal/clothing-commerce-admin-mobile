@@ -152,7 +152,6 @@ function ReturnDetail({
       <InfoRow label={t("returnDetail.accepted")} value={data.createdAt} />
       <InfoRow label={t("returnDetail.source")} value={returnSourceLabel(data.source)} />
       <InfoRow label={t("returnDetail.actor")} value={data.actorMembershipId} />
-      <Body>{t("returnDetail.sourceNote")}</Body>
       <InfoRow label={t("returnDetail.returnId")} value={data.id} />
 
       <Divider />

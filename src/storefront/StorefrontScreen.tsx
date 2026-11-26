@@ -10,7 +10,6 @@ import type { CommerceSettings } from "../settings/model";
 import { useSession } from "../session/SessionProvider";
 import {
   Badge,
-  Body,
   InfoRow,
   LoadingBlock,
   Notice,
@@ -23,7 +22,8 @@ import {
   TextButton,
 } from "../ui/components";
 import { AppIcon, type AppIconName } from "../ui/Icon";
-import { colors, radius, spacing, typography } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { errorHeading, isRetryable } from "../products/display";
 
@@ -34,15 +34,26 @@ export interface StorefrontScreenProps {
   onManageCheckout: () => void;
   onOpenProducts: () => void;
   onOpenPromotions: () => void;
+  /** Home-page editor (hero + featured picks). */
+  onOpenContent?: () => void;
+  onOpenSiteText?: () => void;
+  /** Sales on items (struck-through price + % badge on the website). */
+  onOpenSales?: () => void;
+  /** Delivery areas and fees charged at checkout. */
+  onOpenDelivery?: () => void;
+  /** Emails left in the website's drop-alert form. */
+  onOpenSubscribers?: () => void;
+  /** Return requests customers sent from the website's order tracking page. */
+  onOpenReturnRequests?: () => void;
   onBack: () => void;
 }
 
 /**
- * Storefront control center. The customer-facing website has no CMS/theme API — its live content is
- * the published catalog, the per-brand checkout settings, and the promotions applied at checkout.
- * This hub surfaces the current checkout configuration (authenticated read) and routes into the
- * existing, capability-authorized editors for everything the Commerce API actually controls. It never
- * invents a page/banner editor the contract does not provide. The API still authorizes every read and
+ * Storefront control center. The website's live content is the home-page content (hero + featured
+ * picks), the published catalog, item sales, the per-brand checkout settings, and the promotions/offers
+ * applied at checkout. This hub surfaces the checkout configuration and routes into the
+ * capability-authorized editors for each. Content editing is structured fields only — never a visual
+ * page-layout editor. The API still authorizes every read and
  * write independently; capability flags here only guide navigation.
  */
 export function StorefrontScreen({
@@ -51,8 +62,15 @@ export function StorefrontScreen({
   onManageCheckout,
   onOpenProducts,
   onOpenPromotions,
+  onOpenContent,
+  onOpenSiteText,
+  onOpenSales,
+  onOpenDelivery,
+  onOpenSubscribers,
+  onOpenReturnRequests,
   onBack,
 }: StorefrontScreenProps) {
+  const { styles } = useStyles();
   const { t } = useI18n();
   const settings = settingsCapabilities(context);
   const promotions = promotionCapabilities(context);
@@ -63,30 +81,39 @@ export function StorefrontScreen({
       <PageHeader
         eyebrow={t("storefront.eyebrow")}
         title={t("storefront.title")}
-        description={t("storefront.headerDesc")}
         icon="storefront-outline"
         onBack={onBack}
       />
 
-      <Surface tone="brand" style={styles.intro}>
-        <Text style={styles.introTitle}>{t("storefront.introTitle")}</Text>
-        <Text style={styles.introBody}>{t("storefront.introBody")}</Text>
-      </Surface>
-
-      <SectionHeading title={t("storefront.checkoutTitle")} />
-      <Body>{t("storefront.checkoutBody")}</Body>
-      {settings.canRead ? (
-        <CheckoutConfig
-          tenantId={tenantId}
-          canManage={settings.canManage}
-          onManage={onManageCheckout}
-        />
-      ) : (
-        <Notice tone="warning" message={t("storefront.checkoutNoAccess")} />
-      )}
-
       <SectionHeading title={t("storefront.manageHeading")} />
       <View style={styles.cards}>
+        {canReadCatalog && onOpenContent ? (
+          <WebsiteCard
+            testID="storefront-open-content"
+            icon="home-edit-outline"
+            title={t("storefront.contentTitle")}
+            body={t("storefront.contentBody")}
+            onPress={onOpenContent}
+          />
+        ) : null}
+        {canReadCatalog && onOpenSiteText ? (
+          <WebsiteCard
+            testID="storefront-open-site-text"
+            icon="format-text"
+            title={t("storefront.siteTextTitle")}
+            body={t("storefront.siteTextBody")}
+            onPress={onOpenSiteText}
+          />
+        ) : null}
+        {promotions.canRead && onOpenSales ? (
+          <WebsiteCard
+            testID="storefront-open-sales"
+            icon="sale-outline"
+            title={t("storefront.salesTitle")}
+            body={t("storefront.salesBody")}
+            onPress={onOpenSales}
+          />
+        ) : null}
         {canReadCatalog ? (
           <WebsiteCard
             testID="storefront-open-products"
@@ -105,6 +132,33 @@ export function StorefrontScreen({
             onPress={onOpenPromotions}
           />
         ) : null}
+        {context.access.orders.canRead && onOpenReturnRequests ? (
+          <WebsiteCard
+            testID="storefront-open-return-requests"
+            icon="keyboard-return"
+            title={t("storefront.returnRequestsTitle")}
+            body={t("storefront.returnRequestsBody")}
+            onPress={onOpenReturnRequests}
+          />
+        ) : null}
+        {context.access.orders.canRead && onOpenSubscribers ? (
+          <WebsiteCard
+            testID="storefront-open-subscribers"
+            icon="email-newsletter"
+            title={t("storefront.subscribersTitle")}
+            body={t("storefront.subscribersBody")}
+            onPress={onOpenSubscribers}
+          />
+        ) : null}
+        {settings.canRead && onOpenDelivery ? (
+          <WebsiteCard
+            testID="storefront-open-delivery"
+            icon="truck-delivery-outline"
+            title={t("storefront.deliveryTitle")}
+            body={t("storefront.deliveryBody")}
+            onPress={onOpenDelivery}
+          />
+        ) : null}
         {settings.canRead ? (
           <WebsiteCard
             testID="storefront-open-returns"
@@ -115,6 +169,17 @@ export function StorefrontScreen({
           />
         ) : null}
       </View>
+
+      <SectionHeading title={t("storefront.checkoutTitle")} />
+      {settings.canRead ? (
+        <CheckoutConfig
+          tenantId={tenantId}
+          canManage={settings.canManage}
+          onManage={onManageCheckout}
+        />
+      ) : (
+        <Notice tone="warning" message={t("storefront.checkoutNoAccess")} />
+      )}
     </ScrollScreen>
   );
 }
@@ -128,13 +193,25 @@ function CheckoutConfig({
   canManage: boolean;
   onManage: () => void;
 }) {
+  const { styles } = useStyles();
   const { getTenantClient } = useSession();
   const { t } = useI18n();
-  const load = useCallback(
-    () => resolveSettingsAdapter(getTenantClient(tenantId)).getCommerce(),
-    [getTenantClient, tenantId],
-  );
-  const { state, reload } = useAsync<CommerceSettings>(load);
+  // Location names come with the settings so "Ships from" reads "Main warehouse", never an id.
+  const load = useCallback(async () => {
+    const adapter = resolveSettingsAdapter(getTenantClient(tenantId));
+    const [commerce, locations] = await Promise.all([
+      adapter.getCommerce(),
+      // Names are a nicety: a failed lookup never hides the checkout facts.
+      Promise.resolve()
+        .then(() => adapter.listInventoryLocationOptions())
+        .catch(() => []),
+    ]);
+    return { commerce, locationNames: new Map(locations.map((item) => [item.id, item.label])) };
+  }, [getTenantClient, tenantId]);
+  const { state, reload } = useAsync<{
+    commerce: CommerceSettings;
+    locationNames: Map<string, string>;
+  }>(load);
 
   if (state.status === "loading") return <LoadingBlock label={t("storefront.loading")} />;
   if (state.status === "error") {
@@ -152,7 +229,8 @@ function CheckoutConfig({
     );
   }
 
-  const storefronts = state.data.storefronts;
+  const storefronts = state.data.commerce.storefronts;
+  const locationNames = state.data.locationNames;
   return (
     <View style={styles.config}>
       {storefronts.length ? (
@@ -172,7 +250,10 @@ function CheckoutConfig({
             <InfoRow label={t("set.currency")} value={storefront.currency} />
             <InfoRow
               label={t("set.fulfillmentInvLocation")}
-              value={storefront.fulfillmentInventoryLocationId}
+              value={
+                locationNames.get(storefront.fulfillmentInventoryLocationId) ??
+                t("storefront.locationUnnamed")
+              }
             />
             <InfoRow
               label={t("set.codShort")}
@@ -209,6 +290,7 @@ function WebsiteCard({
   body: string;
   onPress: () => void;
 }) {
+  const { styles, colors } = useStyles();
   return (
     <PressableRow testID={testID} onPress={onPress}>
       <View style={styles.cardRow}>
@@ -224,25 +306,25 @@ function WebsiteCard({
   );
 }
 
-const styles = StyleSheet.create({
-  intro: { gap: spacing.sm },
-  introTitle: { color: colors.ink, ...typography.sectionTitle },
-  introBody: { color: colors.inkMuted, ...typography.body },
-  config: { gap: spacing.md },
-  brandCard: { gap: 6 },
-  brandHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  brandName: { color: colors.ink, ...typography.cardTitle },
-  cards: { gap: spacing.md },
-  cardRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md },
-  iconTile: {
-    width: 48,
-    height: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  cardCopy: { flex: 1, gap: 3 },
-  cardTitle: { color: colors.ink, fontSize: 16, fontWeight: "800" },
-  cardBody: { color: colors.inkMuted, fontSize: 12, lineHeight: 18, fontWeight: "500" },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    config: { gap: spacing.md },
+    brandCard: { gap: 6 },
+    brandHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    brandName: { color: colors.ink, ...typography.cardTitle },
+    cards: { gap: spacing.md },
+    cardRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md },
+    iconTile: {
+      width: 48,
+      height: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    cardCopy: { flex: 1, gap: 3 },
+    cardTitle: { color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
+    cardBody: { color: colors.inkMuted, ...typography.caption, fontWeight: "500" },
+  });
+  return { colors, styles };
 });

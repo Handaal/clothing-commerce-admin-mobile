@@ -56,12 +56,25 @@ describe("More screen", () => {
     expect(mocks.push).toHaveBeenCalledWith("/promotions");
   });
 
-  it("surfaces contract-pending sections honestly without a route", () => {
+  it("groups sections by task, in order, with the account controls last", () => {
     render(<MoreRoute />);
-    expect(screen.getByTestId("section-activity")).toBeTruthy();
-    expect(screen.getByText("Coming later")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("section-activity"));
-    expect(mocks.push).not.toHaveBeenCalled();
+    const ids = [
+      "section-customers", // Selling
+      "section-promotions",
+      "section-storefront",
+      "section-collections", // Catalog
+      "section-suppliers", // Purchasing
+      "section-staff", // Team
+      "more-account", // Account
+    ];
+    const nodes = ids.map((id) => screen.getByTestId(id));
+    for (let i = 1; i < nodes.length; i += 1) {
+      // Each element must come after the previous one in document order.
+      expect(
+        nodes[i - 1].compareDocumentPosition(nodes[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    expect(screen.queryByText("Coming later")).toBeNull();
   });
 
   it("opens customers now that it has a management route", () => {

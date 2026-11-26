@@ -9,18 +9,20 @@ import {
   Body,
   EmptyState,
   InfoRow,
-  LoadingBlock,
-  MetricCard,
   Notice,
   PageHeader,
   PressableRow,
   PrimaryButton,
   ScrollScreen,
   SectionHeading,
+  SkeletonRows,
+  SummaryStrip,
   Surface,
+  ReadOnlyChip,
 } from "../ui/components";
 import { AppIcon } from "../ui/Icon";
-import { colors, radius, spacing } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import type { PromotionClient } from "./client";
 import {
@@ -56,7 +58,6 @@ export function PromotionsListScreen({
         <PageHeader
           eyebrow={t("promotions.eyebrow")}
           title={t("promotions.title")}
-          description={t("promotions.accessDesc")}
           icon="ticket-percent-outline"
           onBack={onBack}
         />
@@ -92,9 +93,10 @@ function PromotionsListContent({
   onCreatePromotion: () => void;
   onBack: () => void;
 }) {
+  const { promotionStyles } = useStyles();
   const { t } = useI18n();
   const load = useCallback(() => loadAllPromotions(client), [client]);
-  const { state, reload } = useAsync<PromotionSummary[]>(load);
+  const { state, reload, refresh, refreshing } = useAsync<PromotionSummary[]>(load);
   const activeCount = useMemo(
     () =>
       state.status === "success"
@@ -104,22 +106,17 @@ function PromotionsListContent({
   );
 
   return (
-    <ScrollScreen>
+    <ScrollScreen onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
         eyebrow={t("promotions.eyebrow")}
         title={t("promotions.title")}
-        description={t("promotions.headerDesc")}
         icon="ticket-percent-outline"
         onBack={onBack}
       />
 
       {canManage ? (
         <Surface tone="brand">
-          <SectionHeading
-            title={t("promotions.workspaceTitle")}
-            detail={t("common.serverAuthoritative")}
-          />
-          <Body>{t("promotions.workspaceBody")}</Body>
+          <SectionHeading title={t("promotions.workspaceTitle")} />
           <PrimaryButton
             label={t("promotions.createCta")}
             icon="plus"
@@ -128,23 +125,26 @@ function PromotionsListContent({
           />
         </Surface>
       ) : (
-        <Notice testID="promotions-read-only" message={t("promotions.readOnly")} />
+        <ReadOnlyChip testID="promotions-read-only" />
       )}
 
       {state.status === "success" ? (
-        <View style={promotionStyles.metrics}>
-          <MetricCard
-            label={t("promotions.loadedOffers")}
-            value={String(state.data.length)}
-            icon="ticket-percent-outline"
-          />
-          <MetricCard
-            label={t("promotions.activeMetric")}
-            value={String(activeCount)}
-            icon="check-circle-outline"
-            tone="accent"
-          />
-        </View>
+        <SummaryStrip
+          testID="promotions-summary"
+          items={[
+            {
+              label: t("promotions.loadedOffers"),
+              value: String(state.data.length),
+              icon: "ticket-percent-outline",
+            },
+            {
+              label: t("promotions.activeMetric"),
+              value: String(activeCount),
+              icon: "check-circle-outline",
+              tone: "accent",
+            },
+          ]}
+        />
       ) : null}
 
       <SectionHeading
@@ -153,7 +153,7 @@ function PromotionsListContent({
           state.status === "success" ? t("common.shown", { count: state.data.length }) : undefined
         }
       />
-      {state.status === "loading" ? <LoadingBlock label={t("promotions.loading")} /> : null}
+      {state.status === "loading" ? <SkeletonRows testID="promotions-loading" /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -191,6 +191,7 @@ function PromotionsListContent({
 }
 
 function PromotionRow({ promotion, onOpen }: { promotion: PromotionSummary; onOpen: () => void }) {
+  const { promotionStyles, colors } = useStyles();
   const { t } = useI18n();
   return (
     <PressableRow testID={`promotion-row-${promotion.id}`} onPress={onOpen}>
@@ -227,24 +228,26 @@ function PromotionRow({ promotion, onOpen }: { promotion: PromotionSummary; onOp
   );
 }
 
-const promotionStyles = StyleSheet.create({
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  list: { gap: spacing.md },
-  lead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  icon: {
-    width: 46,
-    height: 46,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  copy: { flex: 1, gap: spacing.xs },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  name: { flex: 1, color: colors.ink, fontSize: 18, lineHeight: 24, fontWeight: "800" },
+const useStyles = createThemedStyles((colors) => {
+  const promotionStyles = StyleSheet.create({
+    list: { gap: spacing.md },
+    lead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+    icon: {
+      width: 46,
+      height: 46,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    copy: { flex: 1, gap: spacing.xs },
+    titleRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: spacing.sm,
+    },
+    name: { flex: 1, color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
+  });
+  return { colors, promotionStyles };
 });

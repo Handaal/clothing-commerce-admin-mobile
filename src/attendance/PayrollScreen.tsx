@@ -93,13 +93,12 @@ export function PayrollScreen({ tenantId, context, onBack }: PayrollScreenProps)
       <PageHeader
         eyebrow={t("payroll.eyebrow")}
         title={t("payroll.title")}
-        description={t("payroll.headerDesc")}
         icon="cash-multiple"
         onBack={onBack}
       />
 
       <Surface tone="accent">
-        <SectionHeading title={t("payroll.range")} detail={t("payroll.rangeDetail")} />
+        <SectionHeading title={t("payroll.range")} />
         <TextField
           label={t("payroll.from")}
           value={range.from}

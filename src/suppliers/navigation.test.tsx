@@ -28,6 +28,7 @@ vi.mock("@clerk/expo", () => ({
 // The home screen navigates via expo-router; assert the real route it pushes.
 vi.mock("expo-router", () => ({
   useRouter: () => ({ push: mocks.push, back: mocks.back }),
+  Redirect: () => null,
 }));
 
 vi.mock("../commerce/client", () => ({
@@ -45,12 +46,12 @@ vi.mock("../tenant/secure-storage", () => ({
 }));
 
 import { SessionProvider } from "../session/SessionProvider";
-import HomeScreen from "../../app/index";
+import MoreRoute from "../../app/more";
 
-function renderHome() {
+function renderMore() {
   return render(
     <SessionProvider storage={createMemoryTenantStorage()}>
-      <HomeScreen />
+      <MoreRoute />
     </SessionProvider>,
   );
 }
@@ -65,8 +66,8 @@ afterEach(() => cleanup());
 
 describe("management navigation — Suppliers entry", () => {
   it("offers a Suppliers entry that navigates to /suppliers", async () => {
-    renderHome();
-    const button = await screen.findByTestId("open-suppliers");
+    renderMore();
+    const button = await screen.findByTestId("section-suppliers");
     expect(button).toBeTruthy();
     fireEvent.click(button);
     expect(mocks.push).toHaveBeenCalledWith("/suppliers");
@@ -76,19 +77,19 @@ describe("management navigation — Suppliers entry", () => {
     mocks.getContext.mockResolvedValue(
       meContext(TENANT_A, { inventory: { canRead: true, tenantWide: true, locations: [] } }),
     );
-    renderHome();
-    await screen.findByTestId("open-suppliers");
-    expect(screen.queryByTestId("open-products")).toBeNull();
-    expect(screen.queryByTestId("open-inventory")).toBeNull();
-    expect(screen.queryByTestId("open-orders")).toBeNull();
+    renderMore();
+    await screen.findByTestId("section-suppliers");
+    expect(screen.queryByTestId("section-products")).toBeNull();
+    expect(screen.queryByTestId("section-inventory")).toBeNull();
+    expect(screen.queryByTestId("section-orders")).toBeNull();
   });
 
   it("hides the Suppliers entry when the context grants no supplier read access", async () => {
     // Suppliers capability absent entirely (older server / no access): navigation is not offered.
     mocks.getContext.mockResolvedValue(meContext(TENANT_A, { suppliers: null }));
-    renderHome();
+    renderMore();
     // Wait for a known entry to confirm the ready screen rendered, then assert Suppliers is absent.
-    await screen.findByTestId("open-staff");
-    expect(screen.queryByTestId("open-suppliers")).toBeNull();
+    await screen.findByTestId("section-staff");
+    expect(screen.queryByTestId("section-suppliers")).toBeNull();
   });
 });

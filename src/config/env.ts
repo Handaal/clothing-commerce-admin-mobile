@@ -28,3 +28,21 @@ export function getCommerceApiBaseUrl(): string {
 export function getClerkPublishableKey(): string | undefined {
   return process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() || undefined;
 }
+
+/**
+ * Optional public object-storage base (e.g. "https://<project>.supabase.co/storage/v1/object/public"),
+ * used only to PREVIEW already-saved images such as the storefront hero. Unset → the editor shows the
+ * stored path instead of a thumbnail. Same value as the Storefront's STOREFRONT_MEDIA_BASE_URL.
+ */
+export function getPublicMediaBaseUrl(): string | undefined {
+  return process.env.EXPO_PUBLIC_MEDIA_BASE_URL?.trim().replace(/\/$/, "") || undefined;
+}
+
+/**
+ * Optional public website address (e.g. "https://zee-store.com"). When set, order confirmation messages
+ * include the website's tracking page ("<url>/track?order=<number>"). Unset → no link in the message.
+ */
+export function getStorefrontPublicUrl(): string | undefined {
+  const value = process.env.EXPO_PUBLIC_STOREFRONT_URL?.trim().replace(/\/$/, "");
+  return value && /^https?:\/\//u.test(value) ? value : undefined;
+}

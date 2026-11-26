@@ -169,13 +169,13 @@ describe("ReturnDetailScreen", () => {
 
     mocks.getReturn.mockRejectedValueOnce(new ApiHttpError("no", 403, "FORBIDDEN", null));
     const denied = renderDetail();
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.queryByText("Try again")).toBeNull();
     denied.unmount();
 
     mocks.getReturn.mockRejectedValueOnce(new ApiNetworkError("down"));
     renderDetail();
-    expect(await screen.findByText("Cannot reach the Commerce API")).toBeTruthy();
+    expect(await screen.findByText("No connection")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
   });
 

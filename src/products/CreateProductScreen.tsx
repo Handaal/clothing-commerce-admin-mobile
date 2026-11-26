@@ -70,7 +70,6 @@ export function CreateProductScreen({
         <PageHeader
           eyebrow={t("products.eyebrow")}
           title={t("createProduct.title")}
-          description={t("createProduct.noBrandDesc")}
           icon="tag-plus-outline"
           onBack={onBack}
         />
@@ -247,7 +246,6 @@ function CreateProductForm({
       <PageHeader
         eyebrow={t("products.eyebrow")}
         title={t("createProduct.title")}
-        description={t("createProduct.formDesc")}
         icon="tag-plus-outline"
         onBack={onBack}
       />

@@ -80,15 +80,11 @@ export function AttendanceScreen({
       <PageHeader
         eyebrow={t("attendance.eyebrow")}
         title={t("attendance.title")}
-        description={t("attendance.headerDesc")}
         icon="clock-outline"
         onBack={onBack}
       />
       <Surface tone="accent">
-        <SectionHeading
-          title={t("attendance.payrollLink")}
-          detail={t("attendance.payrollLinkDetail")}
-        />
+        <SectionHeading title={t("attendance.payrollLink")} />
         <PrimaryButton
           label={t("attendance.openPayroll")}
           icon="cash-multiple"
@@ -302,10 +298,7 @@ function WorkforceRoster({
     >
       {canManage ? (
         <Surface testID="attendance-add-entry-form">
-          <SectionHeading
-            title={t("attendance.addEntry")}
-            detail={t("attendance.addEntryDetail")}
-          />
+          <SectionHeading title={t("attendance.addEntry")} />
           <TextField
             label={t("attendance.membershipId")}
             value={membershipId}

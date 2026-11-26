@@ -89,8 +89,8 @@ describe("reporting domain screens", () => {
         saveExport={saveExport}
       />,
     );
-    expect(await screen.findByText(/InventoryLocation is the stock-holding identity/)).toBeTruthy();
-    expect(screen.getAllByText("InventoryLocation").length).toBeGreaterThan(0);
+    expect(await screen.findByTestId("inventory-view-movements")).toBeTruthy();
+    expect(screen.getAllByText("Stock location").length).toBeGreaterThan(0);
     expect(screen.queryByTestId("report-export-inventory-movements")).toBeNull();
     fireEvent.click(screen.getByTestId("inventory-view-movements"));
     expect(await screen.findByText("Inventory movements")).toBeTruthy();

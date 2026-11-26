@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  cleanOptionEntries,
+  isColourName,
+  normalizeSwatchHex,
   archiveProductMedia,
   createMediaUploadIntent,
   createProduct,
@@ -166,5 +169,32 @@ describe("validation", () => {
     expect(validateSku("TEE-M")).toBeNull();
     expect(validateSku("")).not.toBeNull();
     expect(validateSku("x".repeat(65))).not.toBeNull();
+  });
+});
+
+describe("option and swatch input", () => {
+  it("drops value-less rows and validates the rest", () => {
+    expect(
+      cleanOptionEntries([
+        { name: "Size", value: " M " },
+        { name: "Colour", value: "" },
+      ]),
+    ).toEqual({ entries: [{ name: "Size", value: "M" }], problem: null });
+    expect(cleanOptionEntries([{ name: "", value: "M" }]).problem).toMatch(/name and a value/);
+    expect(
+      cleanOptionEntries([
+        { name: "Size", value: "M" },
+        { name: "SIZE", value: "L" },
+      ]).problem,
+    ).toMatch(/only be used once/);
+  });
+
+  it("normalizes swatch colour codes", () => {
+    expect(normalizeSwatchHex("AbC123")).toEqual({ hex: "#abc123", problem: null });
+    expect(normalizeSwatchHex("  ")).toEqual({ hex: null, problem: null });
+    expect(normalizeSwatchHex("red").problem).not.toBeNull();
+    expect(isColourName("Colour")).toBe(true);
+    expect(isColourName("color")).toBe(true);
+    expect(isColourName("Size")).toBe(false);
   });
 });

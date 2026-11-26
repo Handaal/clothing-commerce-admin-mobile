@@ -303,7 +303,6 @@ function PageTitle({ mode, onBack }: { mode: SupplierFormMode; onBack: () => voi
     <PageHeader
       eyebrow={t("suppliers.title")}
       title={mode === "create" ? t("supplierForm.newTitle") : t("supplierForm.editTitle")}
-      description={t("supplierForm.desc")}
       icon={mode === "create" ? "account-plus-outline" : "pencil-outline"}
       onBack={onBack}
     />

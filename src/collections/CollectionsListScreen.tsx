@@ -8,9 +8,7 @@ import { useSession } from "../session/SessionProvider";
 import { AppIcon } from "../ui/Icon";
 import {
   Badge,
-  Body,
   EmptyState,
-  LoadingBlock,
   MetricCard,
   Notice,
   PageHeader,
@@ -18,10 +16,12 @@ import {
   PrimaryButton,
   ScrollScreen,
   SectionHeading,
+  SkeletonRows,
   Surface,
   TextButton,
 } from "../ui/components";
-import { colors, radius, spacing, typography } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 
 export interface CollectionsListScreenProps {
@@ -51,7 +51,6 @@ export function CollectionsListScreen({
         <PageHeader
           eyebrow={t("collections.eyebrow")}
           title={t("collections.title")}
-          description={t("collections.headerDesc")}
           icon="shape-outline"
           onBack={onBack}
         />
@@ -80,21 +79,21 @@ function CollectionsListContent({
   onCreateCollection,
   onBack,
 }: Omit<CollectionsListScreenProps, "context">) {
+  const { styles, colors } = useStyles();
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
   const { t } = useI18n();
   const load = useCallback(() => client.listCollections(), [client]);
-  const { state, reload } = useAsync<CollectionListResponse>(load);
+  const { state, reload, refresh, refreshing } = useAsync<CollectionListResponse>(load);
 
   const items = state.status === "success" ? state.data.collections : [];
   const publishedCount = items.filter((collection) => collection.status === "active").length;
 
   return (
-    <ScrollScreen>
+    <ScrollScreen onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
         eyebrow={t("collections.eyebrow")}
         title={t("collections.title")}
-        description={t("collections.headerDesc")}
         icon="shape-outline"
         onBack={onBack}
       />
@@ -102,7 +101,6 @@ function CollectionsListContent({
       <Surface tone="brand" style={styles.overview}>
         <View style={styles.overviewCopy}>
           <Text style={styles.overviewTitle}>{t("collections.title")}</Text>
-          <Body>{t("collections.headerDesc")}</Body>
         </View>
         <PrimaryButton
           label={t("collections.createCta")}
@@ -133,7 +131,7 @@ function CollectionsListContent({
         detail={state.status === "success" ? t("common.shown", { count: items.length }) : undefined}
       />
 
-      {state.status === "loading" ? <LoadingBlock label={t("collections.loading")} /> : null}
+      {state.status === "loading" ? <SkeletonRows testID="collections-loading" /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -181,22 +179,25 @@ function CollectionsListContent({
   );
 }
 
-const styles = StyleSheet.create({
-  overview: { gap: spacing.lg },
-  overviewCopy: { gap: spacing.sm },
-  overviewTitle: { color: colors.ink, ...typography.sectionTitle },
-  metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  list: { gap: spacing.md },
-  rowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  icon: {
-    width: 48,
-    height: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  copy: { flex: 1, gap: 3 },
-  name: { color: colors.ink, ...typography.cardTitle },
-  meta: { color: colors.inkMuted, ...typography.caption },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    overview: { gap: spacing.lg },
+    overviewCopy: { gap: spacing.sm },
+    overviewTitle: { color: colors.ink, ...typography.sectionTitle },
+    metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+    list: { gap: spacing.md },
+    rowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    icon: {
+      width: 48,
+      height: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    copy: { flex: 1, gap: 3 },
+    name: { color: colors.ink, ...typography.cardTitle },
+    meta: { color: colors.inkMuted, ...typography.caption },
+  });
+  return { colors, styles };
 });

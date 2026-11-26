@@ -44,6 +44,7 @@ import {
 } from "./ledger";
 import { loadAllSupplierPayments, loadAllSupplierPurchases } from "./load";
 import { describeSupplierWriteError } from "./write-errors";
+import { formatDateTime } from "../i18n/format-date";
 
 export interface SupplierLedgerProps {
   adapter: SupplierAdapter;
@@ -794,6 +795,5 @@ function LedgerWriteError({
 }
 
 function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return formatDateTime(value);
 }

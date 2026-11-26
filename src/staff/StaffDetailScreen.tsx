@@ -103,6 +103,7 @@ function StaffDetailContent({
     (status, key) => adapter.updateMembershipStatus(membershipId, status, key),
     generateKey,
     {
+      // Failures surface once, through the inline actionable notice below — not also as a toast.
       onSuccess: (staff) =>
         toast.success(
           t("staffDetail.statusToast", {
@@ -111,24 +112,17 @@ function StaffDetailContent({
           }),
           { title: t("staffDetail.updatedToast") },
         ),
-      onError: (error) => {
-        const described = describeStaffWriteError(error);
-        toast.error(described.message, { title: described.heading });
-      },
     },
   );
   const unassignMutation = useMutation<string, StaffDetail>(
     (assignmentId, key) => adapter.unassignRoleScope(membershipId, assignmentId, key),
     generateKey,
     {
+      // Failures surface once, through the inline actionable notice below — not also as a toast.
       onSuccess: () =>
         toast.success(t("staffDetail.assignmentRemoved"), {
           title: t("staffDetail.accessUpdated"),
         }),
-      onError: (error) => {
-        const described = describeStaffWriteError(error);
-        toast.error(described.message, { title: described.heading });
-      },
     },
   );
 

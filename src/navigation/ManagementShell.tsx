@@ -1,12 +1,23 @@
 import { usePathname, useRouter } from "expo-router";
-import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View, type ViewProps } from "react-native";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutRectangle,
+  type ViewProps,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useI18n, type MessageKey } from "../i18n";
 import { useSession } from "../session/SessionProvider";
 import { AppIcon, type AppIconName } from "../ui/Icon";
-import { colors, radius, shadows, spacing } from "../ui/theme";
+import { radius, shadows, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
+import { useReducedMotion } from "../ui/useReducedMotion";
 import {
   activeSectionForPath,
   managementSection,
@@ -51,6 +62,7 @@ const PRIMARY_NAV_PRESENTATION: Record<
 
 /** Persistent phone navigation for authenticated management routes. */
 export function ManagementShell({ children }: { children: ReactNode }) {
+  const { styles } = useStyles();
   const { state } = useSession();
   const pathname = usePathname();
   const router = useRouter();
@@ -78,108 +90,241 @@ export function ManagementShell({ children }: { children: ReactNode }) {
   return (
     <View style={[styles.shell, { direction: dir }]}>
       <View style={styles.content}>{children}</View>
-      <SafeAreaView edges={["bottom"]} pointerEvents="box-none" style={styles.navigationSafeArea}>
-        <View style={styles.navigation} accessibilityRole="tablist">
-          {items
-            .filter((item) => item.available)
-            .map((item) => {
-              const active = selected === item.id;
-              return (
-                <Pressable
-                  key={item.id}
-                  testID={`nav-${item.id}`}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => router.replace(item.route)}
-                  {...webNavigationItem(active)}
-                  style={({ pressed }) => [
-                    styles.navigationItem,
-                    active && styles.navigationItemActive,
-                    pressed && styles.navigationItemPressed,
-                  ]}
-                >
-                  <View {...webNavigationIcon} style={styles.iconContainer}>
-                    <AppIcon
-                      name={item.icon}
-                      size={active ? 23 : 22}
-                      color={active ? colors.white : colors.inkSubtle}
-                    />
-                  </View>
-                  <Text style={[styles.navigationLabel, active && styles.navigationLabelActive]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-        </View>
-      </SafeAreaView>
+      <NavigationBar
+        items={items.filter((item) => item.available)}
+        selected={selected}
+        onNavigate={(item) => {
+          if (pathname === item.route) return;
+          router.replace(item.route);
+        }}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  shell: { flex: 1, backgroundColor: colors.canvas },
-  content: { flex: 1 },
-  navigationSafeArea: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    backgroundColor: "transparent",
-  },
-  navigation: {
-    width: "100%",
-    maxWidth: 760,
-    minHeight: 74,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    padding: 6,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: 28,
-    backgroundColor: colors.surfaceRaised,
-    ...shadows.navigation,
-  },
-  navigationItem: {
-    flex: 1,
-    minWidth: 56,
-    maxWidth: 112,
-    minHeight: 60,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    paddingHorizontal: 3,
-    paddingVertical: 5,
-    borderRadius: 21,
-  },
-  navigationItemActive: {
-    backgroundColor: colors.brand,
-    shadowColor: colors.brandStrong,
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
-  },
-  navigationItemPressed: { opacity: 0.82, transform: [{ scale: 0.94 }] },
-  iconContainer: {
-    width: 38,
-    height: 31,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.pill,
-  },
-  navigationLabel: {
-    color: colors.inkSubtle,
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "700",
-    letterSpacing: 0.15,
-  },
-  navigationLabelActive: { color: colors.white, fontWeight: "800" },
+function NavigationBar({
+  items,
+  selected,
+  onNavigate,
+}: {
+  items: readonly PrimaryNavigationItem[];
+  selected: PrimaryNavigationItem["id"];
+  onNavigate: (item: PrimaryNavigationItem) => void;
+}) {
+  const { styles } = useStyles();
+  const reduceMotion = useReducedMotion();
+  const [layouts, setLayouts] = useState<Record<string, LayoutRectangle>>({});
+  const [position] = useState(() => new Animated.Value(0));
+  const positioned = useRef(false);
+  const target = layouts[selected];
+
+  useLayoutEffect(() => {
+    if (!target) return;
+    position.stopAnimation();
+    if (!positioned.current || reduceMotion) {
+      position.setValue(target.x);
+      positioned.current = true;
+      return;
+    }
+    const animation = Animated.spring(position, {
+      toValue: target.x,
+      stiffness: 320,
+      damping: 30,
+      mass: 0.8,
+      useNativeDriver: Platform.OS !== "web",
+      isInteraction: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [position, target, reduceMotion]);
+
+  return (
+    <SafeAreaView edges={["bottom"]} pointerEvents="box-none" style={styles.navigationSafeArea}>
+      <View style={styles.navigation} accessibilityRole="tablist">
+        {target ? (
+          <View pointerEvents="none" style={styles.navigationIndicatorLayer}>
+            <Animated.View
+              pointerEvents="none"
+              accessible={false}
+              style={[
+                styles.navigationIndicator,
+                {
+                  width: target.width,
+                  height: target.height,
+                  top: target.y,
+                  transform: [{ translateX: position }],
+                },
+              ]}
+            />
+          </View>
+        ) : null}
+        {items.map((item) => {
+          const active = selected === item.id;
+          return (
+            <Pressable
+              key={item.id}
+              testID={`nav-${item.id}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              aria-selected={active}
+              onPress={() => onNavigate(item)}
+              onLayout={({ nativeEvent: { layout } }) => {
+                setLayouts((previous) => {
+                  const current = previous[item.id];
+                  if (
+                    current?.x === layout.x &&
+                    current.y === layout.y &&
+                    current.width === layout.width &&
+                    current.height === layout.height
+                  )
+                    return previous;
+                  return { ...previous, [item.id]: layout };
+                });
+              }}
+              {...webNavigationItem(active)}
+              style={({ pressed }) => [
+                styles.navigationItem,
+                active && !target && styles.navigationItemActive,
+                pressed && styles.navigationItemPressed,
+              ]}
+            >
+              <NavigationIcon name={item.icon} active={active} reduceMotion={reduceMotion} />
+              <Text style={[styles.navigationLabel, active && styles.navigationLabelActive]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function NavigationIcon({
+  name,
+  active,
+  reduceMotion,
+}: {
+  name: AppIconName;
+  active: boolean;
+  reduceMotion: boolean;
+}) {
+  const { styles, colors } = useStyles();
+  const [focus] = useState(() => new Animated.Value(active ? 1 : 0));
+  useEffect(() => {
+    if (reduceMotion) {
+      focus.setValue(active ? 1 : 0);
+      return;
+    }
+    const animation = Animated.spring(focus, {
+      toValue: active ? 1 : 0,
+      stiffness: 360,
+      damping: 20,
+      mass: 0.6,
+      useNativeDriver: Platform.OS !== "web",
+      isInteraction: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [active, reduceMotion, focus]);
+  return (
+    <Animated.View
+      {...webNavigationIcon}
+      style={[
+        styles.iconContainer,
+        {
+          transform: [
+            { translateY: focus.interpolate({ inputRange: [0, 1], outputRange: [0, -2] }) },
+            { scale: focus.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) },
+          ],
+        },
+      ]}
+    >
+      <AppIcon name={name} size={22} color={active ? colors.onBrand : colors.inkSubtle} />
+    </Animated.View>
+  );
+}
+
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    shell: { flex: 1, backgroundColor: colors.canvas },
+    content: { flex: 1 },
+    navigationSafeArea: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.sm,
+      backgroundColor: "transparent",
+    },
+    navigation: {
+      width: "100%",
+      maxWidth: 760,
+      minHeight: 74,
+      alignSelf: "center",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.xs,
+      padding: 6,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      borderRadius: 28,
+      backgroundColor: colors.surfaceRaised,
+      ...shadows.navigation,
+    },
+    navigationItem: {
+      flex: 1,
+      minWidth: 56,
+      maxWidth: 112,
+      minHeight: 60,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 3,
+      paddingHorizontal: 3,
+      paddingVertical: 5,
+      borderRadius: 21,
+    },
+    navigationItemActive: {
+      backgroundColor: colors.brand,
+      shadowColor: colors.brandStrong,
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 4,
+    },
+    navigationIndicatorLayer: {
+      ...StyleSheet.absoluteFill,
+      // onLayout supplies physical x coordinates in both reading directions.
+      direction: "ltr",
+    },
+    navigationIndicator: {
+      position: "absolute",
+      insetInlineStart: 0,
+      borderRadius: 21,
+      backgroundColor: colors.brand,
+      shadowColor: colors.brandStrong,
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+    },
+    navigationItemPressed: { opacity: 0.82, transform: [{ scale: 0.94 }] },
+    iconContainer: {
+      width: 38,
+      height: 31,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.pill,
+    },
+    navigationLabel: {
+      color: colors.inkSubtle,
+      ...typography.micro,
+      fontWeight: "700",
+      letterSpacing: 0.15,
+    },
+    navigationLabelActive: { color: colors.onBrand, fontWeight: "800" },
+  });
+  return { colors, styles };
 });

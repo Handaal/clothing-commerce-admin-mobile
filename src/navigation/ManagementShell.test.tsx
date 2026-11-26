@@ -20,13 +20,10 @@ vi.mock("../session/SessionProvider", () => ({ useSession: () => ({ state: mocks
 
 import { ManagementShell } from "./ManagementShell";
 
-// react-native-web does not forward accessibilityState.selected to an aria attribute, and the brand
-// green active styling (filled icon container + label color) is applied via generated CSS classes
-// rather than inline style. The one inline signal unique to the selected tab is its icon, which
-// ManagementShell renders white (rgb(255, 255, 255)) only when active — inactive icons use the muted
-// ink tone.
+// The selected tab exposes `aria-selected="true"` (ManagementShell sets it explicitly — the color
+// signal is no longer reliable now that tokens resolve to CSS variables for theming).
 function isActive(tab: HTMLElement): boolean {
-  return tab.querySelector('[style*="rgb(255, 255, 255)"]') !== null;
+  return tab.getAttribute("aria-selected") === "true";
 }
 
 function renderShell() {
@@ -83,6 +80,19 @@ describe("ManagementShell", () => {
   });
 
   it("navigates with replace (not push) so the tab bar never stacks history", () => {
+    renderShell();
+    fireEvent.click(screen.getByTestId("nav-orders"));
+    expect(mocks.replace).toHaveBeenCalledWith("/orders");
+  });
+
+  it("keeps the current root screen when its selected tab is tapped again", () => {
+    renderShell();
+    fireEvent.click(screen.getByTestId("nav-dashboard"));
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it("returns to a section root when its selected tab is tapped from a detail page", () => {
+    mocks.pathname = "/orders/abc-123";
     renderShell();
     fireEvent.click(screen.getByTestId("nav-orders"));
     expect(mocks.replace).toHaveBeenCalledWith("/orders");

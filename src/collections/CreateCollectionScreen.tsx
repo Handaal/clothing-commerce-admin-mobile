@@ -143,7 +143,6 @@ export function CreateCollectionScreen({
       <PageHeader
         eyebrow={t("collections.eyebrow")}
         title={t("createCollection.title")}
-        description={t("createCollection.formDesc")}
         icon="shape-plus-outline"
         onBack={onBack}
       />

@@ -4,7 +4,7 @@ import { View } from "react-native";
 import { t as translate, useI18n } from "../i18n";
 import { tenantDisplayName } from "../tenant/presentation";
 import {
-  Badge,
+  StatusBadge,
   Body,
   ConfirmButton,
   InfoRow,
@@ -299,7 +299,7 @@ function BrandReadOnly({
             <Title>{value.displayName}</Title>
             <InfoRow label={t("set.brandCodeRO")} value={value.code} />
             <InfoRow label={t("set.legalName")} value={value.legalName} />
-            <Badge label={value.status} />
+            <StatusBadge status={value.status} />
           </View>
         )}
       </SettingsAsync>
@@ -529,7 +529,6 @@ function InventoryContent({
   return (
     <SettingsFrame title={t("set.inventorySettings")} onBack={onBack}>
       {!canManage ? <ReadOnlyNotice /> : null}
-      <Body>{t("set.inventoryIntro")}</Body>
       <SettingsAsync
         state={state}
         reload={reload}
@@ -585,7 +584,7 @@ function InventoryContent({
                       }
                     />
                     <InfoRow label={t("set.type")} value={l.locationType} />
-                    <Badge label={l.status} />
+                    <StatusBadge status={l.status} />
                   </PressableRow>
                 ))
               ) : (
@@ -928,7 +927,7 @@ function RegisterReadOnly({
               value={value.defaultInventoryLocationId ?? t("set.notSet")}
             />
             <InfoRow label={t("set.sellingCurrency")} value={value.sellingCurrency} />
-            <Badge label={value.status} />
+            <StatusBadge status={value.status} />
           </View>
         )}
       </SettingsAsync>
@@ -957,7 +956,7 @@ export function DevicesSettingsScreen({
         items.map((d) => (
           <PressableRow key={d.id} testID={`device-${d.id}`} onPress={() => onOpen(d.id)}>
             <Title>{d.displayName}</Title>
-            <Badge label={d.status} />
+            <StatusBadge status={d.status} />
             <InfoRow
               label={t("set.assignedRegister")}
               value={d.registerName ?? t("set.unassigned")}
@@ -1004,7 +1003,6 @@ function DeviceDetailContent({
   return (
     <SettingsFrame title={t("set.deviceGovernance")} onBack={onBack}>
       {!canManage ? <ReadOnlyNotice /> : null}
-      <Body>{t("set.deviceIntro")}</Body>
       <SettingsAsync state={state} reload={reload} empty={() => false}>
         {({ device, registers }) => (
           <DevicePanel
@@ -1069,7 +1067,11 @@ function CommerceSettingsContent({
                       <InfoRow label={t("set.brandContext")} value={storefront.brandName} />
                       <InfoRow
                         label={t("set.fulfillmentInvLocation")}
-                        value={storefront.fulfillmentInventoryLocationId}
+                        value={
+                          locations.find(
+                            (location) => location.id === storefront.fulfillmentInventoryLocationId,
+                          )?.label ?? storefront.fulfillmentInventoryLocationId
+                        }
                       />
                       <InfoRow label={t("set.currency")} value={storefront.currency} />
                       <InfoRow
@@ -1237,7 +1239,7 @@ function EntityRow({
     <PressableRow testID={`settings-row-${id}`} onPress={() => onOpen(id)}>
       <Title>{name}</Title>
       <InfoRow label={t("set.code")} value={code} />
-      <Badge label={status} />
+      <StatusBadge status={status} />
     </PressableRow>
   );
 }
@@ -1254,7 +1256,6 @@ function LifecycleActions({
   const [action, setAction] = useState<ActionState>({ status: "idle" });
   return (
     <SettingsSection title={t("set.lifecycle")}>
-      <Body>{t("set.lifecycleNote")}</Body>
       <ConfirmButton
         label={
           status === "active"
@@ -1298,7 +1299,7 @@ function BranchSummary({ value }: { value: BranchSettings }) {
         value={value.defaultInventoryLocationId ?? t("set.notSet")}
       />
       <InfoRow label={t("set.receiptFooter")} value={value.receiptFooter} />
-      <Badge label={value.status} />
+      <StatusBadge status={value.status} />
     </View>
   );
 }
@@ -1337,7 +1338,7 @@ function InventoryDetailPanel({
     <View style={{ gap: 12 }}>
       <Title>{value.displayName}</Title>
       <InfoRow label={t("set.code")} value={value.code} />
-      <Badge label={value.status} />
+      <StatusBadge status={value.status} />
       {location ? (
         <>
           <InfoRow
@@ -1542,7 +1543,7 @@ function DevicePanel({
   return (
     <View style={{ gap: 12 }}>
       <Title>{device.displayName}</Title>
-      <Badge label={device.status} />
+      <StatusBadge status={device.status} />
       <InfoRow label={t("set.installation")} value={device.installationId} />
       <InfoRow label={t("set.deviceType")} value={device.deviceType} />
       <InfoRow label={t("set.platform")} value={device.platform ?? t("set.notReported")} />

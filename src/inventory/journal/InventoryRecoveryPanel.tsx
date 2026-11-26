@@ -5,7 +5,7 @@ import { classifyCommerceError } from "../../commerce/errors";
 import { t as translate, useI18n } from "../../i18n";
 import { Badge, Body, Divider, InfoRow, PrimaryButton, Title } from "../../ui/components";
 import type { InventoryItem } from "../load";
-import type { InventoryLocationRef } from "../InventoryOperations";
+import type { InventoryLocationRef } from "../StockItemSheet";
 import { describeInventoryWriteError } from "../write-errors";
 import { runJournaledCommand, type JournaledInventoryClient } from "./command-runner";
 import { isCrossContextSafe } from "./coordinator";

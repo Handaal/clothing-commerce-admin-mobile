@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { ApiContractError, ApiHttpError, ApiNetworkError } from "@shifted/clothing-commerce-sdk";
 import type { OrderDetailResponse } from "@shifted/clothing-commerce-sdk";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -18,6 +18,8 @@ import {
   tenant,
 } from "../test-support/fixtures";
 import { createMemoryTenantStorage } from "../tenant/storage";
+vi.mock("expo-crypto", () => ({ randomUUID: () => "unused" }));
+
 import { OrderDetailScreen } from "./OrderDetailScreen";
 
 const mocks = vi.hoisted(() => ({
@@ -26,6 +28,11 @@ const mocks = vi.hoisted(() => ({
   listOrders: vi.fn(),
   getOrder: vi.fn(),
   listReturns: vi.fn(),
+  fulfillOrder: vi.fn(),
+  cancelOrder: vi.fn(),
+  collectOrderPayment: vi.fn(),
+  listReturnRequests: vi.fn(),
+  updateReturnRequestStatus: vi.fn(),
   withTenant: vi.fn(),
   signOut: vi.fn(async () => {}),
 }));
@@ -52,6 +59,11 @@ vi.mock("../commerce/client", () => ({
         listOrders: mocks.listOrders,
         getOrder: mocks.getOrder,
         listReturns: mocks.listReturns,
+        fulfillOrder: mocks.fulfillOrder,
+        cancelOrder: mocks.cancelOrder,
+        collectOrderPayment: mocks.collectOrderPayment,
+        listReturnRequests: mocks.listReturnRequests,
+        updateReturnRequestStatus: mocks.updateReturnRequestStatus,
       };
     },
   }),
@@ -83,13 +95,57 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getMyTenants.mockResolvedValue([tenant(TENANT_A, "Acme", MEMBERSHIP_A)]);
   mocks.getContext.mockResolvedValue(meContext(TENANT_A));
+  mocks.listReturnRequests.mockResolvedValue({ requests: [], awaitingDecision: 0 });
   // Default: no returns recorded. Individual tests override to exercise history/summary.
   mocks.listReturns.mockResolvedValue(returnHistory([]));
 });
 
 afterEach(() => cleanup());
 
+const paymentLabels = {
+  pending: "Not collected yet",
+  authorized: "Authorized",
+  captured: "Collected",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  refunded: "Refunded",
+} as const;
+
 describe("OrderDetailScreen", () => {
+  it("offers fulfil on an online order when the account may fulfil, and shows the updated order", async () => {
+    mocks.getContext.mockResolvedValue(
+      meContext(TENANT_A, { orders: { canFulfill: true, canCancel: true } }),
+    );
+    mocks.getOrder.mockResolvedValue(orderDetail({ commerce: orderCommerce() }));
+    const shipped = orderDetail({ commerce: orderCommerce() });
+    mocks.fulfillOrder.mockResolvedValue({
+      ...shipped,
+      fulfillmentProgress: {
+        status: "fulfilled",
+        lines: shipped.fulfillmentProgress.lines.map((line) => ({
+          ...line,
+          fulfilledQuantity: line.orderedQuantity,
+          status: "fulfilled" as const,
+        })),
+      },
+    });
+    renderDetail();
+    // Line 1 is fully shipped; only line 2 (1 left) is offered. Something shipped, so no cancel.
+    expect(await screen.findByTestId("order-ship-2")).toBeTruthy();
+    expect(screen.queryByTestId("order-ship-1")).toBeNull();
+    expect(screen.queryByTestId("order-cancel")).toBeNull();
+    fireEvent.click(screen.getByTestId("order-fulfil"));
+    fireEvent.click(screen.getByTestId("order-fulfil-dialog-confirm"));
+    await waitFor(() => expect(mocks.fulfillOrder).toHaveBeenCalledTimes(1));
+    expect(mocks.fulfillOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: ORDER_A, lines: [{ lineNumber: 2, quantity: 1 }] }),
+    );
+    expect((await screen.findByTestId("order-fulfillment-status")).textContent).toBe("Fulfilled");
+    // Fully shipped but the cash-on-delivery payment is still open: record the delivery next.
+    expect(await screen.findByTestId("order-collect")).toBeTruthy();
+    expect(screen.queryByTestId("order-fulfil")).toBeNull();
+  });
+
   it("shows checkout snapshots, pending COD and partial consumption without inventing completion", async () => {
     mocks.getOrder.mockResolvedValue(orderDetail({ commerce: orderCommerce() }));
     renderDetail();
@@ -109,9 +165,11 @@ describe("OrderDetailScreen", () => {
     ]) {
       expect(screen.getByText(value)).toBeTruthy();
     }
-    expect(screen.getByText(/separate from a customer profile/)).toBeTruthy();
-    expect(screen.getByTestId("order-payment-status").textContent).toBe("pending");
+    expect(screen.getByTestId("order-payment-status").textContent).toBe("Not collected yet");
     expect(screen.getByText("Cash on delivery")).toBeTruthy();
+    // Stock reservations are operational detail, folded under "More details".
+    expect(screen.queryByTestId("order-reservation-0")).toBeNull();
+    fireEvent.click(screen.getByTestId("order-more-details"));
     expect(screen.getByTestId("order-reservation-0").textContent).toBe("Stock reserved");
     expect(screen.getByTestId("order-fulfillment-status").textContent).toBe("Partially fulfilled");
     expect(screen.queryByRole("button", { name: /capture|refund|edit|fulfill/i })).toBeNull();
@@ -134,7 +192,9 @@ describe("OrderDetailScreen", () => {
         }),
       );
       renderDetail();
-      expect((await screen.findByTestId("order-payment-status")).textContent).toBe(status);
+      expect((await screen.findByTestId("order-payment-status")).textContent).toBe(
+        paymentLabels[status],
+      );
       expect(screen.getByText("Electronic")).toBeTruthy();
       expect(screen.getByText("EUR 50.00")).toBeTruthy();
     },
@@ -157,6 +217,7 @@ describe("OrderDetailScreen", () => {
         }),
       );
       renderDetail();
+      fireEvent.click(await screen.findByTestId("order-more-details"));
       expect((await screen.findByTestId("order-reservation-0")).textContent).toBe(label);
       expect(screen.getByText("2020-01-01T00:00:00.000Z")).toBeTruthy();
     },
@@ -173,6 +234,7 @@ describe("OrderDetailScreen", () => {
     ).toBeTruthy();
     expect(screen.getByText("Delivery snapshot is not available for this order.")).toBeTruthy();
     expect(screen.getByText("Payment information is not available for this order.")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("order-more-details"));
     expect(
       screen.getByText("No stock commitment information supplied for this order."),
     ).toBeTruthy();
@@ -200,7 +262,7 @@ describe("OrderDetailScreen", () => {
     renderDetail();
     expect(await screen.findByText("POS")).toBeTruthy();
     expect(screen.getByText("Cash")).toBeTruthy();
-    expect(screen.getByTestId("order-payment-status").textContent).toBe("captured");
+    expect(screen.getByTestId("order-payment-status").textContent).toBe("Collected");
     expect(screen.getByText("3 / 3 fulfilled")).toBeTruthy();
   });
 
@@ -213,18 +275,18 @@ describe("OrderDetailScreen", () => {
       .mockRejectedValueOnce(new ApiNetworkError("offline"));
     renderDetail();
     await screen.findByTestId("order-payment-status");
-    fireEvent.click(screen.getByText("Refresh order"));
+    fireEvent.click(screen.getByTestId("order-refresh"));
     await screen.findByText("Payment information is not available for this order.");
     expect(screen.queryByTestId("order-payment-status")).toBeNull();
-    fireEvent.click(screen.getByText("Refresh order"));
-    await screen.findByText("Cannot reach the Commerce API");
+    fireEvent.click(screen.getByTestId("order-refresh"));
+    await screen.findByText("No connection");
     expect(screen.queryByText("Checkout Guest")).toBeNull();
   });
 
   it("distinguishes unsupported response data from a network failure", async () => {
     mocks.getOrder.mockRejectedValue(new ApiContractError("unsupported response"));
     renderDetail();
-    expect(await screen.findByText("Unexpected response")).toBeTruthy();
+    expect(await screen.findByText("Something went wrong")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
   });
   it("shows a loading state while the order is being fetched", async () => {
@@ -239,8 +301,8 @@ describe("OrderDetailScreen", () => {
 
     // Summary
     expect(await screen.findByText("ORD-1001")).toBeTruthy();
-    expect(screen.getByTestId("order-detail-status").textContent).toBe("placed");
-    expect(screen.getByText("ONLINE")).toBeTruthy();
+    expect(screen.getByTestId("order-detail-status").textContent).toBe("Placed");
+    expect(screen.getByText("Online")).toBeTruthy();
     expect(screen.getByText("USD 129.95")).toBeTruthy();
 
     // Lines (two lines, both "Linen Shirt")
@@ -280,7 +342,7 @@ describe("OrderDetailScreen", () => {
     mocks.getOrder.mockRejectedValue(new ApiHttpError("no", 403, "FORBIDDEN", null));
     renderDetail();
 
-    expect(await screen.findByText("Access denied")).toBeTruthy();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
     expect(screen.queryByText("Try again")).toBeNull();
   });
 

@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   transferInventory: vi.fn(),
   randomUUID: vi.fn(),
   withTenant: vi.fn(),
+  onReceiveNew: vi.fn(),
   signOut: vi.fn(async () => {}),
 }));
 
@@ -105,7 +106,14 @@ const READABLE_INVENTORY = {
 function Harness() {
   const { state } = useSession();
   if (state.phase !== "ready") return <span data-testid="phase">{state.phase}</span>;
-  return <InventoryScreen tenantId={state.tenantId} context={state.context} onBack={() => {}} />;
+  return (
+    <InventoryScreen
+      tenantId={state.tenantId}
+      context={state.context}
+      onBack={() => {}}
+      onReceiveNew={mocks.onReceiveNew}
+    />
+  );
 }
 
 function renderInventory() {
@@ -141,7 +149,7 @@ describe("InventoryScreen", () => {
   it("shows a loading state while inventory is being fetched", async () => {
     mocks.listInventory.mockReturnValue(new Promise(() => {}));
     renderInventory();
-    expect(await screen.findByText("Loading inventory…")).toBeTruthy();
+    expect(await screen.findByTestId("inventory-loading")).toBeTruthy();
   });
 
   it("renders a populated list scoped to the tenant, with quantity, SKU and resolved location", async () => {
@@ -161,11 +169,9 @@ describe("InventoryScreen", () => {
     expect(
       screen.getByTestId(`inventory-onhand-${INVENTORY_LOCATION_A}:${VARIANT_A}`).textContent,
     ).toBe("22");
-    expect(screen.getByText("LS-001-M")).toBeTruthy();
-    // Location id resolved to its human name via /me/context access.
-    expect(screen.getByText("Flagship Stockroom")).toBeTruthy();
+    // SKU and the location id resolved to its human name via /me/context access.
+    expect(screen.getByText("LS-001-M · Flagship Stockroom")).toBeTruthy();
     expect(screen.queryByText("Back")).toBeNull();
-    expect(screen.getByTestId("inventory-action-receive").textContent).toBe("");
     // The call went through the tenant-scoped client for the resolved tenant, exactly once.
     expect(mocks.withTenant).toHaveBeenCalledWith(TENANT_A);
     expect(mocks.listInventory).toHaveBeenCalledTimes(1);
@@ -215,13 +221,13 @@ describe("InventoryScreen", () => {
   it("shows an explicit empty state (not an error) when there is no inventory", async () => {
     mocks.listInventory.mockResolvedValue(inventoryList([]));
     renderInventory();
-    expect(await screen.findByText(/No inventory yet/)).toBeTruthy();
+    expect(await screen.findByText(/Nothing in stock yet/)).toBeTruthy();
   });
 
   it("surfaces a classified network error with a retry", async () => {
     mocks.listInventory.mockRejectedValue(new ApiNetworkError("down"));
     renderInventory();
-    expect(await screen.findByText("Cannot reach the Commerce API")).toBeTruthy();
+    expect(await screen.findByText("No connection")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
   });
 
@@ -241,8 +247,8 @@ describe("InventoryScreen", () => {
     mocks.listInventory.mockRejectedValue(new ApiHttpError("no", 403, "FORBIDDEN", null));
     renderInventory();
 
-    expect(await screen.findByText("Access denied")).toBeTruthy();
-    expect(screen.queryByText(/No inventory yet/)).toBeNull();
+    expect(await screen.findByText("Not available for your account")).toBeTruthy();
+    expect(screen.queryByText(/Nothing in stock yet/)).toBeNull();
     expect(screen.queryByText("Try again")).toBeNull();
   });
 
@@ -281,63 +287,118 @@ describe("InventoryScreen", () => {
     mocks.listInventory.mockRejectedValue(new ApiNetworkError("down"));
     renderInventory();
 
-    await screen.findByText("Cannot reach the Commerce API");
+    await screen.findByText("No connection");
     // The failure is stable: no uncontrolled retry loop keeps hitting the API.
     expect(mocks.listInventory).toHaveBeenCalledTimes(1);
   });
 
-  it("offers the three inventory write actions once the surface has loaded", async () => {
+  it("offers Receive new stock (the POS Add-product flow) as the primary action", async () => {
     mocks.listInventory.mockResolvedValue(
       inventoryList([inventoryItem({ productName: "Linen Shirt" })]),
     );
     renderInventory();
     await screen.findByText("Linen Shirt");
-    expect(await screen.findByTestId("open-receive")).toBeTruthy();
-    expect(await screen.findByTestId("open-adjust")).toBeTruthy();
-    expect(await screen.findByTestId("open-transfer")).toBeTruthy();
-    expect(screen.getByTestId("inventory-action-receive")).toBeTruthy();
-    expect(screen.getByTestId("inventory-action-adjust")).toBeTruthy();
-    expect(screen.getByTestId("inventory-action-transfer")).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId("inventory-action-receive"));
-    expect(await screen.findByTestId("receive-submit")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("stock-receive-new"));
+    expect(mocks.onReceiveNew).toHaveBeenCalledTimes(1);
   });
 
-  it("loads ACTIVE suppliers and offers them in the Receive form", async () => {
+  it("tapping an item opens its actions: Edit details, Restock, Count and Transfer", async () => {
     mocks.listInventory.mockResolvedValue(
       inventoryList([inventoryItem({ productName: "Linen Shirt" })]),
+    );
+    mocks.getContext.mockResolvedValue(
+      meContext(TENANT_A, {
+        inventory: {
+          ...READABLE_INVENTORY.inventory,
+          locations: [
+            ...READABLE_INVENTORY.inventory.locations,
+            { id: "loc-b", name: "Downtown", branchId: null },
+          ],
+          write: {
+            ...READABLE_INVENTORY.inventory.write,
+            locations: [
+              ...READABLE_INVENTORY.inventory.write.locations,
+              {
+                id: "loc-b",
+                name: "Downtown",
+                canReceive: true,
+                canAdjust: true,
+                canTransferOrigin: true,
+                canTransferDestination: true,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    renderInventory();
+    fireEvent.click(
+      await screen.findByTestId(`inventory-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`),
+    );
+    expect(await screen.findByTestId("stock-sheet")).toBeTruthy();
+    expect(await screen.findByTestId("stock-action-restock")).toBeTruthy();
+    expect(screen.getByTestId("stock-action-count")).toBeTruthy();
+    expect(screen.getByTestId("stock-action-transfer")).toBeTruthy();
+    expect(screen.getByTestId("stock-action-edit")).toBeTruthy();
+  });
+
+  it("restocks the tapped item at its own location, offering ACTIVE suppliers", async () => {
+    mocks.listInventory.mockResolvedValue(
+      inventoryList([inventoryItem({ productName: "Linen Shirt", onHand: 4 })]),
     );
     mocks.listSuppliers.mockResolvedValue(
       sdkSupplierListResponse([sdkSupplierSummary({ id: SUPPLIER_A, name: "Nile Textiles" })]),
     );
+    mocks.receiveInventory.mockResolvedValue({
+      operationId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      variantId: VARIANT_A,
+      inventoryLocationId: INVENTORY_LOCATION_A,
+      observedOnHand: 10,
+      version: 3,
+      supplierId: SUPPLIER_A,
+    });
     renderInventory();
-    await screen.findByText("Linen Shirt");
-
-    // Only ACTIVE suppliers are requested — inactive ones are excluded server-side, never selectable.
     await waitFor(() =>
       expect(mocks.listSuppliers).toHaveBeenCalledWith(
         expect.objectContaining({ status: "active" }),
       ),
     );
-    fireEvent.click(await screen.findByTestId("open-receive"));
-    expect(await screen.findByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeTruthy();
+    fireEvent.click(
+      await screen.findByTestId(`inventory-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`),
+    );
+    fireEvent.click(await screen.findByTestId("stock-action-restock"));
+    fireEvent.change(screen.getByTestId("restock-quantity"), { target: { value: "6" } });
+    fireEvent.click(await screen.findByTestId(`restock-supplier-${SUPPLIER_A}`));
+    fireEvent.click(screen.getByTestId("restock-submit"));
+
+    await waitFor(() => expect(mocks.receiveInventory).toHaveBeenCalledTimes(1));
+    expect(mocks.receiveInventory.mock.calls[0][0]).toMatchObject({
+      variantId: VARIANT_A,
+      inventoryLocationId: INVENTORY_LOCATION_A,
+      quantity: 6,
+      supplierId: SUPPLIER_A,
+      idempotencyKey: "K1",
+    });
+    // Success closes the sheet and re-reads the authoritative list.
+    await waitFor(() => expect(screen.queryByTestId("stock-sheet")).toBeNull());
+    await waitFor(() => expect(mocks.listInventory).toHaveBeenCalledTimes(2));
   });
 
-  it("still receives (legacy, no supplier field) when supplier loading fails — linking is optional", async () => {
+  it("still restocks (no supplier field) when supplier loading fails — linking is optional", async () => {
     mocks.listInventory.mockResolvedValue(
       inventoryList([inventoryItem({ productName: "Linen Shirt" })]),
     );
     mocks.listSuppliers.mockRejectedValue(new ApiNetworkError("suppliers down"));
     renderInventory();
-    await screen.findByText("Linen Shirt");
-
-    fireEvent.click(await screen.findByTestId("open-receive"));
-    // No supplier selector appears, and the Receive form is fully usable — a legacy receipt.
-    expect(screen.queryByTestId(`receive-supplier-${SUPPLIER_A}`)).toBeNull();
-    expect(screen.getByTestId("receive-submit")).toBeTruthy();
+    fireEvent.click(
+      await screen.findByTestId(`inventory-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`),
+    );
+    fireEvent.click(await screen.findByTestId("stock-action-restock"));
+    expect(screen.queryByTestId(`restock-supplier-${SUPPLIER_A}`)).toBeNull();
+    expect(screen.getByTestId("restock-submit")).toBeTruthy();
   });
 
-  it("on adjustment concurrency refreshes, shows a persistent notice, and requires fresh input", async () => {
+  it("on a count conflict refreshes, shows a persistent notice, and requires a fresh count", async () => {
     let resolveRefresh!: (value: ReturnType<typeof inventoryList>) => void;
     const refreshedInventory = new Promise<ReturnType<typeof inventoryList>>((resolve) => {
       resolveRefresh = resolve;
@@ -359,17 +420,18 @@ describe("InventoryScreen", () => {
       });
     renderInventory();
 
-    await screen.findByText("Linen Shirt");
-    fireEvent.click(await screen.findByTestId("open-adjust"));
-    fireEvent.click(screen.getByTestId(`adjust-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`));
-    fireEvent.change(screen.getByTestId("adjust-counted"), { target: { value: "23" } });
-    fireEvent.click(screen.getByTestId("adjust-submit"));
+    const row = `inventory-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`;
+    fireEvent.click(await screen.findByTestId(row));
+    fireEvent.click(await screen.findByTestId("stock-action-count"));
+    fireEvent.change(screen.getByTestId("count-quantity"), { target: { value: "23" } });
+    fireEvent.click(screen.getByTestId("count-submit"));
 
     expect(await screen.findByTestId("inventory-concurrency-notice")).toBeTruthy();
     expect(screen.queryByTestId("write-retry")).toBeNull();
     await waitFor(() => expect(mocks.listInventory).toHaveBeenCalledTimes(2));
     expect(mocks.adjustInventory).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId("open-adjust")).toBeNull();
+    // The stale sheet is gone; the owner must count again against the refreshed quantity.
+    expect(screen.queryByTestId("stock-sheet")).toBeNull();
     await act(async () => {
       resolveRefresh(inventoryList([inventoryItem({ onHand: 24, version: 5 })]));
     });
@@ -379,10 +441,10 @@ describe("InventoryScreen", () => {
       ).toBe("24"),
     );
 
-    fireEvent.click(await screen.findByTestId("open-adjust"));
-    fireEvent.click(await screen.findByTestId(`adjust-row-${INVENTORY_LOCATION_A}:${VARIANT_A}`));
-    fireEvent.change(screen.getByTestId("adjust-counted"), { target: { value: "23" } });
-    fireEvent.click(screen.getByTestId("adjust-submit"));
+    fireEvent.click(await screen.findByTestId(row));
+    fireEvent.click(await screen.findByTestId("stock-action-count"));
+    fireEvent.change(screen.getByTestId("count-quantity"), { target: { value: "23" } });
+    fireEvent.click(screen.getByTestId("count-submit"));
 
     await waitFor(() => expect(mocks.adjustInventory).toHaveBeenCalledTimes(2));
     expect(mocks.adjustInventory.mock.calls[0][0]).toMatchObject({
@@ -395,7 +457,7 @@ describe("InventoryScreen", () => {
     });
   });
 
-  it("never exposes opening-stock or generic-issue actions (out of scope for this app)", async () => {
+  it("never exposes opening-stock or generic-issue actions on the stock list", async () => {
     mocks.listInventory.mockResolvedValue(
       inventoryList([inventoryItem({ productName: "Linen Shirt" })]),
     );
@@ -411,8 +473,7 @@ describe("InventoryScreen", () => {
     );
     renderInventory();
     await screen.findByText(/do not have read access to inventory/);
-    expect(screen.queryByTestId("open-receive")).toBeNull();
-    expect(screen.queryByTestId("open-adjust")).toBeNull();
-    expect(screen.queryByTestId("open-transfer")).toBeNull();
+    expect(screen.queryByTestId("stock-receive-new")).toBeNull();
+    expect(screen.queryByTestId("stock-sheet")).toBeNull();
   });
 });

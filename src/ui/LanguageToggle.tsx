@@ -2,7 +2,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { LOCALE_LABELS, LOCALES, useI18n } from "../i18n";
 import { FormSection } from "./components";
-import { colors, radius, spacing } from "./theme";
+import { radius, spacing, typography } from "./theme";
+import { createThemedStyles } from "./useTheme";
 import { useToast } from "./Toast";
 
 /**
@@ -11,6 +12,7 @@ import { useToast } from "./Toast";
  * configuration.
  */
 export function LanguageToggle() {
+  const { styles } = useStyles();
   const { locale, setLocale, t } = useI18n();
   const toast = useToast();
 
@@ -51,19 +53,22 @@ export function LanguageToggle() {
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", gap: spacing.sm },
-  segment: {
-    flex: 1,
-    minHeight: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-  },
-  segmentActive: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
-  segmentText: { color: colors.inkMuted, fontSize: 15, fontWeight: "700" },
-  segmentTextActive: { color: colors.brand, fontWeight: "800" },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    row: { flexDirection: "row", gap: spacing.sm },
+    segment: {
+      flex: 1,
+      minHeight: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+    },
+    segmentActive: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
+    segmentText: { color: colors.inkMuted, ...typography.body, fontWeight: "700" },
+    segmentTextActive: { color: colors.brand, fontWeight: "800" },
+  });
+  return { colors, styles };
 });

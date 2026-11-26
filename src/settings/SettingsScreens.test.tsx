@@ -95,7 +95,7 @@ describe("Phase 2R Settings preparation", () => {
       <BusinessSettingsScreen adapter={fakeSettingsAdapter()} canRead canManage onBack={noop} />,
     );
     expect(await screen.findByTestId("business-display-name")).toBeTruthy();
-    expect(screen.getByText("Tenant slug · read-only")).toBeTruthy();
+    expect(screen.getByText("Business link name · can't be changed")).toBeTruthy();
     expect(screen.getByText("acme-apparel")).toBeTruthy();
     expect(screen.getByTestId("business-currency-warning")).toBeTruthy();
   });
@@ -128,7 +128,7 @@ describe("Phase 2R Settings preparation", () => {
     expect(screen.queryByText("Delete")).toBeNull();
   });
 
-  it("uses explicit Warehouse and InventoryLocation terminology", async () => {
+  it("uses plain Warehouse and stock location terminology", async () => {
     render(
       <InventorySettingsScreen
         adapter={fakeSettingsAdapter()}
@@ -140,7 +140,7 @@ describe("Phase 2R Settings preparation", () => {
       />,
     );
     expect(await screen.findByText("Warehouses")).toBeTruthy();
-    expect(screen.getByText("InventoryLocations")).toBeTruthy();
+    expect(screen.getByText("Stock locations")).toBeTruthy();
     expect(screen.getByText("Cairo Warehouse")).toBeTruthy();
     expect(screen.getByText("Flagship Stockroom")).toBeTruthy();
   });

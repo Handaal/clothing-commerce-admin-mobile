@@ -29,7 +29,7 @@ describe("describeInventoryWriteError", () => {
   it("marks a 403 as terminal access-denied with no retry affordance", () => {
     const d = described(new ApiHttpError("no", 403, "FORBIDDEN", null));
     expect(d.recovery).toBe("none");
-    expect(d.heading).toBe("Access denied");
+    expect(d.heading).toBe("Not available for your account");
   });
 
   it("treats an idempotency-key/payload conflict as terminal (start a new operation)", () => {

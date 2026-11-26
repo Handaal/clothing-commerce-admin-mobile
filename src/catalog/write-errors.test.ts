@@ -12,13 +12,13 @@ describe("describeCatalogWriteError", () => {
     expect(describeCatalogWriteError(err({ kind: "auth" })).recovery).toBe("none");
     const forbidden = describeCatalogWriteError(err({ kind: "forbidden", status: 403 }));
     expect(forbidden.recovery).toBe("none");
-    expect(forbidden.heading).toBe("Not authorized");
+    expect(forbidden.heading).toBe("Not allowed");
   });
 
   it("maps uniqueness conflicts to editable recovery with distinct headings", () => {
     expect(describeCatalogWriteError(err({ code: "SLUG_CONFLICT" }))).toMatchObject({
       recovery: "edit",
-      heading: "Slug already in use",
+      heading: "Web address already used",
     });
     expect(describeCatalogWriteError(err({ code: "STYLE_CODE_CONFLICT" }))).toMatchObject({
       recovery: "edit",

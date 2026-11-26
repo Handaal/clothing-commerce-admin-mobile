@@ -6,7 +6,10 @@ import { t, useI18n, type MessageKey } from "../i18n";
 import { errorHeading, isRetryable } from "../products/display";
 import {
   Body,
+  Disclosure,
   Divider,
+  FieldLabel,
+  FilterChips,
   InfoRow,
   LoadingBlock,
   PageHeader,
@@ -77,13 +80,16 @@ export function DateRangeControls({
 
   return (
     <View style={{ gap: 10 }}>
-      <SelectField
-        label={t("report.dateRange")}
-        options={DATE_PRESET_KEYS.map((p) => ({ value: p.value, label: t(p.labelKey) }))}
-        selected={selected}
-        onSelect={choose}
-        testIDPrefix="report-date-preset"
-      />
+      {/* A date range is a filter: one tap on a chip, not a radio list or a picker sheet. */}
+      <View style={{ gap: 6 }}>
+        <FieldLabel label={t("report.dateRange")} />
+        <FilterChips<string>
+          options={DATE_PRESET_KEYS.map((p) => ({ value: p.value, label: t(p.labelKey) }))}
+          selected={selected}
+          onSelect={choose}
+          testIDPrefix="report-date-preset"
+        />
+      </View>
       {selected === "custom" ? (
         <View style={{ gap: 10 }}>
           <TextField
@@ -137,11 +143,15 @@ export function CurrencySelector({
 export function ReportMetaBlock({ meta }: { meta: ReportMeta }) {
   const { t } = useI18n();
   return (
-    <View testID="report-meta" style={{ gap: 4 }}>
-      <InfoRow label={t("report.timezone")} value={meta.timezone} />
-      <InfoRow label={t("report.fromInclusive")} value={meta.fromInclusive} />
-      <InfoRow label={t("report.toExclusive")} value={meta.toExclusive} />
-      <Body>{t("report.metaNote")}</Body>
+    <View testID="report-meta">
+      {/* Exact reporting boundaries are technical detail — one tap away, not on the first screen. */}
+      <Disclosure label={t("common.moreDetails")} testID="report-meta-toggle">
+        <View>
+          <InfoRow label={t("report.timezone")} value={meta.timezone} />
+          <InfoRow label={t("report.fromInclusive")} value={meta.fromInclusive} />
+          <InfoRow label={t("report.toExclusive")} value={meta.toExclusive} />
+        </View>
+      </Disclosure>
     </View>
   );
 }

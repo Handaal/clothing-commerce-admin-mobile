@@ -1,18 +1,19 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { ComponentProps } from "react";
 
-import { colors } from "./theme";
+import { useTheme } from "./useTheme";
 
 export type AppIconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 export function AppIcon({
   name,
   size = 22,
-  color = colors.inkMuted,
+  color,
 }: {
   name: AppIconName;
   size?: number;
   color?: string;
 }) {
-  return <MaterialCommunityIcons name={name} size={size} color={color} />;
+  const { colors } = useTheme();
+  return <MaterialCommunityIcons name={name} size={size} color={color ?? colors.inkMuted} />;
 }

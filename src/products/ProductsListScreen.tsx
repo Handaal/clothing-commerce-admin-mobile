@@ -1,5 +1,5 @@
 import type { MeContextResponse, ProductListResponse } from "@shifted/clothing-commerce-sdk";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { brandNameMap } from "../catalog/brands";
@@ -12,21 +12,25 @@ import {
   EmptyState,
   FilterChips,
   HeaderIconButton,
-  LoadingBlock,
   Notice,
   PageHeader,
   PressableRow,
   PrimaryButton,
   ResponsiveList,
   ScrollScreen,
+  SearchField,
   SectionHeading,
+  SkeletonRows,
   SummaryStrip,
   Surface,
   TextButton,
 } from "../ui/components";
-import { colors, radius, spacing, typography } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { errorHeading, isRetryable } from "./display";
+
+type ProductItem = ProductListResponse["items"][number];
 
 export interface ProductsListScreenProps {
   tenantId: string;
@@ -62,7 +66,6 @@ export function ProductsListScreen({
         <PageHeader
           eyebrow={t("products.eyebrow")}
           title={t("products.title")}
-          description={t("products.headerNoAccessDesc")}
           icon="tag-multiple-outline"
         />
         <Notice
@@ -90,6 +93,7 @@ function ProductsListContent({
   onOpenProduct,
   onCreateProduct,
 }: Omit<ProductsListScreenProps, "onBack">) {
+  const { styles } = useStyles();
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
   const { t } = useI18n();
@@ -98,24 +102,85 @@ function ProductsListContent({
     label: t(STATUS_FILTER_KEYS[value]),
   }));
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [query, setQuery] = useState("");
   const load = useCallback(
     () => client.listProducts(statusFilter === "all" ? undefined : { status: statusFilter }),
     [client, statusFilter],
   );
-  const { state, reload } = useAsync<ProductListResponse>(load);
+  const { state, reload, refresh, refreshing } = useAsync<ProductListResponse>(load);
+
+  // Pages fetched beyond the first via "Load more". Reset whenever the status filter changes (the
+  // first page is re-fetched for the new filter) or on a pull-to-refresh.
+  const [extraPages, setExtraPages] = useState<{
+    items: ProductItem[];
+    cursor: string | null;
+    hasMore: boolean;
+  }>({ items: [], cursor: null, hasMore: false });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const firstPageKey = state.status === "success" ? state.data.pageInfo.nextCursor : null;
+  const resetRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Clear accumulated pages when the underlying first page changes (new filter / refresh).
+    const key = `${statusFilter}:${firstPageKey ?? ""}`;
+    if (resetRef.current !== key) {
+      resetRef.current = key;
+      setExtraPages({ items: [], cursor: null, hasMore: false });
+    }
+  }, [statusFilter, firstPageKey]);
 
   const brandNameById = useMemo(() => brandNameMap(context.access.catalog), [context]);
   const canAuthor = context.access.catalog.brands.length > 0;
-  const items = state.status === "success" ? state.data.items : [];
+  const firstPageItems = useMemo(
+    () => (state.status === "success" ? state.data.items : []),
+    [state],
+  );
+  const allItems = useMemo(
+    () => [...firstPageItems, ...extraPages.items],
+    [firstPageItems, extraPages.items],
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const items = useMemo(() => {
+    if (!normalizedQuery) return allItems;
+    return allItems.filter((product) => {
+      const brand = brandNameById.get(product.brandId)?.toLowerCase() ?? "";
+      return (
+        product.name.toLowerCase().includes(normalizedQuery) ||
+        (product.styleCode?.toLowerCase().includes(normalizedQuery) ?? false) ||
+        brand.includes(normalizedQuery)
+      );
+    });
+  }, [allItems, normalizedQuery, brandNameById]);
   const activeCount = items.filter((product) => product.status === "active").length;
-  const isEmpty = state.status === "success" && items.length === 0;
+  const isEmpty = state.status === "success" && allItems.length === 0;
+  const hasMore =
+    state.status === "success" &&
+    (extraPages.items.length > 0 ? extraPages.hasMore : state.data.pageInfo.hasMore);
+
+  const onLoadMore = useCallback(async () => {
+    if (state.status !== "success" || loadingMore) return;
+    const cursor = extraPages.items.length > 0 ? extraPages.cursor : state.data.pageInfo.nextCursor;
+    if (!cursor) return;
+    setLoadingMore(true);
+    try {
+      const next = await client.listProducts({
+        ...(statusFilter === "all" ? {} : { status: statusFilter }),
+        cursor,
+      });
+      setExtraPages((prev) => ({
+        items: [...prev.items, ...next.items],
+        cursor: next.pageInfo.nextCursor,
+        hasMore: next.pageInfo.hasMore,
+      }));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [client, statusFilter, state, extraPages, loadingMore]);
 
   return (
-    <ScrollScreen wide>
+    <ScrollScreen wide onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
         eyebrow={t("products.eyebrow")}
         title={t("products.title")}
-        description={t("products.headerDesc")}
         icon="tag-multiple-outline"
         action={
           canAuthor && !isEmpty ? (
@@ -135,6 +200,15 @@ function ProductsListContent({
           <Text style={styles.overviewBody}>{t("products.workspaceBody")}</Text>
         </View>
       </Surface>
+
+      {state.status === "success" && allItems.length > 0 ? (
+        <SearchField
+          testID="products-search"
+          value={query}
+          onChangeText={setQuery}
+          placeholder={t("products.searchPlaceholder")}
+        />
+      ) : null}
 
       <View style={styles.listControls}>
         <SectionHeading
@@ -170,7 +244,7 @@ function ProductsListContent({
         />
       ) : null}
 
-      {state.status === "loading" ? <LoadingBlock label={t("products.loading")} /> : null}
+      {state.status === "loading" ? <SkeletonRows testID="products-loading" /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -183,7 +257,7 @@ function ProductsListContent({
           }
         />
       ) : null}
-      {state.status === "success" && items.length === 0 ? (
+      {state.status === "success" && allItems.length === 0 ? (
         <EmptyState
           icon="tag-outline"
           title={
@@ -212,6 +286,20 @@ function ProductsListContent({
           }
         />
       ) : null}
+      {state.status === "success" && allItems.length > 0 && items.length === 0 ? (
+        <EmptyState
+          icon="magnify"
+          title={t("common.noResultsTitle")}
+          message={t("common.noResultsBody", { query: query.trim() })}
+          action={
+            <PrimaryButton
+              label={t("common.clearSearch")}
+              icon="close"
+              onPress={() => setQuery("")}
+            />
+          }
+        />
+      ) : null}
       {state.status === "success" && items.length > 0 ? (
         <ResponsiveList>
           {items.map((product) => (
@@ -224,8 +312,15 @@ function ProductsListContent({
           ))}
         </ResponsiveList>
       ) : null}
-      {state.status === "success" && state.data.pageInfo.hasMore ? (
-        <Notice message={t("products.moreAvailable")} />
+      {state.status === "success" && items.length > 0 && hasMore && !normalizedQuery ? (
+        <PrimaryButton
+          testID="products-load-more"
+          label={loadingMore ? t("common.loadingMore") : t("common.loadMore")}
+          icon="chevron-down"
+          variant="secondary"
+          disabled={loadingMore}
+          onPress={() => void onLoadMore()}
+        />
       ) : null}
     </ScrollScreen>
   );
@@ -240,6 +335,7 @@ function ProductRow({
   brandName: string | undefined;
   onOpen: () => void;
 }) {
+  const { styles, colors } = useStyles();
   const observation = useProductObservation(product.id);
   const publication = describePublication(observation);
   const { t } = useI18n();
@@ -276,32 +372,34 @@ function ProductRow({
   );
 }
 
-const styles = StyleSheet.create({
-  catalogOverview: { gap: spacing.lg },
-  overviewCopy: { gap: spacing.sm },
-  overviewTitle: { color: colors.ink, ...typography.sectionTitle },
-  overviewBody: { color: colors.inkMuted, ...typography.body },
-  listControls: { gap: spacing.sm },
-  productRowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  productIcon: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  productCopy: { flex: 1, gap: 3 },
-  productName: { color: colors.ink, ...typography.cardTitle },
-  productMetadata: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
-  productMeta: { color: colors.inkMuted, ...typography.caption },
-  metaDot: { color: colors.inkSubtle, ...typography.caption },
-  publicationRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  publicationText: {
-    flex: 1,
-    color: colors.inkMuted,
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: "600",
-  },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    catalogOverview: { gap: spacing.lg },
+    overviewCopy: { gap: spacing.sm },
+    overviewTitle: { color: colors.ink, ...typography.sectionTitle },
+    overviewBody: { color: colors.inkMuted, ...typography.body },
+    listControls: { gap: spacing.sm },
+    productRowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    productIcon: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    productCopy: { flex: 1, gap: 3 },
+    productName: { color: colors.ink, ...typography.cardTitle },
+    productMetadata: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
+    productMeta: { color: colors.inkMuted, ...typography.caption },
+    metaDot: { color: colors.inkSubtle, ...typography.caption },
+    publicationRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+    publicationText: {
+      flex: 1,
+      color: colors.inkMuted,
+      ...typography.micro,
+      fontWeight: "600",
+    },
+  });
+  return { colors, styles };
 });

@@ -19,7 +19,14 @@ export default function ProductsRoute() {
       tenantId={state.tenantId}
       context={state.context}
       onOpenProduct={(productId) => router.push(`/products/${productId}`)}
-      onCreateProduct={() => router.push("/products/new")}
+      // "New product" opens the same Receive new stock flow as the Stock tab (the POS Add-product
+      // flow: item + sizes + quantities in one form). Accounts that can't add stock keep the
+      // catalog-only create screen.
+      onCreateProduct={() =>
+        router.push(
+          state.context.access.inventory.write.canReceive ? "/inventory/receive" : "/products/new",
+        )
+      }
       onBack={() => goBackOrReplace(router, "/")}
     />
   );

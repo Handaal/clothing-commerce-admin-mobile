@@ -38,6 +38,13 @@ const mocks = vi.hoisted(() => ({
   createProductMediaUploadIntent: vi.fn(),
   registerProductMedia: vi.fn(),
   archiveProductMedia: vi.fn(),
+  listProductMedia: vi.fn(),
+  updateProductMedia: vi.fn(),
+  reorderProductMedia: vi.fn(),
+  setVariantOptions: vi.fn(),
+  updateOptionValues: vi.fn(),
+  listCategories: vi.fn(),
+  setProductCategories: vi.fn(),
 }));
 
 vi.mock("@clerk/expo", () => ({
@@ -100,6 +107,7 @@ function renderScreen() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.listProductMedia.mockResolvedValue({ media: [] });
   store = createObservationStore();
   keySeq = 0;
   mocks.getMyTenants.mockResolvedValue([tenant(TENANT_A, "Acme", MEMBERSHIP_A)]);
@@ -213,8 +221,8 @@ describe("ProductManageScreen", () => {
     mocks.publishProduct.mockRejectedValue(new ApiHttpError("no", 403, "FORBIDDEN", null));
     renderScreen();
     fireEvent.click(await screen.findByTestId("publish-submit"));
-    expect(await screen.findByText("Not authorized")).toBeTruthy();
-    expect(screen.getByTestId("publish-error").textContent).toMatch(/not applied/i);
+    expect(await screen.findByText("Not allowed")).toBeTruthy();
+    expect(screen.getByTestId("publish-error").textContent).toMatch(/nothing was changed/i);
   });
 
   it("activates a draft product and records the new status", async () => {
@@ -263,6 +271,53 @@ describe("ProductManageScreen", () => {
     expect(screen.getByTestId("write-refresh")).toBeTruthy();
   });
 
+  it("lists the product's existing photos and edits them (SDK 0.53)", async () => {
+    const A = "c1000000-0000-4000-8000-00000000000a";
+    const B = "c1000000-0000-4000-8000-00000000000b";
+    const photo = (id: string, isPrimary: boolean, altText: string | null, position: number) => ({
+      id,
+      variantId: null,
+      bucket: "product-media",
+      path: `t/p/${id}.jpg`,
+      altText,
+      position,
+      isPrimary,
+    });
+    mocks.listProductMedia.mockResolvedValue({
+      media: [photo(A, true, "Front", 0), photo(B, false, null, 1)],
+    });
+    mocks.updateProductMedia.mockResolvedValue({ mediaId: B, isPrimary: true, altText: null });
+    mocks.reorderProductMedia.mockResolvedValue({ productId: PRODUCT_A, mediaCount: 2 });
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-media"));
+    expect(await screen.findByTestId(`media-${A}`)).toBeTruthy();
+    expect(screen.queryByTestId(`media-main-${A}`)).toBeNull(); // already the main photo
+
+    fireEvent.click(screen.getByTestId(`media-main-${B}`));
+    await waitFor(() =>
+      expect(mocks.updateProductMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ productId: PRODUCT_A, mediaId: B, isPrimary: true }),
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId(`media-down-${A}`));
+    await waitFor(() =>
+      expect(mocks.reorderProductMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ productId: PRODUCT_A, mediaIds: [B, A] }),
+      ),
+    );
+
+    const altInput = screen.getByTestId(`media-alt-${B}`);
+    fireEvent.change(altInput, { target: { value: "Back view" } });
+    fireEvent.click(screen.getByTestId(`media-alt-save-${B}`));
+    await waitFor(() =>
+      expect(mocks.updateProductMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ mediaId: B, altText: "Back view" }),
+      ),
+    );
+    expect(mocks.listProductMedia.mock.calls.length).toBeGreaterThanOrEqual(3); // refreshed after edits
+  });
+
   it("runs the media flow: pick → signed upload → register", async () => {
     picker.mockResolvedValue(image);
     uploadFetch.mockResolvedValue({ ok: true, status: 200 });
@@ -278,6 +333,20 @@ describe("ProductManageScreen", () => {
     fireEvent.click(await screen.findByTestId("section-media"));
     fireEvent.click(screen.getByTestId("media-pick"));
     await screen.findByTestId("media-picked");
+    // After registering, the refreshed photo list (SDK 0.53) includes the new photo.
+    mocks.listProductMedia.mockResolvedValue({
+      media: [
+        {
+          id: MEDIA_A,
+          variantId: null,
+          bucket: "product-media",
+          path: "tenant/p/photo.jpg",
+          altText: null,
+          position: 0,
+          isPrimary: true,
+        },
+      ],
+    });
     fireEvent.click(screen.getByTestId("media-upload"));
 
     expect(await screen.findByTestId("media-success")).toBeTruthy();
@@ -317,7 +386,113 @@ describe("ProductManageScreen", () => {
   it("surfaces a load error with retry instead of a fake product", async () => {
     mocks.getProduct.mockRejectedValue(new ApiNetworkError("down"));
     renderScreen();
-    expect(await screen.findByText("Cannot reach the Commerce API")).toBeTruthy();
+    expect(await screen.findByText("No connection")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
+  });
+
+  it("creates a variant with its size and colour options", async () => {
+    mocks.createVariant.mockResolvedValue(createVariantResponse());
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-variants"));
+    fireEvent.change(screen.getByTestId("variant-sku"), { target: { value: "LS-001-L-BLK" } });
+    fireEvent.change(screen.getByTestId("variant-option-value-0"), { target: { value: "L" } });
+    fireEvent.click(screen.getByTestId("variant-option-add"));
+    fireEvent.change(screen.getByTestId("variant-option-name-1"), { target: { value: "Colour" } });
+    fireEvent.change(screen.getByTestId("variant-option-value-1"), { target: { value: "Black" } });
+    fireEvent.click(screen.getByTestId("variant-submit"));
+    await waitFor(() =>
+      expect(mocks.createVariant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: PRODUCT_A,
+          sku: "LS-001-L-BLK",
+          options: [
+            { name: "Size", value: "L" },
+            { name: "Colour", value: "Black" },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("rejects duplicate option names before calling the API", async () => {
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-variants"));
+    fireEvent.change(screen.getByTestId("variant-sku"), { target: { value: "LS-001-X" } });
+    fireEvent.change(screen.getByTestId("variant-option-value-0"), { target: { value: "L" } });
+    fireEvent.click(screen.getByTestId("variant-option-add"));
+    fireEvent.change(screen.getByTestId("variant-option-name-1"), { target: { value: "size" } });
+    fireEvent.change(screen.getByTestId("variant-option-value-1"), { target: { value: "XL" } });
+    fireEvent.click(screen.getByTestId("variant-submit"));
+    expect(await screen.findByText("Each option name can only be used once.")).toBeTruthy();
+    expect(mocks.createVariant).not.toHaveBeenCalled();
+  });
+
+  it("saves a colour swatch chosen from the presets", async () => {
+    mocks.getProduct.mockResolvedValue(
+      productDetail({
+        options: [
+          {
+            id: "88888888-8888-4888-8888-888888888888",
+            name: "Colour",
+            values: [
+              { id: "99999999-9999-4999-8999-999999999999", value: "Black", swatchHex: null },
+            ],
+          },
+        ],
+      }),
+    );
+    mocks.updateOptionValues.mockResolvedValue({ productId: PRODUCT_A, updatedCount: 1 });
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-colours"));
+    fireEvent.click(screen.getByTestId("swatch-99999999-9999-4999-8999-999999999999-1a1a1a"));
+    fireEvent.click(screen.getByTestId("swatch-submit"));
+    await waitFor(() =>
+      expect(mocks.updateOptionValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: PRODUCT_A,
+          values: [{ valueId: "99999999-9999-4999-8999-999999999999", swatchHex: "#1a1a1a" }],
+        }),
+      ),
+    );
+  });
+
+  it("puts the product in the chosen categories", async () => {
+    mocks.listCategories.mockResolvedValue({
+      categories: [
+        {
+          id: "c1000000-0000-4000-8000-000000000001",
+          parentId: null,
+          name: "Men",
+          slug: "men",
+          description: null,
+          position: 0,
+          status: "active",
+          productCount: 0,
+        },
+        {
+          id: "c1000000-0000-4000-8000-000000000002",
+          parentId: "c1000000-0000-4000-8000-000000000001",
+          name: "Shirts",
+          slug: "men-shirts",
+          description: null,
+          position: 0,
+          status: "active",
+          productCount: 0,
+        },
+      ],
+    });
+    mocks.setProductCategories.mockResolvedValue({ productId: PRODUCT_A, categoryCount: 1 });
+    renderScreen();
+    fireEvent.click(await screen.findByTestId("section-categories"));
+    fireEvent.click(await screen.findByTestId("pc-men-shirts"));
+    fireEvent.click(screen.getByTestId("pc-submit"));
+    await waitFor(() =>
+      expect(mocks.setProductCategories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: PRODUCT_A,
+          categoryIds: ["c1000000-0000-4000-8000-000000000002"],
+        }),
+      ),
+    );
   });
 });

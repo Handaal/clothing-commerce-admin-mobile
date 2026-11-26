@@ -10,8 +10,6 @@ import {
   Body,
   EmptyState,
   InfoRow,
-  LoadingBlock,
-  MetricCard,
   Notice,
   PageHeader,
   PressableRow,
@@ -19,9 +17,12 @@ import {
   ScrollScreen,
   SearchField,
   SectionHeading,
+  SkeletonRows,
+  SummaryStrip,
   Surface,
 } from "../ui/components";
-import { colors } from "../ui/theme";
+import { typography } from "../ui/theme";
+import { useTheme } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import { loadAllCustomers } from "./load";
 
@@ -47,14 +48,13 @@ export function CustomersListScreen({
   const [term, setTerm] = useState("");
   const [query, setQuery] = useState("");
   const load = useCallback(() => loadAllCustomers(client, query), [client, query]);
-  const { state, reload } = useAsync<CustomerSummary[]>(load);
+  const { state, reload, refresh, refreshing } = useAsync<CustomerSummary[]>(load);
 
   return (
-    <ScrollScreen>
+    <ScrollScreen onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
         eyebrow={t("customers.eyebrow")}
         title={t("customers.title")}
-        description={t("customers.headerDesc")}
         icon="account-group-outline"
         onBack={onBack}
       />
@@ -73,7 +73,7 @@ export function CustomersListScreen({
         />
       </Surface>
 
-      {state.status === "loading" ? <LoadingBlock label={t("customers.loading")} /> : null}
+      {state.status === "loading" ? <SkeletonRows testID="customers-loading" /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -97,13 +97,16 @@ export function CustomersListScreen({
       ) : null}
       {state.status === "success" && state.data.length > 0 ? (
         <>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-            <MetricCard
-              label={t("customers.loadedMetric")}
-              value={String(state.data.length)}
-              icon="account-group-outline"
-            />
-          </View>
+          <SummaryStrip
+            testID="customers-summary"
+            items={[
+              {
+                label: t("customers.loadedMetric"),
+                value: String(state.data.length),
+                icon: "account-group-outline",
+              },
+            ]}
+          />
           <SectionHeading
             title={t("customers.directory")}
             detail={t("common.shown", { count: state.data.length })}
@@ -124,6 +127,7 @@ export function CustomersListScreen({
 }
 
 function CustomerRow({ customer, onOpen }: { customer: CustomerSummary; onOpen: () => void }) {
+  const { colors } = useTheme();
   const { t } = useI18n();
   return (
     <PressableRow testID={`customer-row-${customer.id}`} onPress={onOpen}>
@@ -135,7 +139,7 @@ function CustomerRow({ customer, onOpen }: { customer: CustomerSummary; onOpen: 
           gap: 12,
         }}
       >
-        <Text style={{ flex: 1, color: colors.ink, fontSize: 18, fontWeight: "800" }}>
+        <Text style={{ flex: 1, color: colors.ink, ...typography.cardTitle, fontWeight: "800" }}>
           {customer.name}
         </Text>
         <Badge label={t("customers.orderCount", { count: customer.orderCount })} tone="brand" />

@@ -7,15 +7,19 @@ import {
   Badge,
   Body,
   Divider,
+  FieldLabel,
+  FilterChips,
+  type FilterOption,
   Eyebrow,
   InfoRow,
-  LoadingBlock,
   PageHeader,
   PressableRow,
   PrimaryButton,
   ScrollScreen,
   SelectField,
   type SelectOption,
+  SkeletonRows,
+  TextButton,
   TextField,
   Title,
 } from "../ui/components";
@@ -43,6 +47,8 @@ export interface StaffListScreenProps {
   roleOptions?: RoleOption[];
   onOpenStaff: (membershipId: string) => void;
   onAddStaff: () => void;
+  /** ADR-043: opens POS sign-in accounts (Clerk-free POS bootstrap). Omitted hides the entry. */
+  onOpenPosAccounts?: () => void;
   onBack: () => void;
 }
 
@@ -67,6 +73,7 @@ export function StaffListScreen({
   roleOptions,
   onOpenStaff,
   onAddStaff,
+  onOpenPosAccounts,
   onBack,
 }: StaffListScreenProps) {
   const { t } = useI18n();
@@ -84,6 +91,7 @@ export function StaffListScreen({
       roleOptions={roleOptions}
       onOpenStaff={onOpenStaff}
       onAddStaff={onAddStaff}
+      onOpenPosAccounts={onOpenPosAccounts}
       onBack={onBack}
     />
   );
@@ -95,6 +103,7 @@ function StaffListContent({
   roleOptions,
   onOpenStaff,
   onAddStaff,
+  onOpenPosAccounts,
   onBack,
 }: StaffListScreenProps & { adapter: StaffAdapter }) {
   // Draft search state the user edits, and the committed query the loader actually runs. Committing on
@@ -105,7 +114,7 @@ function StaffListContent({
   const isFiltered = !isEmptyStaffSearch(search) || Object.keys(query).length > 0;
 
   const load = useCallback(() => loadAllStaff(adapter, query), [adapter, query]);
-  const { state, reload } = useAsync<StaffSummary[]>(load);
+  const { state, reload, refresh, refreshing } = useAsync<StaffSummary[]>(load);
 
   const statusOptions = useMemo<SelectOption[]>(
     () => STATUS_FILTERS.map((value) => ({ value, label: staffStatusFilterLabel(value) })),
@@ -125,7 +134,7 @@ function StaffListContent({
   }
 
   return (
-    <ScrollScreen>
+    <ScrollScreen onRefresh={refresh} refreshing={refreshing}>
       <PageHeader eyebrow={t("staff.eyebrow")} title={t("staff.title")} onBack={onBack} />
       {/* Add-Staff is offered only when /me/context grants staff management. The API remains the sole
           authority and still authorizes the write — a real 403 surfaces on submit even if shown. */}
@@ -134,6 +143,14 @@ function StaffListContent({
       ) : (
         <Body testID="staff-read-only-note">{t("staff.readOnlyNote")}</Body>
       )}
+      {onOpenPosAccounts ? (
+        <TextButton
+          label={t("posAccounts.cta")}
+          testID="open-pos-accounts"
+          icon="cash-register"
+          onPress={onOpenPosAccounts}
+        />
+      ) : null}
       <Divider />
 
       <TextField
@@ -144,19 +161,31 @@ function StaffListContent({
         testID="staff-search-term"
         autoCapitalize="none"
       />
-      <SelectField
-        label={t("staff.statusLabel")}
-        options={statusOptions}
-        selected={search.status}
-        onSelect={(value) => setSearch((prev) => ({ ...prev, status: value as StaffStatusFilter }))}
-        testIDPrefix="staff-status-filter"
-      />
+      {/* Status and role are one-tap filters that apply immediately (like every other list); the
+          Search button is only needed for the typed name/email term. */}
+      <View style={{ gap: 6 }}>
+        <FieldLabel label={t("staff.statusLabel")} />
+        <FilterChips<StaffStatusFilter>
+          options={statusOptions as FilterOption<StaffStatusFilter>[]}
+          selected={search.status}
+          onSelect={(status) => {
+            const next = { ...search, status };
+            setSearch(next);
+            setQuery(buildStaffListQuery(next));
+          }}
+          testIDPrefix="staff-status-filter"
+        />
+      </View>
       {showRoleFilter ? (
         <SelectField
           label={t("staff.roleLabel")}
           options={roleFilterOptions}
           selected={search.roleId}
-          onSelect={(value) => setSearch((prev) => ({ ...prev, roleId: value }))}
+          onSelect={(roleId) => {
+            const next = { ...search, roleId };
+            setSearch(next);
+            setQuery(buildStaffListQuery(next));
+          }}
           testIDPrefix="staff-role-filter"
         />
       ) : null}
@@ -167,7 +196,7 @@ function StaffListContent({
       />
       <Divider />
 
-      {state.status === "loading" ? <LoadingBlock label={t("staff.loading")} /> : null}
+      {state.status === "loading" ? <SkeletonRows testID="staff-loading" /> : null}
       {state.status === "error" ? (
         <>
           <Title>{errorHeading(state.error.kind)}</Title>

@@ -162,7 +162,7 @@ describe("CreateProductScreen", () => {
     renderScreen();
     fireEvent.change(await screen.findByTestId("create-name"), { target: { value: "Tee" } });
     fireEvent.click(screen.getByTestId("create-submit"));
-    expect(await screen.findByText("Slug already in use")).toBeTruthy();
+    expect(await screen.findByText("Web address already used")).toBeTruthy();
     expect(screen.queryByTestId("create-retry")).toBeNull();
   });
 
@@ -187,7 +187,7 @@ describe("CreateProductScreen", () => {
     renderScreen();
     fireEvent.change(await screen.findByTestId("create-name"), { target: { value: "Tee" } });
     fireEvent.click(screen.getByTestId("create-submit"));
-    expect(await screen.findByText("Not authorized")).toBeTruthy();
+    expect(await screen.findByText("Not allowed")).toBeTruthy();
     expect(screen.queryByTestId("create-retry")).toBeNull();
   });
 

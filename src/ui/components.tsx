@@ -1,14 +1,17 @@
 import { Children, isValidElement, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
   View,
+  type ScrollViewInstance,
   type StyleProp,
   type ViewProps,
   type ViewStyle,
@@ -16,8 +19,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { directionalIcon, endAlign, startAlign, useI18n } from "../i18n";
+import { BrandSpinner } from "./BrandSpinner";
+import { FitText } from "./FitText";
+import { haptic } from "./haptics";
+import { statusLabel, statusTone } from "./status";
 import { AppIcon, type AppIconName } from "./Icon";
-import { colors, layout, radius, shadows, spacing, typography } from "./theme";
+import { layout, radius, shadows, spacing, typography } from "./theme";
+import { createThemedStyles } from "./useTheme";
 
 /**
  * react-native-web renders `dataSet` to real `data-*` attributes. The global web stylesheet
@@ -27,6 +35,25 @@ import { colors, layout, radius, shadows, spacing, typography } from "./theme";
  */
 export const webLift = { dataSet: { lift: "true" } } as unknown as ViewProps;
 const webAnim = { dataSet: { anim: "true" } } as unknown as ViewProps;
+const webSkeleton = { dataSet: { skeleton: "true" } } as unknown as ViewProps;
+
+/**
+ * A content-entrance hint for web: `[data-rise]` fades + rises the node in. Pass a 1-based `index`
+ * (1–3) to stagger siblings. Ignored on native.
+ */
+export function webRise(index?: number): ViewProps {
+  const key = index && index >= 1 && index <= 3 ? `rise-${index}` : "rise";
+  return { dataSet: { [key]: "true" } } as unknown as ViewProps;
+}
+
+/**
+ * Combined hover-lift + entrance-rise for a single node — a merged `dataSet` so neither effect is lost
+ * (spreading {@link webLift} and {@link webRise} separately would clobber `dataSet`). Ignored on native.
+ */
+export function webLiftRise(index?: number): ViewProps {
+  const key = index && index >= 1 && index <= 3 ? `rise-${index}` : "rise";
+  return { dataSet: { lift: "true", [key]: "true" } } as unknown as ViewProps;
+}
 
 function readingDirection(isRTL: boolean) {
   return {
@@ -45,6 +72,7 @@ function pageHeaderReadingDirection(isRTL: boolean) {
 }
 
 export function Screen({ children }: { children: ReactNode }) {
+  const { styles } = useStyles();
   const { dir } = useI18n();
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.safeArea, { direction: dir }]}>
@@ -61,31 +89,58 @@ export function ScrollScreen({
   wide = false,
   persistentAction,
   scrollToTopSignal,
+  onRefresh,
+  refreshing = false,
 }: {
   children: ReactNode;
   wide?: boolean;
   persistentAction?: ReactNode;
   scrollToTopSignal?: number;
+  /** When provided, enables native pull-to-refresh and a web refresh affordance. */
+  onRefresh?: () => void;
+  /** Whether a refresh is currently in flight (spins the control). */
+  refreshing?: boolean;
 }) {
-  const { dir } = useI18n();
-  const scrollRef = useRef<ScrollView>(null);
+  const { styles, colors } = useStyles();
+  const { dir, t } = useI18n();
+  const scrollRef = useRef<ScrollViewInstance>(null);
   useEffect(() => {
     if (scrollToTopSignal === undefined) return;
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [scrollToTopSignal]);
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={[styles.safeArea, { direction: dir }]}>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={[
-          styles.scrollContent,
-          persistentAction ? styles.scrollContentWithAction : null,
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoider}
+        // iOS lifts with padding; Android resizes with the inset. Web renders it as a plain view.
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={[styles.page, wide && styles.pageWide]}>{children}</View>
-      </ScrollView>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.scrollContent,
+            persistentAction ? styles.scrollContentWithAction : null,
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.brand}
+                colors={[colors.brand]}
+                progressBackgroundColor={colors.surfaceRaised}
+                title={t("common.pullToRefresh")}
+                titleColor={colors.inkSubtle}
+              />
+            ) : undefined
+          }
+        >
+          <View style={[styles.page, wide && styles.pageWide]}>{children}</View>
+        </ScrollView>
+      </KeyboardAvoidingView>
       {persistentAction ? (
         <View style={styles.persistentActionLayer} pointerEvents="box-none">
           <View
@@ -109,6 +164,7 @@ export interface ActionDockItem {
 
 /** Contextual actions anchored above the persistent bottom navigation. */
 export function ActionDock({ actions }: { actions: readonly ActionDockItem[] }) {
+  const { styles, colors } = useStyles();
   if (actions.length === 0) return null;
   return (
     <View style={styles.actionDock}>
@@ -127,7 +183,7 @@ export function ActionDock({ actions }: { actions: readonly ActionDockItem[] }) 
               pressed && styles.buttonPressed,
             ]}
           >
-            <AppIcon name={action.icon} size={18} color={primary ? colors.white : colors.brand} />
+            <AppIcon name={action.icon} size={18} color={primary ? colors.onBrand : colors.brand} />
             <Text
               numberOfLines={1}
               style={[styles.actionDockLabel, primary && styles.actionDockLabelPrimary]}
@@ -144,18 +200,17 @@ export function ActionDock({ actions }: { actions: readonly ActionDockItem[] }) 
 export function PageHeader({
   title,
   eyebrow,
-  description,
   icon,
   action,
   onBack,
 }: {
   title: string;
   eyebrow?: string;
-  description?: string;
   icon?: AppIconName;
   action?: ReactNode;
   onBack?: () => void;
 }) {
+  const { styles, colors } = useStyles();
   const { t, isRTL, dir } = useI18n();
   return (
     <View testID="page-header" style={[styles.pageHeader, { direction: dir }]}>
@@ -185,19 +240,6 @@ export function PageHeader({
             >
               {title}
             </Text>
-            {description ? (
-              <Text
-                testID="page-header-description"
-                numberOfLines={2}
-                style={[
-                  styles.pageHeaderDescription,
-                  pageHeaderReadingDirection(isRTL),
-                  { alignSelf: isRTL ? "flex-end" : "flex-start" },
-                ]}
-              >
-                {description}
-              </Text>
-            ) : null}
           </View>
         </View>
         {action ? <View style={styles.pageHeaderAction}>{action}</View> : null}
@@ -221,6 +263,7 @@ export function Surface({
   style?: StyleProp<ViewStyle>;
   tone?: "default" | "muted" | "brand" | "accent";
 }) {
+  const { styles, surfaceToneStyles } = useStyles();
   return (
     <View testID={testID} style={[styles.surface, surfaceToneStyles[tone], style]}>
       {children}
@@ -241,6 +284,7 @@ export function FormSection({
   children: ReactNode;
   testID?: string;
 }) {
+  const { styles, colors } = useStyles();
   return (
     <Surface testID={testID} style={styles.formSection}>
       <View style={styles.formSectionHeader}>
@@ -272,6 +316,7 @@ export function Notice({
   testID?: string;
   action?: ReactNode;
 }) {
+  const { styles, noticeStyles, noticeIconBg, noticeInk } = useStyles();
   const icon: AppIconName =
     tone === "success"
       ? "check-circle-outline"
@@ -346,6 +391,7 @@ export function SearchField({
   placeholder?: string;
   testID?: string;
 }) {
+  const { styles, colors } = useStyles();
   const { t, isRTL } = useI18n();
   const resolvedPlaceholder = placeholder ?? t("common.search");
   return (
@@ -366,7 +412,7 @@ export function SearchField({
         <Pressable
           testID={testID ? `${testID}-clear` : undefined}
           accessibilityRole="button"
-          accessibilityLabel="Clear search"
+          accessibilityLabel={t("common.clearSearch")}
           hitSlop={8}
           onPress={() => onChangeText("")}
           style={({ pressed }) => [styles.clearSearch, pressed && styles.buttonPressed]}
@@ -382,6 +428,8 @@ export interface FilterOption<T extends string> {
   value: T;
   label: string;
   icon?: AppIconName;
+  /** Optional count shown as a badge inside the chip, making filters scannable at a glance. */
+  count?: number;
 }
 
 export function FilterChips<T extends string>({
@@ -395,6 +443,7 @@ export function FilterChips<T extends string>({
   onSelect: (value: T) => void;
   testIDPrefix?: string;
 }) {
+  const { styles, colors } = useStyles();
   const { dir } = useI18n();
   return (
     <ScrollView
@@ -423,12 +472,22 @@ export function FilterChips<T extends string>({
               <AppIcon
                 name={option.icon}
                 size={16}
-                color={active ? colors.white : colors.inkMuted}
+                color={active ? colors.onBrand : colors.inkMuted}
               />
             ) : null}
             <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
               {option.label}
             </Text>
+            {option.count !== undefined ? (
+              <View style={[styles.filterChipCount, active && styles.filterChipCountActive]}>
+                <Text
+                  testID={testIDPrefix ? `${testIDPrefix}-${option.value}-count` : undefined}
+                  style={[styles.filterChipCountText, active && styles.filterChipCountTextActive]}
+                >
+                  {option.count}
+                </Text>
+              </View>
+            ) : null}
           </Pressable>
         );
       })}
@@ -451,6 +510,7 @@ export function AccordionTrigger({
   onPress: () => void;
   testID?: string;
 }) {
+  const { styles, colors } = useStyles();
   return (
     <Pressable
       testID={testID}
@@ -465,7 +525,7 @@ export function AccordionTrigger({
       ]}
     >
       <View style={[styles.accordionIcon, expanded && styles.accordionIconExpanded]}>
-        <AppIcon name={icon} size={21} color={expanded ? colors.white : colors.brand} />
+        <AppIcon name={icon} size={21} color={expanded ? colors.onBrand : colors.brand} />
       </View>
       <View style={styles.accordionCopy}>
         <Text style={styles.accordionTitle}>{title}</Text>
@@ -487,6 +547,7 @@ export function MetricCard({
   icon: AppIconName;
   tone?: "brand" | "accent" | "neutral";
 }) {
+  const { colors, styles } = useStyles();
   const color =
     tone === "accent" ? colors.accent : tone === "neutral" ? colors.inkMuted : colors.brand;
   const iconBg =
@@ -500,7 +561,7 @@ export function MetricCard({
       <View style={[styles.metricIcon, { backgroundColor: iconBg }]}>
         <AppIcon name={icon} size={20} color={color} />
       </View>
-      <Text style={styles.metricValue}>{value}</Text>
+      <FitText style={styles.metricValue}>{value}</FitText>
       <Text style={styles.metricLabel}>{label}</Text>
     </View>
   );
@@ -521,6 +582,7 @@ export function SummaryStrip({
   items: readonly SummaryMetric[];
   testID?: string;
 }) {
+  const { styles, colors } = useStyles();
   return (
     <View testID={testID} style={styles.summaryStrip}>
       {items.map((item) => {
@@ -542,7 +604,7 @@ export function SummaryStrip({
               <AppIcon name={item.icon} size={18} color={color} />
             </View>
             <View style={styles.summaryMetricCopy}>
-              <Text style={styles.summaryMetricValue}>{item.value}</Text>
+              <FitText style={styles.summaryMetricValue}>{item.value}</FitText>
               <Text numberOfLines={1} style={styles.summaryMetricLabel}>
                 {item.label}
               </Text>
@@ -559,6 +621,7 @@ export function SummaryStrip({
  * the exact child test IDs and interactions; the wrapper changes presentation only.
  */
 export function ResponsiveList({ children }: { children: ReactNode }) {
+  const { styles } = useStyles();
   const { width } = useWindowDimensions();
   const columns = width >= 760 ? 2 : 1;
   const items = Children.toArray(children);
@@ -576,6 +639,21 @@ export function ResponsiveList({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * A quiet "read-only" indicator — a small lock chip used inline near a page title instead of a
+ * full-width banner, so the status is conveyed without crowding the content.
+ */
+export function ReadOnlyChip({ label, testID }: { label?: string; testID?: string }) {
+  const { styles, colors } = useStyles();
+  const { t, dir } = useI18n();
+  return (
+    <View testID={testID} style={[styles.readOnlyChip, { direction: dir }]}>
+      <AppIcon name="lock-outline" size={13} color={colors.inkSubtle} />
+      <Text style={styles.readOnlyChipText}>{label ?? t("common.readOnly")}</Text>
+    </View>
+  );
+}
+
 /** A small, non-interactive status pill (e.g. a product/variant status). */
 export function Badge({
   label,
@@ -586,6 +664,7 @@ export function Badge({
   testID?: string;
   tone?: "neutral" | "brand" | "success" | "warning" | "danger";
 }) {
+  const { styles, badgeStyles, badgeDotColor, badgeTextStyles } = useStyles();
   const { isRTL, dir } = useI18n();
   return (
     <View style={[styles.badge, badgeStyles[tone], { direction: dir }]}>
@@ -598,6 +677,12 @@ export function Badge({
       </Text>
     </View>
   );
+}
+
+/** A badge for a server lifecycle value: localized label + semantic tone (never the raw code). */
+export function StatusBadge({ status, testID }: { status: string; testID?: string }) {
+  const { t } = useI18n();
+  return <Badge label={statusLabel(status, t)} tone={statusTone(status)} testID={testID} />;
 }
 
 function badgeTone(label: string): "neutral" | "brand" | "success" | "warning" | "danger" {
@@ -624,6 +709,7 @@ export function PressableRow({
   children: ReactNode;
   density?: "default" | "compact";
 }) {
+  const { styles, colors } = useStyles();
   const { isRTL, dir } = useI18n();
   return (
     <Pressable
@@ -657,6 +743,7 @@ export function SurfaceRow({
   children: ReactNode;
   density?: "default" | "compact";
 }) {
+  const { styles } = useStyles();
   const { dir } = useI18n();
   return (
     <View
@@ -669,6 +756,7 @@ export function SurfaceRow({
 }
 
 export function Eyebrow({ children, testID }: { children: ReactNode; testID?: string }) {
+  const { styles } = useStyles();
   const { isRTL } = useI18n();
   return (
     <Text testID={testID} style={[styles.eyebrow, readingDirection(isRTL)]}>
@@ -678,6 +766,7 @@ export function Eyebrow({ children, testID }: { children: ReactNode; testID?: st
 }
 
 export function Title({ children, testID }: { children: ReactNode; testID?: string }) {
+  const { styles } = useStyles();
   const { isRTL } = useI18n();
   return (
     <Text testID={testID} style={[styles.title, readingDirection(isRTL)]}>
@@ -687,6 +776,7 @@ export function Title({ children, testID }: { children: ReactNode; testID?: stri
 }
 
 export function Body({ children, testID }: { children: ReactNode; testID?: string }) {
+  const { styles } = useStyles();
   const { isRTL } = useI18n();
   return (
     <Text testID={testID} style={[styles.body, readingDirection(isRTL)]}>
@@ -696,11 +786,51 @@ export function Body({ children, testID }: { children: ReactNode; testID?: strin
 }
 
 export function LoadingBlock({ label }: { label: string }) {
+  const { styles } = useStyles();
   const { isRTL, dir } = useI18n();
   return (
     <View style={[styles.loadingRow, { direction: dir }]}>
-      <ActivityIndicator color={colors.brand} />
+      <BrandSpinner size={22} />
       <Text style={[styles.body, readingDirection(isRTL)]}>{label}</Text>
+    </View>
+  );
+}
+
+/**
+ * A single shimmering placeholder bar. On web it pulses via the global `[data-skeleton]` keyframe; on
+ * native it is a static muted bar. Compose several into a {@link SkeletonRows} list.
+ */
+export function SkeletonBar({
+  width = "100%",
+  height = 14,
+  style,
+}: {
+  width?: number | `${number}%`;
+  height?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { styles } = useStyles();
+  return <View {...webSkeleton} style={[styles.skeletonBar, { width, height }, style]} />;
+}
+
+/**
+ * Loading placeholder that mirrors a list of rows — card silhouettes with an icon tile and two text
+ * lines — so a loading list reads as "content arriving" rather than a lone spinner.
+ */
+export function SkeletonRows({ rows = 4, testID }: { rows?: number; testID?: string }) {
+  const { styles } = useStyles();
+  return (
+    <View testID={testID} style={styles.skeletonList} accessibilityRole="progressbar">
+      {Array.from({ length: rows }).map((_, index) => (
+        <View key={index} style={styles.skeletonRow}>
+          <View {...webSkeleton} style={styles.skeletonTile} />
+          <View style={styles.skeletonRowCopy}>
+            <SkeletonBar width="62%" height={13} />
+            <SkeletonBar width="40%" height={11} />
+          </View>
+          <SkeletonBar width={48} height={20} />
+        </View>
+      ))}
     </View>
   );
 }
@@ -720,6 +850,7 @@ export function PrimaryButton({
   icon?: AppIconName;
   variant?: "primary" | "secondary";
 }) {
+  const { styles, colors } = useStyles();
   const { isRTL, dir } = useI18n();
   return (
     <Pressable
@@ -740,7 +871,7 @@ export function PrimaryButton({
         <AppIcon
           name={icon}
           size={19}
-          color={variant === "primary" ? colors.white : colors.brand}
+          color={variant === "primary" ? colors.onBrand : colors.brand}
         />
       ) : null}
       <Text
@@ -769,6 +900,7 @@ export function HeaderIconButton({
   icon: AppIconName;
   variant?: "primary" | "secondary";
 }) {
+  const { styles, colors } = useStyles();
   const primary = variant === "primary";
   return (
     <Pressable
@@ -783,7 +915,7 @@ export function HeaderIconButton({
         pressed && styles.buttonPressed,
       ]}
     >
-      <AppIcon name={icon} size={18} color={primary ? colors.white : colors.brand} />
+      <AppIcon name={icon} size={18} color={primary ? colors.onBrand : colors.brand} />
     </Pressable>
   );
 }
@@ -799,6 +931,7 @@ export function TextButton({
   icon?: AppIconName;
   testID?: string;
 }) {
+  const { styles, colors } = useStyles();
   const { isRTL } = useI18n();
   return (
     <Pressable
@@ -822,6 +955,7 @@ export function InfoRow({
   value: string;
   testID?: string;
 }) {
+  const { styles } = useStyles();
   const { isRTL, dir } = useI18n();
   return (
     <View style={[styles.infoRow, { direction: dir }]} testID={testID}>
@@ -834,20 +968,95 @@ export function InfoRow({
 }
 
 export function Divider(props: { style?: ViewStyle }) {
+  const { styles } = useStyles();
   return <View style={[styles.divider, props.style]} />;
 }
 
 export function SectionHeading({ title, detail }: { title: string; detail?: string }) {
+  const { styles } = useStyles();
   const { isRTL, dir } = useI18n();
   return (
     <View style={[styles.sectionHeading, { direction: dir }]}>
       <View style={styles.sectionHeadingMain}>
-        <View style={styles.sectionMarker} />
         <Text style={[styles.sectionTitle, readingDirection(isRTL)]}>{title}</Text>
       </View>
       {detail ? (
         <Text style={[styles.sectionDetail, readingDirection(isRTL)]}>{detail}</Text>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * A quiet, plain card with a small title — the calm default for grouping facts on detail screens.
+ * No tint, no icon tile, no subtitle: the content carries the meaning.
+ */
+export function DetailCard({
+  title,
+  action,
+  children,
+  testID,
+}: {
+  title?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  testID?: string;
+}) {
+  const { styles } = useStyles();
+  const { isRTL, dir } = useI18n();
+  return (
+    <View testID={testID} style={[styles.surface, styles.detailCard]}>
+      {title || action ? (
+        <View style={[styles.detailCardHeader, { direction: dir }]}>
+          {title ? (
+            <Text style={[styles.detailCardTitle, readingDirection(isRTL)]}>{title}</Text>
+          ) : (
+            <View />
+          )}
+          {action}
+        </View>
+      ) : null}
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Secondary information folded behind a single quiet "More details" line. Keeps every fact one tap
+ * away without putting it on the first screen.
+ */
+export function Disclosure({
+  label,
+  children,
+  testID,
+  defaultOpen = false,
+}: {
+  label: string;
+  children: ReactNode;
+  testID?: string;
+  defaultOpen?: boolean;
+}) {
+  const { styles, colors } = useStyles();
+  const { isRTL, dir } = useI18n();
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View style={styles.disclosure}>
+      <Pressable
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        aria-expanded={open}
+        onPress={() => setOpen((value) => !value)}
+        style={({ pressed }) => [
+          styles.disclosureTrigger,
+          { direction: dir },
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        <Text style={[styles.disclosureLabel, readingDirection(isRTL)]}>{label}</Text>
+        <AppIcon name={open ? "chevron-up" : "chevron-down"} size={20} color={colors.inkSubtle} />
+      </Pressable>
+      {open ? <View style={styles.disclosureBody}>{children}</View> : null}
     </View>
   );
 }
@@ -865,10 +1074,18 @@ export function EmptyState({
   badge?: string;
   action?: ReactNode;
 }) {
+  const { styles, colors } = useStyles();
   return (
-    <View style={styles.emptyState}>
-      <View style={styles.emptyIcon}>
-        <AppIcon name={icon} size={32} color={colors.brand} />
+    <View style={styles.emptyState} {...webRise()}>
+      {/* A layered, illustration-style mark: two concentric halo rings behind the icon tile with a
+          small accent dot — more crafted and premium than a lone icon, with no image asset. */}
+      <View style={styles.emptyArt}>
+        <View style={styles.emptyHaloOuter} />
+        <View style={styles.emptyHaloInner} />
+        <View style={styles.emptyIcon}>
+          <AppIcon name={icon} size={32} color={colors.brand} />
+        </View>
+        <View style={styles.emptyArtDot} />
       </View>
       {badge ? <Badge label={badge} tone="warning" /> : null}
       <Text style={styles.emptyTitle}>{title}</Text>
@@ -880,6 +1097,7 @@ export function EmptyState({
 
 /** A field label with an optional "required" marker. */
 export function FieldLabel({ label, required }: { label: string; required?: boolean }) {
+  const { styles } = useStyles();
   const { isRTL } = useI18n();
   return (
     <Text style={[styles.fieldLabel, readingDirection(isRTL)]}>
@@ -891,6 +1109,7 @@ export function FieldLabel({ label, required }: { label: string; required?: bool
 
 /** An inline, below-the-field validation message with an alert icon. Renders nothing when empty. */
 export function FieldError({ message, testID }: { message?: string | null; testID?: string }) {
+  const { styles, colors } = useStyles();
   const { isRTL, dir } = useI18n();
   if (!message) return null;
   return (
@@ -911,6 +1130,7 @@ export function NumberField({
   editable = true,
   required,
   error,
+  hint,
 }: {
   label: string;
   value: string;
@@ -920,7 +1140,10 @@ export function NumberField({
   editable?: boolean;
   required?: boolean;
   error?: string | null;
+  /** Helper text shown below the field when there is no error. */
+  hint?: string;
 }) {
+  const { styles, colors } = useStyles();
   const { isRTL } = useI18n();
   return (
     <View style={styles.field}>
@@ -942,6 +1165,9 @@ export function NumberField({
         placeholderTextColor={colors.inkSubtle}
       />
       <FieldError message={error} testID={testID ? `${testID}-error` : undefined} />
+      {!error && hint ? (
+        <Text style={[styles.fieldHint, readingDirection(isRTL)]}>{hint}</Text>
+      ) : null}
     </View>
   );
 }
@@ -958,6 +1184,8 @@ export function TextField({
   required,
   error,
   hint,
+  secure = false,
+  numeric = false,
 }: {
   label: string;
   value: string;
@@ -970,7 +1198,12 @@ export function TextField({
   error?: string | null;
   /** Optional helper text shown below the field when there is no error — gentle inline guidance. */
   hint?: string;
+  /** Mask the value (secrets such as a POS PIN). Never stored or logged by the field. */
+  secure?: boolean;
+  /** Prefer a numeric keypad. Purely a keyboard hint: the value is never filtered or truncated. */
+  numeric?: boolean;
 }) {
+  const { styles, colors } = useStyles();
   const { isRTL } = useI18n();
   return (
     <View style={styles.field}>
@@ -989,6 +1222,10 @@ export function TextField({
         placeholderTextColor={colors.inkSubtle}
         multiline={multiline}
         autoCapitalize={autoCapitalize}
+        secureTextEntry={secure}
+        keyboardType={numeric ? "number-pad" : undefined}
+        autoComplete={secure ? "off" : undefined}
+        autoCorrect={secure ? false : undefined}
       />
       {error ? (
         <FieldError message={error} testID={testID ? `${testID}-error` : undefined} />
@@ -1016,6 +1253,7 @@ export function Checkbox({
   testID?: string;
   disabled?: boolean;
 }) {
+  const { styles, colors } = useStyles();
   return (
     <Pressable
       testID={testID}
@@ -1030,7 +1268,7 @@ export function Checkbox({
         style={[styles.checkBox, checked && styles.checkBoxOn, disabled && styles.checkBoxOff]}
         {...webAnim}
       >
-        {checked ? <AppIcon name="check-bold" size={14} color={colors.white} /> : null}
+        {checked ? <AppIcon name="check-bold" size={14} color={colors.onBrand} /> : null}
       </View>
       {label ? <Text style={styles.checkLabel}>{label}</Text> : null}
     </Pressable>
@@ -1056,6 +1294,7 @@ export function Toggle({
   testID?: string;
   disabled?: boolean;
 }) {
+  const { styles } = useStyles();
   const body = (
     <Pressable
       testID={testID}
@@ -1107,6 +1346,7 @@ export function ConfirmButton({
   disabled?: boolean;
   testID?: string;
 }) {
+  const { styles, colors } = useStyles();
   const [armed, setArmed] = useState(false);
   const { t } = useI18n();
   return (
@@ -1118,8 +1358,10 @@ export function ConfirmButton({
         onPress={() => {
           if (armed) {
             setArmed(false);
+            haptic("success");
             onConfirm();
           } else {
+            haptic("warning");
             setArmed(true);
           }
         }}
@@ -1134,12 +1376,94 @@ export function ConfirmButton({
         <AppIcon
           name={armed ? "alert-outline" : "trash-can-outline"}
           size={18}
-          color={colors.white}
+          color={colors.onBrand}
         />
         <Text style={styles.buttonText}>{armed ? confirmLabel : label}</Text>
       </Pressable>
       {armed ? <TextButton label={t("common.cancel")} onPress={() => setArmed(false)} /> : null}
     </View>
+  );
+}
+
+/**
+ * A modal confirmation dialog for destructive or easily-missed actions (e.g. signing out). Unlike the
+ * inline {@link ConfirmButton}, this presents a focused overlay the user must explicitly act on, so an
+ * accidental tap can't carry through. Works on web and native via RN {@link Modal}. Controlled: the
+ * caller owns `visible` and both outcomes.
+ */
+export function ConfirmDialog({
+  visible,
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  tone = "danger",
+  icon = "alert-outline",
+  onConfirm,
+  onCancel,
+  testID,
+}: {
+  visible: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  tone?: "danger" | "brand";
+  icon?: AppIconName;
+  onConfirm: () => void;
+  onCancel: () => void;
+  testID?: string;
+}) {
+  const { colors, styles } = useStyles();
+  const { t, dir } = useI18n();
+  const accent = tone === "danger" ? colors.danger : colors.brand;
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={styles.dialogOverlay} accessibilityLabel={cancelLabel} onPress={onCancel}>
+        {/* Inner press is swallowed so tapping the card never dismisses; only the scrim / Cancel do. */}
+        <Pressable
+          testID={testID}
+          style={[styles.dialogCard, { direction: dir }]}
+          onPress={() => {}}
+        >
+          <View
+            style={[
+              styles.dialogIcon,
+              { backgroundColor: tone === "danger" ? colors.dangerSoft : colors.brandSoft },
+            ]}
+          >
+            <AppIcon name={icon} size={24} color={accent} />
+          </View>
+          <Text style={styles.dialogTitle}>{title}</Text>
+          <Text style={styles.dialogMessage}>{message}</Text>
+          <View style={styles.dialogActions}>
+            <Pressable
+              testID={testID ? `${testID}-cancel` : undefined}
+              accessibilityRole="button"
+              onPress={onCancel}
+              style={({ pressed }) => [styles.dialogCancel, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.dialogCancelText}>{cancelLabel ?? t("common.cancel")}</Text>
+            </Pressable>
+            <Pressable
+              testID={testID ? `${testID}-confirm` : undefined}
+              accessibilityRole="button"
+              onPress={() => {
+                haptic(tone === "danger" ? "warning" : "success");
+                onConfirm();
+              }}
+              style={({ pressed }) => [
+                styles.dialogConfirm,
+                { backgroundColor: accent },
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.dialogConfirmText}>{confirmLabel}</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -1149,8 +1473,17 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
-/** A labelled list-of-options selector (no native picker dependency). Selecting an option is not a
- * mutation — it only updates local form state. */
+/** Lists longer than this collapse into a field that opens a picker sheet instead of laying out inline. */
+export const SELECT_INLINE_LIMIT = 6;
+/** Picker sheets with more options than this get a search box. */
+const SELECT_SEARCH_LIMIT = 8;
+
+/**
+ * A labelled list-of-options selector (no native picker dependency). Short lists stay inline as radio
+ * options; long, data-driven lists (products, variants, brands, suppliers, locations…) collapse into a
+ * themed field that opens a searchable sheet, so a form never turns into a page-long radio list.
+ * Selecting an option is not a mutation — it only updates local form state.
+ */
 export function SelectField({
   label,
   options,
@@ -1160,6 +1493,7 @@ export function SelectField({
   emptyLabel,
   required,
   error,
+  placeholder,
 }: {
   label: string;
   options: SelectOption[];
@@ -1169,671 +1503,1005 @@ export function SelectField({
   emptyLabel?: string;
   required?: boolean;
   error?: string | null;
+  placeholder?: string;
 }) {
-  const { isRTL, dir } = useI18n();
+  const { styles, colors } = useStyles();
+  const { t, isRTL, dir } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const collapsed = options.length > SELECT_INLINE_LIMIT;
+  const selectedOption = options.find((option) => option.value === selected);
+  const normalized = query.trim().toLowerCase();
+  const sheetOptions = normalized
+    ? options.filter((option) => option.label.toLowerCase().includes(normalized))
+    : options;
+
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
+
+  const renderOptions = (list: readonly SelectOption[], afterSelect?: () => void) => (
+    <View style={{ gap: 8 }}>
+      {list.map((option) => {
+        const isSelected = option.value === selected;
+        return (
+          <Pressable
+            key={option.value}
+            testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSelected, disabled: option.disabled }}
+            disabled={option.disabled}
+            onPress={() => {
+              onSelect(option.value);
+              afterSelect?.();
+            }}
+            style={({ pressed }) => [
+              styles.option,
+              isSelected && styles.optionSelected,
+              option.disabled && styles.optionDisabled,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <View style={[styles.optionRadio, isSelected && styles.optionRadioOn]} {...webAnim}>
+              {isSelected ? <View style={styles.optionRadioDot} /> : null}
+            </View>
+            <Text
+              style={[
+                styles.optionText,
+                readingDirection(isRTL),
+                isSelected && styles.optionTextSelected,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
   return (
     <View style={[styles.field, { direction: dir }]}>
       <FieldLabel label={label} required={required} />
       {options.length === 0 ? (
-        <Text style={styles.body}>{emptyLabel ?? "No options available."}</Text>
+        <Text style={styles.body}>{emptyLabel ?? t("common.noOptions")}</Text>
+      ) : collapsed ? (
+        <Pressable
+          testID={testIDPrefix ? `${testIDPrefix}-trigger` : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityHint={selectedOption?.label}
+          onPress={() => setOpen(true)}
+          style={({ pressed }) => [
+            styles.selectTrigger,
+            error ? styles.selectTriggerError : null,
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.selectTriggerText,
+              readingDirection(isRTL),
+              !selectedOption && styles.selectTriggerPlaceholder,
+            ]}
+          >
+            {selectedOption?.label ?? placeholder ?? t("common.choose")}
+          </Text>
+          <AppIcon name="chevron-down" size={20} color={colors.inkSubtle} />
+        </Pressable>
       ) : (
-        <View style={{ gap: 8 }}>
-          {options.map((option) => {
-            const isSelected = option.value === selected;
-            return (
-              <Pressable
-                key={option.value}
-                testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected, disabled: option.disabled }}
-                disabled={option.disabled}
-                onPress={() => onSelect(option.value)}
-                style={({ pressed }) => [
-                  styles.option,
-                  isSelected && styles.optionSelected,
-                  option.disabled && styles.optionDisabled,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <View style={[styles.optionRadio, isSelected && styles.optionRadioOn]} {...webAnim}>
-                  {isSelected ? <View style={styles.optionRadioDot} /> : null}
-                </View>
-                <Text
-                  style={[
-                    styles.optionText,
-                    readingDirection(isRTL),
-                    isSelected && styles.optionTextSelected,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        renderOptions(options)
       )}
       <FieldError message={error} testID={testIDPrefix ? `${testIDPrefix}-error` : undefined} />
+      {collapsed ? (
+        <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+          <Pressable
+            style={styles.sheetOverlay}
+            accessibilityLabel={t("common.close")}
+            onPress={close}
+          >
+            <Pressable
+              testID={testIDPrefix ? `${testIDPrefix}-sheet` : undefined}
+              style={[styles.sheetCard, { direction: dir }]}
+              onPress={() => {}}
+            >
+              <View style={styles.sheetHeader}>
+                <Text style={[styles.sheetTitle, readingDirection(isRTL)]}>{label}</Text>
+                <Pressable
+                  testID={testIDPrefix ? `${testIDPrefix}-close` : undefined}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("common.close")}
+                  hitSlop={8}
+                  onPress={close}
+                  style={({ pressed }) => [styles.sheetClose, pressed && styles.buttonPressed]}
+                >
+                  <AppIcon name="close" size={22} color={colors.inkMuted} />
+                </Pressable>
+              </View>
+              {options.length > SELECT_SEARCH_LIMIT ? (
+                <SearchField
+                  testID={testIDPrefix ? `${testIDPrefix}-search` : undefined}
+                  value={query}
+                  onChangeText={setQuery}
+                />
+              ) : null}
+              <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
+                {sheetOptions.length === 0 ? (
+                  <Text style={styles.body}>
+                    {t("common.noResultsBody", { query: query.trim() })}
+                  </Text>
+                ) : (
+                  renderOptions(sheetOptions, close)
+                )}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
 
-const badgeStyles = StyleSheet.create({
-  neutral: { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
-  brand: { backgroundColor: colors.brandSoft, borderColor: colors.brandSoftStrong },
-  success: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
-  warning: { backgroundColor: colors.warningSoft, borderColor: colors.warningBorder },
-  danger: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerBorder },
-});
+const useStyles = createThemedStyles((colors) => {
+  const badgeStyles = StyleSheet.create({
+    neutral: { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
+    brand: { backgroundColor: colors.brandSoft, borderColor: colors.brandSoftStrong },
+    success: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
+    warning: { backgroundColor: colors.warningSoft, borderColor: colors.warningBorder },
+    danger: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerBorder },
+  });
 
-const badgeTextStyles = StyleSheet.create({
-  neutral: { color: colors.inkMuted },
-  brand: { color: colors.brand },
-  success: { color: colors.success },
-  warning: { color: colors.warning },
-  danger: { color: colors.danger },
-});
+  const badgeTextStyles = StyleSheet.create({
+    neutral: { color: colors.inkMuted },
+    brand: { color: colors.brand },
+    success: { color: colors.success },
+    warning: { color: colors.warning },
+    danger: { color: colors.danger },
+  });
 
-const badgeDotColor = {
-  neutral: colors.inkSubtle,
-  brand: colors.brand,
-  success: colors.success,
-  warning: colors.warning,
-  danger: colors.danger,
-} as const;
+  const badgeDotColor = {
+    neutral: colors.inkSubtle,
+    brand: colors.brand,
+    success: colors.success,
+    warning: colors.warning,
+    danger: colors.danger,
+  } as const;
 
-const surfaceToneStyles = StyleSheet.create({
-  default: { backgroundColor: colors.surface },
-  muted: { backgroundColor: colors.surfaceMuted },
-  brand: { backgroundColor: colors.brandSoft, borderColor: colors.brandSoftStrong },
-  accent: { backgroundColor: colors.accentSoft, borderColor: colors.accentSoft },
-});
+  const surfaceToneStyles = StyleSheet.create({
+    default: { backgroundColor: colors.surface },
+    muted: { backgroundColor: colors.surfaceMuted },
+    // Calm by default: emphasis tones no longer tint whole cards. Colour is reserved for status and
+    // the primary action, so these render as plain surfaces.
+    brand: { backgroundColor: colors.surface },
+    accent: { backgroundColor: colors.surface },
+  });
 
-const noticeStyles = StyleSheet.create({
-  info: { backgroundColor: colors.infoSoft, borderColor: "#CFE0F0" },
-  success: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
-  warning: { backgroundColor: colors.warningSoft, borderColor: colors.warningBorder },
-  danger: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerBorder },
-});
+  const noticeStyles = StyleSheet.create({
+    info: { backgroundColor: colors.surfaceMuted, borderColor: colors.borderSoft },
+    success: { backgroundColor: colors.successSoft, borderColor: colors.successBorder },
+    warning: { backgroundColor: colors.warningSoft, borderColor: colors.warningBorder },
+    danger: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerBorder },
+  });
 
-const noticeInk = {
-  info: colors.info,
-  success: colors.success,
-  warning: colors.warning,
-  danger: colors.danger,
-} as const;
+  const noticeInk = {
+    info: colors.inkMuted,
+    success: colors.success,
+    warning: colors.warning,
+    danger: colors.danger,
+  } as const;
 
-const noticeIconBg = {
-  info: "#DCE8F4",
-  success: "#D3E7DA",
-  warning: "#EFE0C4",
-  danger: "#F3D6CC",
-} as const;
+  // Tonal borders also provide the stronger fill behind notice icons.
+  const noticeIconBg = {
+    info: "transparent",
+    success: colors.successBorder,
+    warning: colors.warningBorder,
+    danger: colors.dangerBorder,
+  } as const;
 
-export const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.canvas },
-  container: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.xl,
-  },
-  scrollContent: {
-    alignItems: "center",
-    padding: spacing.xl,
-    paddingBottom: layout.navigationClearance + spacing.xl,
-  },
-  scrollContentWithAction: { paddingBottom: layout.navigationClearance + 96 },
-  page: { width: "100%", maxWidth: layout.contentMaxWidth, gap: spacing.lg },
-  pageWide: { maxWidth: layout.wideContentMaxWidth },
-  persistentActionLayer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: layout.navigationClearance + spacing.sm,
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-  },
-  persistentActionContent: { width: "100%", maxWidth: layout.contentMaxWidth },
-  persistentActionContentWide: { maxWidth: layout.wideContentMaxWidth },
-  actionDock: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceRaised,
-    ...shadows.raised,
-  },
-  actionDockButton: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 42,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  actionDockButtonPrimary: { backgroundColor: colors.brand },
-  actionDockLabel: { color: colors.brand, fontSize: 12, fontWeight: "800" },
-  actionDockLabelPrimary: { color: colors.white },
-  pageHeader: { gap: spacing.md, marginBottom: spacing.sm },
-  pageHeaderRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.md,
-  },
-  pageHeaderMain: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-  },
-  pageHeaderBack: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.pill,
-    backgroundColor: colors.brandSoft,
-    borderWidth: 1,
-    borderColor: colors.brandSoftStrong,
-  },
-  pageHeaderCopy: { flex: 1, minWidth: 0, alignItems: "stretch", gap: 3 },
-  pageHeaderMeta: {
-    minHeight: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  pageHeaderDescription: {
-    width: "100%",
-    maxWidth: 640,
-    color: colors.inkMuted,
-    ...typography.body,
-  },
-  pageHeaderAction: {
-    maxWidth: "100%",
-    flexShrink: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.lg,
-    padding: 4,
-    backgroundColor: colors.surfaceRaised,
-    ...shadows.card,
-  },
-  pageHeaderRule: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  pageHeaderRuleAccent: {
-    width: 44,
-    height: 3,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  pageHeaderRuleLine: { flex: 1, height: 1, backgroundColor: colors.borderSoft },
-  surface: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    ...shadows.card,
-  },
-  formSection: {
-    width: "100%",
-    maxWidth: layout.formMaxWidth,
-    alignSelf: "center",
-    gap: spacing.lg,
-  },
-  formSectionHeader: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  formSectionIcon: {
-    width: 42,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-    borderWidth: 1,
-    borderColor: colors.brandSoftStrong,
-  },
-  formSectionCopy: { flex: 1, gap: spacing.xs },
-  sectionDescription: { color: colors.inkMuted, ...typography.caption },
-  notice: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-  },
-  noticeIcon: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.sm,
-  },
-  noticeCopy: { flex: 1, gap: spacing.xs },
-  noticeTitle: { ...typography.cardTitle },
-  noticeMessage: { ...typography.body },
-  noticeAction: { marginTop: spacing.xs },
-  searchField: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface,
-  },
-  searchInput: { flex: 1, minHeight: 48, color: colors.ink, fontSize: 16, fontWeight: "500" },
-  clearSearch: {
-    minWidth: layout.touchTarget,
-    minHeight: layout.touchTarget,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterChips: { gap: spacing.sm, paddingVertical: spacing.xs },
-  filterChip: {
-    minHeight: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.surface,
-  },
-  filterChipActive: { borderColor: colors.brand, backgroundColor: colors.brand },
-  filterChipText: { color: colors.inkMuted, fontSize: 13, fontWeight: "700" },
-  filterChipTextActive: { color: colors.white },
-  accordionTrigger: {
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-  },
-  accordionTriggerExpanded: {
-    borderColor: colors.brandSoftStrong,
-    backgroundColor: colors.brandSoft,
-  },
-  accordionIcon: {
-    width: 42,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  accordionIconExpanded: { backgroundColor: colors.brand },
-  accordionCopy: { flex: 1, gap: 2 },
-  accordionTitle: { color: colors.ink, ...typography.cardTitle },
-  accordionDescription: { color: colors.inkMuted, ...typography.caption },
-  metricCard: {
-    flexGrow: 1,
-    flexBasis: "30%",
-    minWidth: 120,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.xs,
-    backgroundColor: colors.surface,
-    ...shadows.card,
-  },
-  metricIcon: {
-    width: 38,
-    height: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.sm,
-    backgroundColor: colors.brandSoft,
-    marginBottom: spacing.xs,
-  },
-  metricValue: {
-    color: colors.ink,
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: "800",
-    letterSpacing: -0.4,
-  },
-  metricLabel: { color: colors.inkMuted, ...typography.caption },
-  summaryStrip: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-  },
-  summaryMetric: {
-    flexGrow: 1,
-    flexBasis: 150,
-    minHeight: 54,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-  },
-  summaryMetricIcon: {
-    width: 34,
-    height: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.sm,
-  },
-  summaryMetricCopy: { flex: 1, minWidth: 0, gap: 1 },
-  summaryMetricValue: { color: colors.ink, fontSize: 18, lineHeight: 23, fontWeight: "800" },
-  summaryMetricLabel: { color: colors.inkMuted, fontSize: 10, lineHeight: 14, fontWeight: "700" },
-  responsiveList: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  responsiveListItem: { width: "100%" },
-  responsiveListItemWide: { width: "48.8%", flexGrow: 1 },
-  badge: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: radius.pill,
-    paddingVertical: 4,
-    paddingHorizontal: spacing.md,
-  },
-  badgeDot: { width: 6, height: 6, borderRadius: radius.pill },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-  row: {
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-    backgroundColor: colors.surfaceRaised,
-    ...shadows.card,
-  },
-  rowInteractive: {},
-  rowContent: { flex: 1, gap: spacing.sm },
-  rowCompact: { minHeight: 62, padding: spacing.md, borderRadius: radius.md },
-  rowContentCompact: { gap: spacing.xs },
-  rowPressed: { opacity: 0.9, transform: [{ scale: 0.992 }] },
-  card: {
-    width: "100%",
-    maxWidth: 460,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
-    backgroundColor: colors.surface,
-    padding: spacing.xxl,
-    gap: spacing.lg,
-    ...shadows.raised,
-  },
-  eyebrow: {
-    color: colors.accent,
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-  },
-  title: { color: colors.ink, ...typography.sectionTitle },
-  pageTitle: { width: "100%", flexShrink: 1, color: colors.ink, ...typography.pageTitle },
-  body: { color: colors.inkMuted, ...typography.body },
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
-    padding: spacing.lg,
-  },
-  button: {
-    minHeight: 52,
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.brand,
-    borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.xl,
-    alignItems: "center",
-    ...shadows.card,
-  },
-  buttonSecondary: {
-    backgroundColor: colors.brandSoft,
-    borderWidth: 1,
-    borderColor: colors.brandSoftStrong,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  buttonPressed: { opacity: 0.88, transform: [{ scale: 0.985 }] },
-  buttonDisabled: { opacity: 0.45 },
-  buttonDanger: { backgroundColor: colors.danger },
-  buttonDangerArmed: { backgroundColor: colors.accentStrong },
-  buttonText: { color: colors.white, fontSize: 15, fontWeight: "800", letterSpacing: 0.2 },
-  buttonTextSecondary: { color: colors.brand },
-  headerButton: {
-    width: 42,
-    minHeight: 42,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brand,
-    ...shadows.card,
-  },
-  headerButtonSecondary: {
-    borderWidth: 1,
-    borderColor: colors.brandSoftStrong,
-    backgroundColor: colors.brandSoft,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  textButton: {
-    minHeight: 40,
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  textButtonLabel: { color: colors.brand, fontSize: 14, fontWeight: "800" },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSoft,
-  },
-  infoLabel: { color: colors.inkMuted, fontSize: 14, fontWeight: "600" },
-  infoValue: {
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: "700",
-    flexShrink: 1,
-  },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
-  sectionHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  sectionHeadingMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  sectionMarker: {
-    width: 4,
-    height: 18,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  sectionTitle: { color: colors.ink, ...typography.sectionTitle },
-  sectionDetail: { color: colors.inkSubtle, fontSize: 12, fontWeight: "700" },
-  emptyState: {
-    alignItems: "center",
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: 48,
-    gap: spacing.md,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    ...shadows.card,
-  },
-  emptyIcon: {
-    width: 68,
-    height: 68,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.lg,
-    backgroundColor: colors.brandSoft,
-    borderWidth: 1,
-    borderColor: colors.brandSoftStrong,
-  },
-  emptyTitle: { color: colors.ink, ...typography.pageTitle, textAlign: "center" },
-  emptyMessage: {
-    maxWidth: 380,
-    color: colors.inkMuted,
-    fontSize: 15,
-    fontWeight: "500",
-    lineHeight: 23,
-    textAlign: "center",
-  },
-  emptyAction: { width: "100%", maxWidth: 280, marginTop: spacing.sm },
-  field: { gap: spacing.sm },
-  fieldLabel: { color: colors.ink, fontSize: 13, fontWeight: "700" },
-  requiredMark: { color: colors.danger, fontWeight: "800" },
-  fieldError: { flexDirection: "row", alignItems: "center", gap: 6 },
-  fieldErrorText: {
-    flex: 1,
-    color: colors.danger,
-    fontSize: 13,
-    fontWeight: "600",
-    lineHeight: 18,
-  },
-  fieldHint: { color: colors.inkSubtle, fontSize: 12, fontWeight: "500", lineHeight: 17 },
-  input: {
-    minHeight: 52,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    fontSize: 16,
-    color: colors.ink,
-    backgroundColor: colors.surfaceRaised,
-  },
-  inputDisabled: { backgroundColor: colors.surfaceMuted, color: colors.inkSubtle },
-  inputError: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
-  inputMultiline: { minHeight: 96, textAlignVertical: "top" },
-  checkRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  checkBox: {
-    width: 24,
-    height: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.surfaceRaised,
-  },
-  checkBoxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  checkBoxOff: { opacity: 0.5 },
-  checkLabel: { flex: 1, color: colors.ink, fontSize: 15, fontWeight: "600" },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.lg,
-  },
-  toggleCopy: { flex: 1, gap: 2 },
-  toggleLabel: { color: colors.ink, fontSize: 15, fontWeight: "700" },
-  toggleDescription: { color: colors.inkMuted, ...typography.caption },
-  toggleControl: { padding: 2 },
-  toggleTrack: {
-    width: 48,
-    height: 28,
-    borderRadius: radius.pill,
-    backgroundColor: colors.borderStrong,
-    padding: 3,
-    justifyContent: "center",
-  },
-  toggleTrackOn: { backgroundColor: colors.brand },
-  toggleDisabled: { opacity: 0.5 },
-  toggleKnob: {
-    width: 22,
-    height: 22,
-    borderRadius: radius.pill,
-    backgroundColor: colors.white,
-    ...shadows.card,
-  },
-  toggleKnobOn: { transform: [{ translateX: 20 }] },
-  option: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    backgroundColor: colors.surface,
-  },
-  optionSelected: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
-  optionDisabled: { opacity: 0.45 },
-  optionRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: radius.pill,
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surfaceRaised,
-  },
-  optionRadioOn: { borderColor: colors.brand },
-  optionRadioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: radius.pill,
-    backgroundColor: colors.brand,
-  },
-  optionText: { flex: 1, color: colors.inkMuted, fontSize: 15, fontWeight: "600" },
-  optionTextSelected: { color: colors.brand, fontWeight: "800" },
+  const styles = StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: colors.canvas },
+    keyboardAvoider: { flex: 1 },
+    container: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing.xl,
+    },
+    scrollContent: {
+      alignItems: "center",
+      padding: spacing.xl,
+      paddingBottom: layout.navigationClearance + spacing.xl,
+    },
+    scrollContentWithAction: { paddingBottom: layout.navigationClearance + 96 },
+    page: { width: "100%", maxWidth: layout.contentMaxWidth, gap: spacing.lg },
+    pageWide: { maxWidth: layout.wideContentMaxWidth },
+    persistentActionLayer: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: layout.navigationClearance + spacing.sm,
+      alignItems: "center",
+      paddingHorizontal: spacing.xl,
+    },
+    persistentActionContent: { width: "100%", maxWidth: layout.contentMaxWidth },
+    persistentActionContentWide: { maxWidth: layout.wideContentMaxWidth },
+    actionDock: {
+      minHeight: 58,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+      padding: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surfaceRaised,
+      ...shadows.raised,
+    },
+    actionDockButton: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 42,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    actionDockButtonPrimary: { backgroundColor: colors.brand },
+    actionDockLabel: { color: colors.brand, ...typography.caption, fontWeight: "800" },
+    actionDockLabelPrimary: { color: colors.onBrand },
+    pageHeader: { gap: spacing.md, marginBottom: spacing.sm },
+    pageHeaderRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: spacing.md,
+    },
+    pageHeaderMain: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacing.md,
+    },
+    pageHeaderBack: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.pill,
+      backgroundColor: colors.brandSoft,
+      borderWidth: 1,
+      borderColor: colors.brandSoftStrong,
+    },
+    pageHeaderCopy: { flex: 1, minWidth: 0, alignItems: "stretch", gap: 3 },
+    pageHeaderMeta: {
+      minHeight: 18,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    pageHeaderAction: {
+      maxWidth: "100%",
+      flexShrink: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: spacing.xs,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      borderRadius: radius.lg,
+      padding: 4,
+      backgroundColor: colors.surfaceRaised,
+      ...shadows.card,
+    },
+    pageHeaderRule: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+    pageHeaderRuleAccent: {
+      width: 44,
+      height: 3,
+      borderRadius: radius.pill,
+      backgroundColor: colors.accent,
+    },
+    pageHeaderRuleLine: { flex: 1, height: 1, backgroundColor: colors.borderSoft },
+    surface: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      gap: spacing.md,
+      backgroundColor: colors.surface,
+    },
+    formSection: {
+      width: "100%",
+      maxWidth: layout.formMaxWidth,
+      alignSelf: "center",
+      gap: spacing.lg,
+    },
+    formSectionHeader: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+    formSectionIcon: {
+      width: 42,
+      height: 42,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+      borderWidth: 1,
+      borderColor: colors.brandSoftStrong,
+    },
+    formSectionCopy: { flex: 1, gap: spacing.xs },
+    sectionDescription: { color: colors.inkMuted, ...typography.caption },
+    notice: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacing.md,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.md,
+    },
+    noticeIcon: {
+      width: 28,
+      height: 28,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.sm,
+    },
+    noticeCopy: { flex: 1, gap: spacing.xs },
+    noticeTitle: { ...typography.cardTitle },
+    noticeMessage: { ...typography.bodySmall },
+    noticeAction: { marginTop: spacing.xs },
+    searchField: {
+      minHeight: 52,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      backgroundColor: colors.surface,
+    },
+    searchInput: { flex: 1, minHeight: 48, color: colors.ink, fontSize: 16, fontWeight: "500" },
+    clearSearch: {
+      minWidth: layout.touchTarget,
+      minHeight: layout.touchTarget,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    filterChips: { gap: spacing.sm, paddingVertical: spacing.xs },
+    filterChip: {
+      minHeight: 40,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.lg,
+      backgroundColor: colors.surface,
+    },
+    filterChipActive: { borderColor: colors.brand, backgroundColor: colors.brand },
+    filterChipText: { color: colors.inkMuted, ...typography.label, fontWeight: "700" },
+    filterChipTextActive: { color: colors.onBrand },
+    filterChipCount: {
+      minWidth: 20,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    filterChipCountActive: { backgroundColor: colors.onBrandVeilStrong },
+    filterChipCountText: { color: colors.inkMuted, ...typography.micro, fontWeight: "800" },
+    filterChipCountTextActive: { color: colors.onBrand },
+    accordionTrigger: {
+      minHeight: 72,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      padding: spacing.md,
+      backgroundColor: colors.surface,
+    },
+    accordionTriggerExpanded: {
+      borderColor: colors.brandSoftStrong,
+      backgroundColor: colors.brandSoft,
+    },
+    accordionIcon: {
+      width: 42,
+      height: 42,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    accordionIconExpanded: { backgroundColor: colors.brand },
+    accordionCopy: { flex: 1, gap: 2 },
+    accordionTitle: { color: colors.ink, ...typography.cardTitle },
+    accordionDescription: { color: colors.inkMuted, ...typography.caption },
+    metricCard: {
+      flexGrow: 1,
+      flexBasis: "30%",
+      minWidth: 120,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      gap: spacing.xs,
+      backgroundColor: colors.surface,
+      ...shadows.card,
+    },
+    metricIcon: {
+      width: 38,
+      height: 38,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.sm,
+      backgroundColor: colors.brandSoft,
+      marginBottom: spacing.xs,
+    },
+    metricValue: {
+      color: colors.ink,
+      ...typography.metric,
+      fontWeight: "800",
+      letterSpacing: -0.4,
+    },
+    metricLabel: { color: colors.inkMuted, ...typography.caption, flexShrink: 1 },
+    summaryStrip: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.sm,
+      padding: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+    },
+    summaryMetric: {
+      flexGrow: 1,
+      flexBasis: 150,
+      minHeight: 54,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      paddingHorizontal: spacing.sm,
+    },
+    summaryMetricIcon: {
+      width: 34,
+      height: 34,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.sm,
+    },
+    summaryMetricCopy: { flex: 1, minWidth: 0, gap: 1 },
+    summaryMetricValue: { color: colors.ink, ...typography.cardTitle, fontWeight: "800" },
+    summaryMetricLabel: { color: colors.inkMuted, ...typography.micro, fontWeight: "700" },
+    responsiveList: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+    responsiveListItem: { width: "100%" },
+    responsiveListItemWide: { width: "48.8%", flexGrow: 1 },
+    badge: {
+      alignSelf: "flex-start",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      borderWidth: 1,
+      borderRadius: radius.pill,
+      paddingVertical: 4,
+      paddingHorizontal: spacing.md,
+    },
+    readOnlyChip: {
+      alignSelf: "flex-start",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingVertical: 3,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+    },
+    readOnlyChipText: {
+      color: colors.inkSubtle,
+      ...typography.micro,
+      fontWeight: "800",
+      letterSpacing: 0.5,
+      textTransform: "uppercase",
+    },
+    badgeDot: { width: 6, height: 6, borderRadius: radius.pill },
+    badgeText: {
+      ...typography.micro,
+      fontWeight: "800",
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+    },
+    row: {
+      minHeight: 72,
+      flexDirection: "row",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      gap: spacing.md,
+      backgroundColor: colors.surfaceRaised,
+      ...shadows.card,
+    },
+    rowInteractive: {},
+    rowContent: { flex: 1, gap: spacing.sm },
+    rowCompact: { minHeight: 62, padding: spacing.md, borderRadius: radius.md },
+    rowContentCompact: { gap: spacing.xs },
+    rowPressed: { opacity: 0.9, transform: [{ scale: 0.992 }] },
+    card: {
+      width: "100%",
+      maxWidth: 460,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.xl,
+      backgroundColor: colors.surface,
+      padding: spacing.xxl,
+      gap: spacing.lg,
+      ...shadows.raised,
+    },
+    eyebrow: {
+      color: colors.accent,
+      ...typography.micro,
+      fontWeight: "800",
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+    },
+    title: { color: colors.ink, ...typography.sectionTitle },
+    pageTitle: { width: "100%", flexShrink: 1, color: colors.ink, ...typography.pageTitle },
+    body: { color: colors.inkMuted, ...typography.body },
+    loadingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceMuted,
+      padding: spacing.lg,
+    },
+    skeletonBar: { borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
+    skeletonList: { gap: spacing.md },
+    skeletonRow: {
+      minHeight: 62,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+      backgroundColor: colors.surface,
+    },
+    skeletonTile: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceMuted,
+    },
+    skeletonRowCopy: { flex: 1, gap: spacing.sm },
+    button: {
+      minHeight: 52,
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: spacing.sm,
+      backgroundColor: colors.brand,
+      borderRadius: radius.md,
+      paddingVertical: 14,
+      paddingHorizontal: spacing.xl,
+      alignItems: "center",
+      ...shadows.card,
+    },
+    buttonSecondary: {
+      backgroundColor: colors.brandSoft,
+      borderWidth: 1,
+      borderColor: colors.brandSoftStrong,
+      shadowOpacity: 0,
+      elevation: 0,
+    },
+    buttonPressed: { opacity: 0.88, transform: [{ scale: 0.985 }] },
+    buttonDisabled: { opacity: 0.45 },
+    buttonDanger: { backgroundColor: colors.danger },
+    dialogOverlay: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing.xl,
+      backgroundColor: "rgba(33, 28, 24, 0.45)",
+    },
+    dialogCard: {
+      width: "100%",
+      maxWidth: 400,
+      alignItems: "center",
+      gap: spacing.sm,
+      padding: spacing.xxl,
+      borderRadius: radius.xl,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.border,
+      ...shadows.raised,
+    },
+    dialogIcon: {
+      width: 52,
+      height: 52,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.lg,
+      marginBottom: spacing.xs,
+    },
+    dialogTitle: { color: colors.ink, ...typography.sectionTitle, textAlign: "center" },
+    dialogMessage: {
+      color: colors.inkMuted,
+      ...typography.bodySmall,
+      fontWeight: "500",
+      textAlign: "center",
+    },
+    dialogActions: {
+      flexDirection: "row",
+      gap: spacing.sm,
+      marginTop: spacing.md,
+      width: "100%",
+    },
+    dialogCancel: {
+      flex: 1,
+      minHeight: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      backgroundColor: colors.surface,
+    },
+    dialogCancelText: { color: colors.inkMuted, ...typography.body, fontWeight: "800" },
+    dialogConfirm: {
+      flex: 1,
+      minHeight: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+    },
+    dialogConfirmText: { color: colors.onBrand, ...typography.body, fontWeight: "800" },
+    buttonDangerArmed: { backgroundColor: colors.accentStrong },
+    buttonText: {
+      color: colors.onBrand,
+      ...typography.body,
+      fontWeight: "800",
+      letterSpacing: 0.2,
+    },
+    buttonTextSecondary: { color: colors.brand },
+    headerButton: {
+      width: 42,
+      minHeight: 42,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brand,
+      ...shadows.card,
+    },
+    headerButtonSecondary: {
+      borderWidth: 1,
+      borderColor: colors.brandSoftStrong,
+      backgroundColor: colors.brandSoft,
+      shadowOpacity: 0,
+      elevation: 0,
+    },
+    textButton: {
+      minHeight: 40,
+      alignSelf: "flex-start",
+      // Never push past the card edge: shrink and wrap inside narrow rows (long Arabic labels).
+      flexShrink: 1,
+      maxWidth: "100%",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    textButtonLabel: {
+      flexShrink: 1,
+      color: colors.brand,
+      ...typography.bodySmall,
+      fontWeight: "800",
+    },
+    infoRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: spacing.lg,
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSoft,
+    },
+    infoLabel: { color: colors.inkMuted, ...typography.bodySmall, fontWeight: "600" },
+    infoValue: {
+      color: colors.ink,
+      ...typography.bodySmall,
+      fontWeight: "700",
+      flexShrink: 1,
+    },
+    divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
+    sectionHeading: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.md,
+      marginTop: spacing.md,
+      marginBottom: spacing.xs,
+    },
+    sectionHeadingMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+    sectionTitle: { color: colors.ink, ...typography.sectionTitle },
+    sectionDetail: { color: colors.inkSubtle, ...typography.caption, fontWeight: "700" },
+    detailCard: { gap: spacing.xs, shadowOpacity: 0, elevation: 0 },
+    detailCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.md,
+      marginBottom: spacing.xs,
+    },
+    detailCardTitle: {
+      flexShrink: 1,
+      color: colors.inkMuted,
+      ...typography.label,
+      fontWeight: "700",
+    },
+    disclosure: { gap: spacing.sm },
+    disclosureTrigger: {
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.xs,
+    },
+    disclosureLabel: { color: colors.inkMuted, ...typography.bodySmall, fontWeight: "700" },
+    disclosureBody: { gap: spacing.md },
+    emptyState: {
+      alignItems: "center",
+      paddingHorizontal: spacing.xxl,
+      paddingVertical: 48,
+      gap: spacing.md,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      ...shadows.card,
+    },
+    emptyArt: {
+      width: 128,
+      height: 128,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: spacing.xs,
+    },
+    emptyHaloOuter: {
+      position: "absolute",
+      width: 128,
+      height: 128,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      backgroundColor: colors.canvasWarm,
+    },
+    emptyHaloInner: {
+      position: "absolute",
+      width: 98,
+      height: 98,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.brandSoftStrong,
+      backgroundColor: colors.brandSoft,
+    },
+    emptyIcon: {
+      width: 68,
+      height: 68,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.brandSoftStrong,
+      ...shadows.card,
+    },
+    emptyArtDot: {
+      position: "absolute",
+      top: 16,
+      right: 20,
+      width: 14,
+      height: 14,
+      borderRadius: radius.pill,
+      backgroundColor: colors.accent,
+      borderWidth: 3,
+      borderColor: colors.surface,
+    },
+    emptyTitle: { color: colors.ink, ...typography.sectionTitle, textAlign: "center" },
+    emptyMessage: {
+      maxWidth: 380,
+      color: colors.inkMuted,
+      ...typography.body,
+      fontWeight: "500",
+      lineHeight: 23,
+      textAlign: "center",
+    },
+    emptyAction: { width: "100%", maxWidth: 280, marginTop: spacing.sm },
+    field: { gap: spacing.sm },
+    fieldLabel: { color: colors.ink, ...typography.label, fontWeight: "700" },
+    requiredMark: { color: colors.danger, fontWeight: "800" },
+    fieldError: { flexDirection: "row", alignItems: "center", gap: 6 },
+    fieldErrorText: {
+      flex: 1,
+      color: colors.danger,
+      ...typography.label,
+      fontWeight: "600",
+      lineHeight: 18,
+    },
+    fieldHint: {
+      color: colors.inkSubtle,
+      ...typography.caption,
+      fontWeight: "500",
+      lineHeight: 17,
+    },
+    input: {
+      minHeight: 52,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.md,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      fontSize: 16,
+      color: colors.ink,
+      backgroundColor: colors.surfaceRaised,
+    },
+    inputDisabled: { backgroundColor: colors.surfaceMuted, color: colors.inkSubtle },
+    inputError: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+    inputMultiline: { minHeight: 96, textAlignVertical: "top" },
+    checkRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+      paddingVertical: spacing.xs,
+    },
+    checkBox: {
+      width: 24,
+      height: 24,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 7,
+      borderWidth: 2,
+      borderColor: colors.borderStrong,
+      backgroundColor: colors.surfaceRaised,
+    },
+    checkBoxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+    checkBoxOff: { opacity: 0.5 },
+    checkLabel: { flex: 1, color: colors.ink, ...typography.body, fontWeight: "600" },
+    toggleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.lg,
+    },
+    toggleCopy: { flex: 1, gap: 2 },
+    toggleLabel: { color: colors.ink, ...typography.body, fontWeight: "700" },
+    toggleDescription: { color: colors.inkMuted, ...typography.caption },
+    toggleControl: { padding: 2 },
+    toggleTrack: {
+      width: 48,
+      height: 28,
+      borderRadius: radius.pill,
+      backgroundColor: colors.borderStrong,
+      padding: 3,
+      justifyContent: "center",
+    },
+    toggleTrackOn: { backgroundColor: colors.brand },
+    toggleDisabled: { opacity: 0.5 },
+    toggleKnob: {
+      width: 22,
+      height: 22,
+      borderRadius: radius.pill,
+      // A light disc in both themes — reads on the dark (off) track and the brand (on) track alike.
+      backgroundColor: colors.white,
+      ...shadows.card,
+    },
+    toggleKnobOn: { transform: [{ translateX: 20 }] },
+    option: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      paddingVertical: 13,
+      paddingHorizontal: 14,
+      backgroundColor: colors.surface,
+    },
+    optionSelected: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
+    optionDisabled: { opacity: 0.45 },
+    optionRadio: {
+      width: 20,
+      height: 20,
+      borderRadius: radius.pill,
+      borderWidth: 2,
+      borderColor: colors.borderStrong,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surfaceRaised,
+    },
+    optionRadioOn: { borderColor: colors.brand },
+    optionRadioDot: {
+      width: 10,
+      height: 10,
+      borderRadius: radius.pill,
+      backgroundColor: colors.brand,
+    },
+    optionText: { flex: 1, color: colors.inkMuted, ...typography.body, fontWeight: "600" },
+    optionTextSelected: { color: colors.brand, fontWeight: "800" },
+    selectTrigger: {
+      minHeight: 52,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.md,
+      paddingHorizontal: 14,
+      backgroundColor: colors.surface,
+    },
+    selectTriggerError: { borderColor: colors.danger },
+    selectTriggerText: { flex: 1, color: colors.ink, ...typography.body, fontWeight: "600" },
+    selectTriggerPlaceholder: { color: colors.inkSubtle, fontWeight: "500" },
+    sheetOverlay: {
+      flex: 1,
+      justifyContent: "flex-end",
+      alignItems: "center",
+      backgroundColor: "rgba(33, 28, 24, 0.45)",
+    },
+    sheetCard: {
+      width: "100%",
+      maxWidth: 560,
+      maxHeight: "82%",
+      gap: spacing.md,
+      padding: spacing.xl,
+      paddingBottom: spacing.xxl,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      backgroundColor: colors.surfaceRaised,
+      borderWidth: 1,
+      borderColor: colors.border,
+      ...shadows.raised,
+    },
+    sheetHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.md,
+    },
+    sheetTitle: { flex: 1, color: colors.ink, ...typography.sectionTitle },
+    sheetClose: {
+      minWidth: layout.touchTarget,
+      minHeight: layout.touchTarget,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    sheetList: { flexGrow: 0 },
+  });
+  return {
+    colors,
+    badgeStyles,
+    badgeTextStyles,
+    badgeDotColor,
+    surfaceToneStyles,
+    noticeStyles,
+    noticeInk,
+    noticeIconBg,
+    styles,
+  };
 });

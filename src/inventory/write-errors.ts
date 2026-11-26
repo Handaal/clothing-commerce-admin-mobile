@@ -99,6 +99,20 @@ export function describeInventoryWriteError(
         recovery: "none",
         isConcurrencyConflict: false,
       };
+    case "CHANNELS_NOT_INITIALIZED":
+      return {
+        heading: t("invWriteErr.channelsNotSetUp"),
+        message: t("invWriteErr.channelsNotSetUpMsg"),
+        recovery: "none",
+        isConcurrencyConflict: false,
+      };
+    case "CHANNEL_ALLOCATION_INVALID":
+      return {
+        heading: t("invWriteErr.splitInvalid"),
+        message: t("invWriteErr.splitInvalidMsg"),
+        recovery: "edit",
+        isConcurrencyConflict: false,
+      };
     case "VARIANT_NOT_FOUND":
     case "LOCATION_NOT_FOUND":
       return {

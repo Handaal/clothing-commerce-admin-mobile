@@ -16,6 +16,7 @@ import { useAsync } from "../ui/useAsync";
 import type { SupplierAdapter } from "./adapter";
 import { loadAllSupplierReceipts } from "./load";
 import type { SupplierReceipt } from "./model";
+import { formatDateTime } from "../i18n/format-date";
 
 export interface SupplierReceivingHistoryProps {
   adapter: SupplierAdapter;
@@ -79,10 +80,7 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
       <View style={{ gap: 12 }}>
         {receipts.map((receipt) => (
           <SurfaceRow key={receipt.id} testID={`supplier-receipt-${receipt.id}`}>
-            <SectionHeading
-              title={formatReceiptDate(receipt.receivedAt)}
-              detail={t("supReceiving.stockReceipt")}
-            />
+            <SectionHeading title={formatReceiptDate(receipt.receivedAt)} />
             {receipt.locationName || receipt.locationId ? (
               <InfoRow
                 label={t("supReceiving.destination")}
@@ -116,6 +114,5 @@ export function SupplierReceivingHistory({ adapter, supplierId }: SupplierReceiv
 }
 
 function formatReceiptDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return formatDateTime(value);
 }

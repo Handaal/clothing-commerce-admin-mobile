@@ -17,6 +17,12 @@ export default function StorefrontRoute() {
       onManageCheckout={() => router.push("/settings/commerce")}
       onOpenProducts={() => router.push("/products")}
       onOpenPromotions={() => router.push("/promotions")}
+      onOpenContent={() => router.push("/storefront-content")}
+      onOpenSiteText={() => router.push("/storefront-site-text")}
+      onOpenSales={() => router.push("/sales")}
+      onOpenDelivery={() => router.push("/storefront-delivery")}
+      onOpenSubscribers={() => router.push("/storefront-subscribers")}
+      onOpenReturnRequests={() => router.push("/storefront-returns")}
       onBack={() => router.back()}
     />
   );

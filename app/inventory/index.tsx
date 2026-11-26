@@ -19,6 +19,7 @@ export default function InventoryRoute() {
       tenantId={state.tenantId}
       context={state.context}
       onBack={() => goBackOrReplace(router, "/")}
+      onReceiveNew={() => router.push("/inventory/receive")}
     />
   );
 }

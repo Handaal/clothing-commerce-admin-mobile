@@ -9,55 +9,59 @@ import { resolveSupplierAdapter } from "../suppliers/adapter";
 import { loadAllSuppliers } from "../suppliers/load";
 import type { SupplierSummary } from "../suppliers/model";
 import {
-  type ActionDockItem,
   Badge,
   EmptyState,
-  HeaderIconButton,
-  LoadingBlock,
+  FilterChips,
   Notice,
   PageHeader,
+  PressableRow,
   PrimaryButton,
   ResponsiveList,
   ScrollScreen,
   SearchField,
-  SectionHeading,
   type SelectOption,
-  Surface,
-  SurfaceRow,
+  SkeletonRows,
   SummaryStrip,
 } from "../ui/components";
 import { AppIcon } from "../ui/Icon";
-import { colors, radius, spacing } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
-import { InventoryOperations, type InventoryOperationKind } from "./InventoryOperations";
-import {
-  createDurableJournalStore,
-  quarantineLegacyV1,
-  readLegacyV1Unresolved,
-} from "./journal/durable-store";
-import { createInventoryJournal } from "./journal/journal";
-import type { JournalOwner } from "./journal/model";
-import { secureIdempotencyKey } from "./idempotency";
+import { quarantineLegacyV1 } from "./journal/durable-store";
+import { InventoryRecoveryPanel } from "./journal/InventoryRecoveryPanel";
 import { loadAllInventory, type InventoryItem } from "./load";
+import { StockItemSheet } from "./StockItemSheet";
+import { useInventoryJournal } from "./useInventoryJournal";
 
 export interface InventoryScreenProps {
   tenantId: string;
   context: MeContextResponse;
   onBack?: () => void;
+  /** Open "Receive new stock" (the POS Add-product flow). */
+  onReceiveNew?: () => void;
+  /** Open the Website / POS stock split (ADR-042). */
+  onOpenSplit?: () => void;
 }
 
-/** Inventory visibility and the three explicitly authorized management operations. */
-export function InventoryScreen({ tenantId, context }: InventoryScreenProps) {
+const ALL_LOCATIONS = "all";
+/** At or below this many pieces an item is flagged as running low. */
+const LOW_STOCK = 5;
+
+/**
+ * Stock — the POS inventory desk on mobile. "Receive new stock" adds a brand-new item with its sizes and
+ * quantities; tapping any item opens its actions (Edit details · Restock · Count · Transfer).
+ */
+export function InventoryScreen({
+  tenantId,
+  context,
+  onReceiveNew,
+  onOpenSplit,
+}: InventoryScreenProps) {
   const { t } = useI18n();
   if (!context.access.inventory.canRead) {
     return (
       <ScrollScreen wide>
-        <PageHeader
-          eyebrow={t("inventory.eyebrow")}
-          title={t("inventory.title")}
-          description={t("inventory.headerNoAccessDesc")}
-          icon="warehouse"
-        />
+        <PageHeader title={t("inventory.title")} icon="warehouse" />
         <Notice
           tone="warning"
           title={t("inventory.accessTitle")}
@@ -66,27 +70,29 @@ export function InventoryScreen({ tenantId, context }: InventoryScreenProps) {
       </ScrollScreen>
     );
   }
-
-  return <InventoryContent tenantId={tenantId} context={context} />;
+  return (
+    <StockContent
+      tenantId={tenantId}
+      context={context}
+      onReceiveNew={onReceiveNew}
+      onOpenSplit={onOpenSplit}
+    />
+  );
 }
 
-function InventoryContent({ tenantId, context }: Omit<InventoryScreenProps, "onBack">) {
+function StockContent({
+  tenantId,
+  context,
+  onReceiveNew,
+  onOpenSplit,
+}: Omit<InventoryScreenProps, "onBack">) {
+  const { styles, colors } = useStyles();
   const { getTenantClient } = useSession();
   const client = getTenantClient(tenantId);
   const { t } = useI18n();
-  const [activeOperation, setActiveOperation] = useState<InventoryOperationKind | null>(null);
-  const [scrollToTopSignal, setScrollToTopSignal] = useState(0);
-  const owner = useMemo<JournalOwner>(
-    () => ({ tenantId, membershipId: context.membership.id }),
-    [tenantId, context.membership.id],
-  );
-  const journal = useMemo(
-    () => createInventoryJournal(createDurableJournalStore(owner), owner, secureIdempotencyKey),
-    [owner],
-  );
-  const detectLegacy = useCallback(() => readLegacyV1Unresolved(owner), [owner]);
+  const { journal, detectLegacy } = useInventoryJournal(tenantId, context);
   const load = useCallback(() => loadAllInventory(client), [client]);
-  const { state, reload } = useAsync<InventoryItem[]>(load);
+  const { state, reload, refresh, refreshing } = useAsync<InventoryItem[]>(load);
 
   const supplierAdapter = useMemo(
     () => (context.access.suppliers?.canRead ? resolveSupplierAdapter(client) : null),
@@ -100,119 +106,87 @@ function InventoryContent({ tenantId, context }: Omit<InventoryScreenProps, "onB
     [supplierAdapter],
   );
   const suppliers = useAsync<SupplierSummary[]>(loadSuppliers);
-  const receiveSuppliers = useMemo<SelectOption[] | undefined>(
+  const supplierOptions = useMemo<SelectOption[] | undefined>(
     () =>
       suppliers.state.status === "success"
-        ? suppliers.state.data.map((supplier) => ({
-            value: supplier.id,
-            label: supplier.referenceCode
-              ? `${supplier.name} · ${supplier.referenceCode}`
-              : supplier.name,
+        ? suppliers.state.data.map((s) => ({
+            value: s.id,
+            label: s.referenceCode ? `${s.name} · ${s.referenceCode}` : s.name,
           }))
         : undefined,
     [suppliers.state],
   );
 
-  const locationNameById = useMemo(
-    () =>
-      new Map(context.access.inventory.locations.map((location) => [location.id, location.name])),
+  const locationNames = useMemo(
+    () => new Map(context.access.inventory.locations.map((l) => [l.id, l.name])),
     [context.access.inventory.locations],
   );
-  const [concurrencyNotice, setConcurrencyNotice] = useState(false);
+  const locationName = useCallback((id: string) => locationNames.get(id) ?? id, [locationNames]);
+
+  // Fail closed: stock changes stay hidden until the recovery journal has been checked.
+  const [writesReady, setWritesReady] = useState(false);
+  const [storageFailed, setStorageFailed] = useState(false);
+  const onAvailabilityChange = useCallback((available: boolean) => {
+    setWritesReady(available);
+    if (available) setStorageFailed(false);
+  }, []);
+  const writesAvailable = writesReady && !storageFailed;
+
+  const [selected, setSelected] = useState<InventoryItem | null>(null);
+  const [conflictNotice, setConflictNotice] = useState(false);
   const [search, setSearch] = useState("");
-  const refreshAfterConcurrency = useCallback(() => {
-    setActiveOperation(null);
-    setConcurrencyNotice(true);
+  const [location, setLocation] = useState<string>(ALL_LOCATIONS);
+
+  const onConflict = useCallback(() => {
+    setSelected(null);
+    setConflictNotice(true);
     reload();
   }, [reload]);
 
+  const items = useMemo(() => (state.status === "success" ? state.data : []), [state]);
+  const locationsWithStock = useMemo(
+    () => [...new Set(items.map((i) => i.inventoryLocationId))],
+    [items],
+  );
   const visibleItems = useMemo(() => {
-    if (state.status !== "success") return [];
     const term = search.trim().toLowerCase();
-    if (!term) return state.data;
-    return state.data.filter((item) => {
-      const locationName =
-        locationNameById.get(item.inventoryLocationId) ?? item.inventoryLocationId;
-      return [item.productName, item.sku, locationName].some((value) =>
-        value.toLowerCase().includes(term),
+    return items.filter((item) => {
+      if (location !== ALL_LOCATIONS && item.inventoryLocationId !== location) return false;
+      if (!term) return true;
+      return [item.productName, item.sku, locationName(item.inventoryLocationId)].some((v) =>
+        v.toLowerCase().includes(term),
       );
     });
-  }, [locationNameById, search, state]);
+  }, [items, location, locationName, search]);
+  const units = visibleItems.reduce((sum, item) => sum + item.onHand, 0);
+  const lowCount = visibleItems.filter((item) => item.onHand <= LOW_STOCK).length;
 
-  const visibleLocationCount = useMemo(
-    () => new Set(visibleItems.map((item) => item.inventoryLocationId)).size,
-    [visibleItems],
-  );
-
-  const requestOperation = useCallback((kind: InventoryOperationKind) => {
-    setActiveOperation(kind);
-    setScrollToTopSignal((signal) => signal + 1);
-  }, []);
-
-  const headerActions: ActionDockItem[] = [];
-  if (state.status === "success" && state.data.length > 0) {
-    if (context.access.inventory.write.canReceive) {
-      headerActions.push({
-        label: t("invOps.tabReceive"),
-        icon: "package-down",
-        onPress: () => requestOperation("receive"),
-        testID: "inventory-action-receive",
-      });
-    }
-    if (context.access.inventory.write.canAdjust) {
-      headerActions.push({
-        label: t("invOps.tabAdjust"),
-        icon: "clipboard-check-outline",
-        onPress: () => requestOperation("adjust"),
-        testID: "inventory-action-adjust",
-        emphasis: headerActions.length === 0 ? "primary" : "secondary",
-      });
-    }
-    if (context.access.inventory.write.canTransfer) {
-      headerActions.push({
-        label: t("invOps.tabTransfer"),
-        icon: "swap-horizontal",
-        onPress: () => requestOperation("transfer"),
-        testID: "inventory-action-transfer",
-        emphasis: headerActions.length === 0 ? "primary" : "secondary",
-      });
-    }
-    if (headerActions.length === 0) {
-      headerActions.push({
-        label: t("inventory.refresh"),
-        icon: "refresh",
-        onPress: reload,
-        testID: "inventory-action-refresh",
-      });
-    }
-  }
+  const canReceiveNew =
+    !!onReceiveNew && context.access.inventory.write.canReceive && context.access.catalog.canRead;
 
   return (
-    <ScrollScreen wide scrollToTopSignal={scrollToTopSignal}>
-      <PageHeader
-        eyebrow={t("inventory.eyebrow")}
-        title={t("inventory.title")}
-        description={t("inventory.headerDesc")}
-        icon="warehouse"
-        action={
-          headerActions.length > 0 ? (
-            <View style={inventoryStyles.headerActions}>
-              {headerActions.map((action, index) => (
-                <HeaderIconButton
-                  key={`${action.label}-${index}`}
-                  label={action.label}
-                  icon={action.icon}
-                  testID={action.testID}
-                  variant={action.emphasis === "secondary" ? "secondary" : "primary"}
-                  onPress={action.onPress}
-                />
-              ))}
-            </View>
-          ) : undefined
-        }
-      />
+    <ScrollScreen wide onRefresh={refresh} refreshing={refreshing}>
+      <PageHeader title={t("inventory.title")} icon="warehouse" />
 
-      {concurrencyNotice ? (
+      {canReceiveNew && onReceiveNew ? (
+        <PrimaryButton
+          testID="stock-receive-new"
+          icon="package-variant-plus"
+          label={t("receive.title")}
+          onPress={onReceiveNew}
+        />
+      ) : null}
+      {onOpenSplit && context.access.inventory.locations.length > 0 ? (
+        <PrimaryButton
+          testID="stock-open-split"
+          icon="call-split"
+          variant="secondary"
+          label={t("split.entry")}
+          onPress={onOpenSplit}
+        />
+      ) : null}
+
+      {conflictNotice ? (
         <Notice
           testID="inventory-concurrency-notice"
           tone="warning"
@@ -220,35 +194,36 @@ function InventoryContent({ tenantId, context }: Omit<InventoryScreenProps, "onB
           message={t("inventory.changedBody")}
           action={
             <PrimaryButton
-              label={t("inventory.reviewRefreshed")}
-              icon="refresh"
+              label={t("common.dismiss")}
               variant="secondary"
-              onPress={() => setConcurrencyNotice(false)}
+              onPress={() => setConflictNotice(false)}
             />
           }
         />
       ) : null}
 
       {state.status === "success" ? (
-        <Surface tone="accent">
-          <InventoryOperations
-            client={client}
-            journal={journal}
-            locations={context.access.inventory.locations}
-            write={context.access.inventory.write}
-            items={state.data}
-            onRefresh={reload}
-            onConcurrencyConflict={refreshAfterConcurrency}
-            receiveSuppliers={receiveSuppliers}
-            detectLegacy={detectLegacy}
-            quarantineLegacy={quarantineLegacyV1}
-            activeOperation={activeOperation}
-            onActiveOperationChange={setActiveOperation}
-          />
-        </Surface>
+        <InventoryRecoveryPanel
+          journal={journal}
+          client={client}
+          items={state.data}
+          locations={context.access.inventory.locations}
+          onResolved={reload}
+          detectLegacy={detectLegacy}
+          quarantineLegacy={quarantineLegacyV1}
+          onAvailabilityChange={onAvailabilityChange}
+        />
+      ) : null}
+      {storageFailed ? (
+        <Notice
+          testID="inventory-writes-unavailable"
+          tone="danger"
+          title={t("invOps.storagePausedTitle")}
+          message={t("invOps.storagePausedMsg")}
+        />
       ) : null}
 
-      {state.status === "loading" ? <LoadingBlock label={t("inventory.loading")} /> : null}
+      {state.status === "loading" ? <SkeletonRows testID="inventory-loading" /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -261,43 +236,45 @@ function InventoryContent({ tenantId, context }: Omit<InventoryScreenProps, "onB
           }
         />
       ) : null}
-      {state.status === "success" && state.data.length === 0 ? (
+
+      {state.status === "success" && items.length === 0 ? (
         <EmptyState
           icon="package-variant-closed"
           title={t("inventory.emptyTitle")}
           message={t("inventory.emptyBody")}
-          action={<PrimaryButton label={t("inventory.refresh")} icon="refresh" onPress={reload} />}
         />
       ) : null}
-      {state.status === "success" && state.data.length > 0 ? (
-        <>
-          <View style={inventoryStyles.catalogHeader}>
-            <SectionHeading
-              title={t("inventory.overviewHeading")}
-              detail={t("common.shown", { count: visibleItems.length })}
-            />
-            <SearchField
-              value={search}
-              onChangeText={setSearch}
-              placeholder={t("inventory.searchPlaceholder")}
-              testID="inventory-search"
-            />
-          </View>
 
+      {state.status === "success" && items.length > 0 ? (
+        <>
+          {locationsWithStock.length > 1 ? (
+            <FilterChips
+              testIDPrefix="stock-location"
+              selected={location}
+              onSelect={setLocation}
+              options={[
+                { value: ALL_LOCATIONS, label: t("stock.allLocations") },
+                ...locationsWithStock.map((id) => ({ value: id, label: locationName(id) })),
+              ]}
+            />
+          ) : null}
+          <SearchField
+            value={search}
+            onChangeText={setSearch}
+            placeholder={t("inventory.searchPlaceholder")}
+            testID="inventory-search"
+          />
           <SummaryStrip
             testID="inventory-summary"
             items={[
+              { label: t("stock.items"), value: String(visibleItems.length), icon: "hanger" },
               {
-                label: t("inventory.stockRows"),
-                value: String(state.data.length),
-                icon: "format-list-bulleted",
-              },
-              {
-                label: t("inventory.locationsShown"),
-                value: String(visibleLocationCount),
-                icon: "map-marker-outline",
+                label: t("stock.units"),
+                value: String(units),
+                icon: "package-variant",
                 tone: "accent",
               },
+              { label: t("stock.low"), value: String(lowCount), icon: "alert-circle-outline" },
             ]}
           />
 
@@ -310,90 +287,90 @@ function InventoryContent({ tenantId, context }: Omit<InventoryScreenProps, "onB
                 <PrimaryButton
                   label={t("inventory.clearSearch")}
                   icon="close-circle-outline"
-                  onPress={() => setSearch("")}
+                  onPress={() => {
+                    setSearch("");
+                    setLocation(ALL_LOCATIONS);
+                  }}
                 />
               }
             />
           ) : (
             <ResponsiveList>
               {visibleItems.map((item) => {
-                const itemKey = `${item.inventoryLocationId}:${item.variantId}`;
-                const locationName =
-                  locationNameById.get(item.inventoryLocationId) ?? item.inventoryLocationId;
+                const key = `${item.inventoryLocationId}:${item.variantId}`;
                 return (
-                  <SurfaceRow key={itemKey} testID={`inventory-row-${itemKey}`} density="compact">
-                    <View style={inventoryStyles.stockIcon}>
-                      <AppIcon name="hanger" size={22} color={colors.brand} />
-                    </View>
-                    <View style={inventoryStyles.stockCopy}>
-                      <View style={inventoryStyles.stockTitleRow}>
-                        <Text style={inventoryStyles.stockName}>{item.productName}</Text>
-                        <Badge
-                          label={String(item.onHand)}
-                          tone={
-                            item.onHand === 0 ? "danger" : item.onHand <= 5 ? "warning" : "neutral"
-                          }
-                          testID={`inventory-onhand-${itemKey}`}
-                        />
+                  <PressableRow
+                    key={key}
+                    testID={`inventory-row-${key}`}
+                    density="compact"
+                    onPress={() => setSelected(item)}
+                  >
+                    <View style={styles.row}>
+                      <View style={styles.icon}>
+                        <AppIcon name="hanger" size={20} color={colors.brand} />
                       </View>
-                      <View style={inventoryStyles.stockMetadata}>
-                        <Text style={inventoryStyles.skuText}>{item.sku}</Text>
-                        <View style={inventoryStyles.metadataDot} />
-                        <AppIcon name="map-marker-outline" size={14} color={colors.inkSubtle} />
-                        <Text numberOfLines={1} style={inventoryStyles.locationText}>
-                          {locationName}
+                      <View style={styles.copy}>
+                        <Text numberOfLines={1} style={styles.name}>
+                          {item.productName}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.meta}>
+                          {item.sku} · {locationName(item.inventoryLocationId)}
                         </Text>
                       </View>
+                      <Badge
+                        label={String(item.onHand)}
+                        tone={
+                          item.onHand === 0
+                            ? "danger"
+                            : item.onHand <= LOW_STOCK
+                              ? "warning"
+                              : "neutral"
+                        }
+                        testID={`inventory-onhand-${key}`}
+                      />
                     </View>
-                  </SurfaceRow>
+                  </PressableRow>
                 );
               })}
             </ResponsiveList>
           )}
         </>
       ) : null}
+
+      <StockItemSheet
+        // Remount on every open so the sheet always starts at the action menu.
+        key={selected ? `${selected.inventoryLocationId}:${selected.variantId}` : "closed"}
+        item={selected}
+        client={client}
+        journal={journal}
+        write={context.access.inventory.write}
+        canEditDetails={context.access.catalog.canRead}
+        locationName={locationName}
+        suppliers={supplierOptions}
+        writesAvailable={writesAvailable}
+        onClose={() => setSelected(null)}
+        onChanged={reload}
+        onConcurrencyConflict={onConflict}
+        onStorageUnavailable={() => setStorageFailed(true)}
+      />
     </ScrollScreen>
   );
 }
 
-const inventoryStyles = StyleSheet.create({
-  headerActions: {
-    maxWidth: 360,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-    gap: spacing.sm,
-  },
-  catalogHeader: { gap: spacing.md },
-  stockIcon: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  stockCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
-  stockName: { flex: 1, color: colors.ink, fontSize: 16, lineHeight: 21, fontWeight: "800" },
-  stockTitleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.md,
-  },
-  stockMetadata: { flexDirection: "row", alignItems: "center", gap: 5 },
-  skuText: { color: colors.inkMuted, fontSize: 10, lineHeight: 14, fontWeight: "700" },
-  metadataDot: {
-    width: 3,
-    height: 3,
-    borderRadius: radius.pill,
-    backgroundColor: colors.borderStrong,
-  },
-  locationText: {
-    flex: 1,
-    color: colors.inkMuted,
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "600",
-  },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    icon: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    copy: { flex: 1, minWidth: 0, gap: 2 },
+    name: { color: colors.ink, ...typography.cardTitle },
+    meta: { color: colors.inkMuted, ...typography.caption },
+  });
+  return { colors, styles };
 });

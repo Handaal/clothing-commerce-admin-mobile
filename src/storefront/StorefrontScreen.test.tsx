@@ -20,7 +20,12 @@ vi.mock("../session/SessionProvider", () => ({
   useSession: () => ({ getTenantClient: mocks.getTenantClient }),
 }));
 vi.mock("../settings/adapter", () => ({
-  resolveSettingsAdapter: () => ({ getCommerce: mocks.getCommerce }),
+  resolveSettingsAdapter: () => ({
+    getCommerce: mocks.getCommerce,
+    listInventoryLocationOptions: async () => [
+      { id: "10ca7100-0000-4000-8000-000000000001", label: "Main warehouse" },
+    ],
+  }),
 }));
 
 import { StorefrontScreen } from "./StorefrontScreen";

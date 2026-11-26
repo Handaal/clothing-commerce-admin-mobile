@@ -2,6 +2,7 @@ import type { CollectionDetailResponse, ProductListResponse } from "@shifted/clo
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { CatalogImageField } from "../catalog/CatalogImageField";
 import { describeCatalogWriteError } from "../catalog/write-errors";
 import { secureIdempotencyKey } from "../inventory/idempotency";
 import { useI18n } from "../i18n";
@@ -10,19 +11,23 @@ import { useSession } from "../session/SessionProvider";
 import { AppIcon } from "../ui/Icon";
 import {
   Badge,
+  StatusBadge,
   Body,
   EmptyState,
   LoadingBlock,
   Notice,
   PageHeader,
   PressableRow,
+  FormSection,
   PrimaryButton,
+  TextField,
   ScrollScreen,
   SectionHeading,
   Surface,
   TextButton,
 } from "../ui/components";
-import { colors, radius, spacing, typography } from "../ui/theme";
+import { radius, spacing, typography } from "../ui/theme";
+import { createThemedStyles } from "../ui/useTheme";
 import { useToast } from "../ui/Toast";
 import { useAsync } from "../ui/useAsync";
 import { useMutation } from "../ui/useMutation";
@@ -112,6 +117,7 @@ function ManageContent({
   onBack: () => void;
   reload: () => void;
 }) {
+  const { styles, colors } = useStyles();
   const { t } = useI18n();
   const toast = useToast();
   const { collection } = data.detail;
@@ -173,15 +179,16 @@ function ManageContent({
       <PageHeader
         eyebrow={t("collections.eyebrow")}
         title={collection.name}
-        description={collection.description ?? t("manageCollection.membershipDesc")}
         icon="shape-outline"
         onBack={onBack}
       />
 
+      <CollectionDetailsForm client={client} collection={collection} onSaved={reload} />
+
       <Surface tone="brand" style={styles.statusCard}>
         <View style={styles.statusHeader}>
           <SectionHeading title={t("manageCollection.statusSection")} />
-          <Badge label={collection.status} />
+          <StatusBadge status={collection.status} />
         </View>
         <View style={styles.statusActions}>
           {collection.status !== "active" ? (
@@ -273,22 +280,139 @@ function ManageContent({
   );
 }
 
-const styles = StyleSheet.create({
-  statusCard: { gap: spacing.md },
-  statusHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  statusActions: { gap: spacing.sm },
-  list: { gap: spacing.sm },
-  rowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  check: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    backgroundColor: colors.brandSoft,
-  },
-  checkOn: { backgroundColor: colors.brand },
-  copy: { flex: 1, gap: 3 },
-  name: { color: colors.ink, ...typography.cardTitle },
-  meta: { color: colors.inkMuted, ...typography.caption },
+const useStyles = createThemedStyles((colors) => {
+  const styles = StyleSheet.create({
+    statusCard: { gap: spacing.md },
+    statusHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    statusActions: { gap: spacing.sm },
+    list: { gap: spacing.sm },
+    rowTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+    check: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.md,
+      backgroundColor: colors.brandSoft,
+    },
+    checkOn: { backgroundColor: colors.brand },
+    copy: { flex: 1, gap: 3 },
+    name: { color: colors.ink, ...typography.cardTitle },
+    meta: { color: colors.inkMuted, ...typography.caption },
+  });
+  return { colors, styles };
 });
+
+/**
+ * SDK 0.53: rename the collection, change its link (slug) and description, and choose its website cover.
+ * The slug is part of the collection's web address, so the hint warns that old links stop working.
+ */
+function CollectionDetailsForm({
+  client,
+  collection,
+  onSaved,
+}: {
+  client: ReturnType<ReturnType<typeof useSession>["getTenantClient"]>;
+  collection: CollectionDetailResponse["collection"];
+  onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [name, setName] = useState(collection.name);
+  const [slug, setSlug] = useState(collection.slug);
+  const [description, setDescription] = useState(collection.description ?? "");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [slugError, setSlugError] = useState<string | null>(null);
+
+  const save = useMutation(
+    (_: null, key) =>
+      client.updateCollection({
+        collectionId: collection.id,
+        name: name.trim(),
+        slug: slug.trim().toLowerCase(),
+        ...(description.trim() ? { description: description.trim() } : {}),
+        idempotencyKey: key,
+      }),
+    secureIdempotencyKey,
+    {
+      onSuccess: () => {
+        toast.success(t("manageCollection.savedToast"));
+        onSaved();
+      },
+      onError: (error) => {
+        const described = describeCatalogWriteError(error);
+        toast.error(described.message, { title: described.heading });
+      },
+    },
+  );
+
+  const dirty =
+    name.trim() !== collection.name ||
+    slug.trim().toLowerCase() !== collection.slug ||
+    description.trim() !== (collection.description ?? "");
+
+  function submit() {
+    const n = name.trim();
+    const sl = slug.trim().toLowerCase();
+    setNameError(n ? null : t("collectionEdit.nameRequired"));
+    const slugOk = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(sl);
+    setSlugError(slugOk ? null : t("collectionEdit.slugFormat"));
+    if (!n || !slugOk) return;
+    save.submit(null);
+  }
+
+  return (
+    <FormSection
+      title={t("collectionEdit.section")}
+      icon="pencil-outline"
+      testID="collection-details"
+    >
+      <TextField
+        label={t("collectionEdit.name")}
+        value={name}
+        onChangeText={setName}
+        error={nameError}
+        testID="collection-name"
+      />
+      <TextField
+        label={t("collectionEdit.slug")}
+        value={slug}
+        onChangeText={setSlug}
+        autoCapitalize="none"
+        hint={t("collectionEdit.slugHint")}
+        error={slugError}
+        testID="collection-slug"
+      />
+      <TextField
+        label={t("collectionEdit.description")}
+        value={description}
+        onChangeText={setDescription}
+        multiline
+        testID="collection-description"
+      />
+      <PrimaryButton
+        label={save.state.status === "submitting" ? t("siteText.saving") : t("collectionEdit.save")}
+        icon="content-save-outline"
+        disabled={!dirty || save.state.status === "submitting"}
+        testID="collection-details-save"
+        onPress={submit}
+      />
+      <CatalogImageField
+        client={client}
+        label={t("collectionEdit.cover")}
+        hint={t("collectionEdit.coverHint")}
+        image={collection.image}
+        testID="collection-cover"
+        onSave={async (image) => {
+          await client.setCollectionImage({
+            collectionId: collection.id,
+            image,
+            idempotencyKey: secureIdempotencyKey(),
+          });
+          toast.success(t("manageCollection.savedToast"));
+          onSaved();
+        }}
+      />
+    </FormSection>
+  );
+}

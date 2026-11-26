@@ -9,7 +9,6 @@ import {
   EmptyState,
   FilterChips,
   InfoRow,
-  LoadingBlock,
   MetricCard,
   Notice,
   PageHeader,
@@ -18,9 +17,12 @@ import {
   ScrollScreen,
   SearchField,
   SectionHeading,
+  SkeletonRows,
   Surface,
+  ReadOnlyChip,
 } from "../ui/components";
-import { colors } from "../ui/theme";
+import { typography } from "../ui/theme";
+import { useTheme } from "../ui/useTheme";
 import { useAsync } from "../ui/useAsync";
 import type { SupplierAdapter } from "./adapter";
 import { loadAllSuppliers } from "./load";
@@ -85,23 +87,18 @@ function SuppliersListContent({
   );
   const isFiltered = Object.keys(query).length > 0;
   const load = useCallback(() => loadAllSuppliers(adapter, query), [adapter, query]);
-  const { state, reload } = useAsync<SupplierSummary[]>(load);
+  const { state, reload, refresh, refreshing } = useAsync<SupplierSummary[]>(load);
 
   return (
-    <ScrollScreen>
+    <ScrollScreen onRefresh={refresh} refreshing={refreshing}>
       <PageHeader
         eyebrow={t("suppliers.eyebrow")}
         title={t("suppliers.title")}
-        description={t("suppliers.headerDesc")}
         icon="truck-delivery-outline"
         onBack={onBack}
       />
       <Surface tone="accent">
-        <SectionHeading
-          title={t("suppliers.workspaceTitle")}
-          detail={t("suppliers.managementOnly")}
-        />
-        <Body>{t("suppliers.workspaceBody")}</Body>
+        <SectionHeading title={t("suppliers.workspaceTitle")} />
         {canManage ? (
           <PrimaryButton
             label={t("suppliers.addCta")}
@@ -110,7 +107,7 @@ function SuppliersListContent({
             onPress={onCreateSupplier}
           />
         ) : (
-          <Notice testID="suppliers-read-only" message={t("suppliers.readOnly")} />
+          <ReadOnlyChip testID="suppliers-read-only" />
         )}
       </Surface>
       <Surface>
@@ -142,7 +139,7 @@ function SuppliersListContent({
           onPress={() => setQuery(buildSupplierListQuery(search))}
         />
       </Surface>
-      {state.status === "loading" ? <LoadingBlock label={t("suppliers.loading")} /> : null}
+      {state.status === "loading" ? <SkeletonRows testID="suppliers-loading" /> : null}
       {state.status === "error" ? (
         <Notice
           tone="danger"
@@ -199,6 +196,7 @@ function SuppliersListContent({
 }
 
 function SupplierRow({ supplier, onOpen }: { supplier: SupplierSummary; onOpen: () => void }) {
+  const { colors } = useTheme();
   const { t } = useI18n();
   return (
     <PressableRow testID={`supplier-row-${supplier.id}`} onPress={onOpen}>
@@ -210,7 +208,7 @@ function SupplierRow({ supplier, onOpen }: { supplier: SupplierSummary; onOpen: 
           gap: 12,
         }}
       >
-        <Text style={{ flex: 1, color: colors.ink, fontSize: 18, fontWeight: "800" }}>
+        <Text style={{ flex: 1, color: colors.ink, ...typography.cardTitle, fontWeight: "800" }}>
           {supplier.name}
         </Text>
         <Badge
